@@ -53,6 +53,7 @@ jobs:
     - name: Run Additional Tests
       shell: powershell
       run: |
+        New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
         $config = New-PesterConfiguration
         $config.Run.Path = '.\src\Tests\Additional'
         $config.Output.Verbosity = 'Detailed'
@@ -67,6 +68,6 @@ jobs:
       with:
         name: additional-test-results
         path: .\src\Artifacts\TestOutput\AdditionalTests.xml
-        if-no-files-found: warn
+        if-no-files-found: error
         overwrite: true
         archive: false
