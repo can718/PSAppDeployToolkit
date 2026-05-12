@@ -8,6 +8,35 @@ permissions:
 env:
   NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
 jobs:
+  run-additional-tests:
+    name: Run Additional Tests
+    uses: ./.github/workflows/run-additional-tests.yml
+
+  check-additional-test-results:
+    name: Check Additional Test Results
+    needs: run-additional-tests
+    runs-on: windows-latest
+    steps:
+    - name: Download additional test results
+      uses: actions/download-artifact@fa0a91b85d4f404e444306234ee12a840f8ded08  # https://github.com/actions/download-artifact/releases/tag/v4.1.8
+      with:
+        name: additional-test-results
+        path: .\TestResults\
+
+    - name: Check test results
+      shell: powershell
+      run: |
+        [xml]$results = Get-Content '.\TestResults\AdditionalTests.xml'
+        $total   = [int]$results.'test-results'.total
+        $failures = [int]$results.'test-results'.failures
+        $errors   = [int]$results.'test-results'.errors
+        Write-Host "Total: $total  Failures: $failures  Errors: $errors"
+        if ($failures -gt 0 -or $errors -gt 0) {
+          Write-Error "Additional tests failed: $failures failure(s), $errors error(s)."
+          exit 1
+        }
+        Write-Host "All additional tests passed."
+
   test:
     name: Run Tests
     runs-on: windows-latest
