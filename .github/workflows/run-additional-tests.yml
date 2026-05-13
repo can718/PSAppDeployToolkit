@@ -68,6 +68,6 @@ jobs:
       with:
         name: additional-test-results
         path: .\src\Artifacts\TestOutput\AdditionalTests.xml
-        if-no-files-found: warn
+        if-no-files-found: error
         overwrite: true
         archive: false
