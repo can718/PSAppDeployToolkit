@@ -70,4 +70,3 @@ jobs:
         path: .\src\Artifacts\TestOutput\AdditionalTests.xml
         if-no-files-found: error
         overwrite: true
-        archive: false
