@@ -83,6 +83,57 @@ jobs:
     - name: Check out repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
 
+    - name: Check runner environment
+      shell: pwsh
+      run: |
+        Write-Host "========== Runner Info =========="
+        Write-Host "Hostname:       $env:COMPUTERNAME"
+        Write-Host "Runner Name:    $env:RUNNER_NAME"
+        Write-Host "Runner OS:      $env:RUNNER_OS"
+        Write-Host "Runner Arch:    $env:RUNNER_ARCH"
+        Write-Host "Workspace:      $env:GITHUB_WORKSPACE"
+
+        Write-Host "`n========== OS =========="
+        [System.Environment]::OSVersion
+        (Get-CimInstance Win32_OperatingSystem).Caption
+
+        Write-Host "`n========== PowerShell =========="
+        $PSVersionTable
+
+        Write-Host "`n========== .NET SDK =========="
+        $dotnet = Get-Command dotnet -ErrorAction Ignore
+        if ($dotnet) {
+          Write-Host "dotnet path:    $($dotnet.Source)"
+          & dotnet --version
+          & dotnet --list-sdks
+        } else {
+          Write-Warning ".NET SDK not found!"
+        }
+
+        Write-Host "`n========== Git =========="
+        $git = Get-Command git -ErrorAction Ignore
+        if ($git) {
+          Write-Host "git path:       $($git.Source)"
+          & git --version
+        } else {
+          Write-Warning "git not found!"
+        }
+
+        Write-Host "`n========== Node.js =========="
+        $node = Get-Command node -ErrorAction Ignore
+        if ($node) {
+          Write-Host "node path:      $($node.Source)"
+          & node --version
+        } else {
+          Write-Warning "Node.js not found!"
+        }
+
+        Write-Host "`n========== Disk Space =========="
+        Get-PSDrive C | Select-Object Name, @{N='Used(GB)';E={[math]::Round($_.Used/1GB,1)}}, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,1)}}
+
+        Write-Host "`n========== Environment Variables =========="
+        Get-ChildItem Env: | Where-Object { $_.Name -match 'GITHUB|RUNNER|DOTNET|NUGET|PATH' } | Sort-Object Name | Format-Table Name, Value -AutoSize
+
     - name: Install Node.js (required for GitHub Actions on self-hosted runner)
       shell: pwsh
       run: |
@@ -105,6 +156,11 @@ jobs:
     - name: Version Display
       shell: powershell
       run: $PSVersionTable
+
+    - name: Install .NET 10 SDK (required for net10.0 build target)
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # https://github.com/actions/setup-dotnet/releases/tag/v4.3.1
+      with:
+        dotnet-version: '10.0.x'
 
     - name: Cache NuGet packages
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # https://github.com/actions/cache/releases/tag/v5.0.5
@@ -136,12 +192,9 @@ jobs:
         Install-Module -Name platyPS -RequiredVersion 0.14.2 -Force -Scope CurrentUser
         Install-Module -Name Alt3.Docusaurus.Powershell -RequiredVersion 1.0.37 -Force -Scope CurrentUser
 
-    - name: Download build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: .\src\Artifacts\
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        merge-multiple: true
+    - name: Test and Build
+      shell: cmd
+      run: powershell.exe -ExecutionPolicy Bypass -File build.ps1
 
     # Add your new test cases below this line
     - name: Run Additional Tests
