@@ -110,6 +110,11 @@ jobs:
       if: steps.psmodule-cache.outputs.cache-hit != 'true'
       shell: powershell
       run: |
+        # Upgrade PowerShellGet and PackageManagement first (required on older self-hosted runners)
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+        Install-Module -Name PowerShellGet -MinimumVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
+        # Reload the updated PowerShellGet into current session
+        Import-Module PowerShellGet -MinimumVersion 2.2.5 -Force
         Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
         Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
         Install-Module -Name Pester -RequiredVersion 5.7.1 -Force -SkipPublisherCheck -Scope CurrentUser
