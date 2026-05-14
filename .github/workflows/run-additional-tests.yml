@@ -15,7 +15,7 @@ jobs:
     env:
       INFRA_MI_CLIENT_ID: '2d7fbe0d-b3d6-4905-9584-9dc45065865c'
       INFRA_KEYVAULT: 'kv-tfp-infra-management'
-      TERRAFORGE_CONFIG_NAME: 'Lite (CM2509)-Agent'
+      TERRAFORGE_CONFIG_NAME: 'Lite (CM2509 Github)-Agent'
       TERRAFORGE_API_BASE_URL: 'https://terraforgeapi.southeastasia.cloudapp.azure.com'
       TERRAFORGE_API_KEY_SECRET: 'TerraforgeApiAccessKey'
     steps:
@@ -56,7 +56,7 @@ jobs:
           }
           $launchPayload = @{
               configName = $env:TERRAFORGE_CONFIG_NAME
-              poolType   = 1
+              poolType   = 3
           } | ConvertTo-Json
 
           Write-Host "Sending discover agent request for config: $env:TERRAFORGE_CONFIG_NAME ..."
