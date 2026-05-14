@@ -64,8 +64,9 @@ jobs:
               -Method Post -Headers $authHeaders -Body $launchPayload -ErrorAction Stop
           $launchContent = $launchResponse.Content | ConvertFrom-Json -ErrorAction Stop
 
-          $agentName = "$($launchContent.data.machineIds[0])_$($launchContent.data.configName)"
-          $machineUrl = "https://terraforge.southeastasia.cloudapp.azure.com/machines/$($launchContent.data.machineIds[0])"
+          $machineId = $launchContent.data.machineIds[0]
+          $agentName = "MyRunner-$machineId"
+          $machineUrl = "https://terraforge.southeastasia.cloudapp.azure.com/machines/$machineId"
 
           Write-Host "Launched agent machine: $agentName"
           Write-Host "Machine URL: $machineUrl"
