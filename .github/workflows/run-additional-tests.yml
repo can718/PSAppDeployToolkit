@@ -83,6 +83,21 @@ jobs:
     - name: Check out repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
 
+    - name: Install Node.js (required for GitHub Actions on self-hosted runner)
+      shell: pwsh
+      run: |
+        if (-not (Get-Command node -ErrorAction Ignore)) {
+          Write-Host "Node.js not found, installing..."
+          $installer = "$env:TEMP\node-lts.msi"
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.19.0/node-v20.19.0-x64.msi" -OutFile $installer
+          Start-Process msiexec.exe -Wait -ArgumentList "/I $installer /quiet /norestart"
+          # Refresh PATH in current session
+          $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+          Write-Host "Node.js installed: $(node --version)"
+        } else {
+          Write-Host "Node.js already installed: $(node --version)"
+        }
+
     - name: Display the path
       shell: powershell
       run: echo ${env:PATH}
