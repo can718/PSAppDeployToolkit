@@ -12,6 +12,7 @@ jobs:
   run-additional-tests:
     name: Run Additional Tests
     uses: ./.github/workflows/run-additional-tests.yml
+    secrets: inherit
 
   check-additional-test-results:
     name: Check Additional Test Results
