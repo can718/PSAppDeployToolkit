@@ -83,6 +83,16 @@ jobs:
     - name: Check out repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
 
+    - name: Enable Windows long path support
+      shell: pwsh
+      run: |
+        # Enable long paths in Windows registry (requires admin)
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -Type DWord -Force
+        Write-Host "LongPathsEnabled set to 1"
+        # Enable long paths for git
+        git config --system core.longpaths true
+        Write-Host "git core.longpaths set to true"
+
     - name: Check runner environment
       shell: pwsh
       run: |
@@ -194,7 +204,10 @@ jobs:
 
     - name: Test and Build
       shell: cmd
-      run: powershell.exe -ExecutionPolicy Bypass -File build.ps1
+      run: |
+        dotnet --version
+        dotnet --list-sdks
+        powershell.exe -ExecutionPolicy Bypass -File build.ps1
 
     # Add your new test cases below this line
     - name: Run Additional Tests
