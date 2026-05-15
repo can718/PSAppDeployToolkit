@@ -4,14 +4,14 @@
 }
 Describe 'Remove-ADTIniValue' {
     BeforeAll {
-        $IniContent = @"
-[MySection]
-MyKey=MyValue
-MyOtherKey=MyOtherValue
-"@
+        # Use [System.IO.File]::WriteAllText with explicit CRLF line endings instead of Set-Content,
+        # because Set-Content behaviour varies across environments (e.g. self-hosted runners with
+        # git autocrlf=false may produce LF-only files).  The INI functions always write CRLF, so
+        # the baseline file must also use CRLF for -FileContentMatchMultiline assertions to pass.
+        # BeforeEach (not BeforeAll) ensures a fresh file for every test since Remove-ADTIniValue mutates it.
         $IniPath = "$TestDrive\IniFile.ini"
-        Set-Content -Path $IniPath -Value $IniContent -Encoding Ascii -Force
-
+        [System.IO.File]::WriteAllText($IniPath, "[MySection]`r`nMyKey=MyValue`r`nMyOtherKey=MyOtherValue`r`n", [System.Text.Encoding]::ASCII)
+        
         # Mock Write-ADTLogEntry due to its expense when running via Pester.
         Mock -ModuleName PSAppDeployToolkit Write-ADTLogEntry { }
     }
