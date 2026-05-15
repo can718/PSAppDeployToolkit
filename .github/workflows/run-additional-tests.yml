@@ -199,13 +199,9 @@ jobs:
     - name: Configure NuGet source
       shell: pwsh
       run: |
-        $sources = dotnet nuget list source
-        if ($sources -notmatch 'nuget\.org') {
-          dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org
-          Write-Host "NuGet source 'nuget.org' added."
-        } else {
-          Write-Host "NuGet source 'nuget.org' already exists, skipping."
-        }
+        dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org 2>&1 | Out-Null
+        Write-Host "NuGet sources:"
+        dotnet nuget list source
 
     - name: Test and Build
       shell: cmd
