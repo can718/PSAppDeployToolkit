@@ -4,14 +4,10 @@
 }
 Describe 'Remove-ADTIniSection' {
     BeforeAll {
-        $IniContent = @"
-[MySection]
-MyKey=MyValue
-[MyOtherSection]
-MyOtherKey=MyOtherValue
-"@
+        # Use explicit CRLF line endings - Set-Content default behaviour varies by environment.
+        $IniContent = "[MySection]`r`nMyKey=MyValue`r`n[MyOtherSection]`r`nMyOtherKey=MyOtherValue`r`n"
         $IniPath = "$TestDrive\IniFile.ini"
-        Set-Content -Path $IniPath -Value $IniContent -Encoding Ascii -Force
+        [System.IO.File]::WriteAllText($IniPath, $IniContent, [System.Text.Encoding]::ASCII)
 
         # Mock Write-ADTLogEntry due to its expense when running via Pester.
         Mock -ModuleName PSAppDeployToolkit Write-ADTLogEntry { }
@@ -36,9 +32,9 @@ MyOtherKey=MyOtherValue
     Context 'Input Validation' {
         It 'Should verify that FilePath is not null, empty or whitespace' {
             $shouldParams = @{
-                Throw = $true
+                Throw         = $true
                 ExceptionType = [System.Management.Automation.ParameterBindingException]
-                ErrorId = 'ParameterArgumentValidationError,Remove-ADTIniSection'
+                ErrorId       = 'ParameterArgumentValidationError,Remove-ADTIniSection'
             }
             { Remove-ADTIniSection -FilePath $null -Section 'Anything' } | Should @shouldParams
             { Remove-ADTIniSection -FilePath '' -Section 'Anything' } | Should @shouldParams
@@ -49,9 +45,9 @@ MyOtherKey=MyOtherValue
         }
         It 'Should verify that Section is not null, empty or whitespace' {
             $shouldParams = @{
-                Throw = $true
+                Throw         = $true
                 ExceptionType = [System.Management.Automation.ParameterBindingException]
-                ErrorId = 'ParameterArgumentValidationError,Remove-ADTIniSection'
+                ErrorId       = 'ParameterArgumentValidationError,Remove-ADTIniSection'
             }
             { Remove-ADTIniSection -FilePath $IniPath -Section $null } | Should @shouldParams
             { Remove-ADTIniSection -FilePath $IniPath -Section '' } | Should @shouldParams

@@ -157,7 +157,14 @@ Describe 'New-ADTTemplate' {
         It 'Preserves the source template trailing line breaks' {
             $sourcePath = Join-Path -Path $PSScriptRoot -ChildPath '..\..\PSAppDeployToolkit\opt\Frontend\v4\Invoke-AppDeployToolkit.ps1'
             $generatedPath = Join-Path -Path $template.Path -ChildPath 'Invoke-AppDeployToolkit.ps1'
-            (Get-ADTTrailingLineBreaks -LiteralPath $generatedPath) | Should -Be (Get-ADTTrailingLineBreaks -LiteralPath $sourcePath)
+            #(Get-ADTTrailingLineBreaks -LiteralPath $generatedPath) | Should -Be (Get-ADTTrailingLineBreaks -LiteralPath $sourcePath)
+            # Normalise CRLF (\r\n) to LF (\n) before comparing so the assertion checks the
+            # *count* of trailing line breaks rather than the exact byte sequence.  This prevents
+            # false failures on self-hosted runners where git autocrlf=false causes the source
+            # file to be checked out with LF endings while New-ADTTemplate always writes CRLF.
+            $generatedBreaks = (Get-ADTTrailingLineBreaks -LiteralPath $generatedPath).Replace('\r\n', '\n')
+            $sourceBreaks = (Get-ADTTrailingLineBreaks -LiteralPath $sourcePath).Replace('\r\n', '\n')
+            $generatedBreaks | Should -Be $sourceBreaks
         }
 
         It 'Config\config.psd1 has UTF-8 BOM' {

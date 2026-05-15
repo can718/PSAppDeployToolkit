@@ -17,7 +17,11 @@ MyKey=MyValue
         Mock -ModuleName PSAppDeployToolkit Write-ADTLogEntry { }
     }
     BeforeEach {
-        Set-Content -Path $IniPath -Value $IniContent -Encoding Ascii -Force
+        # Use [System.IO.File]::WriteAllText with explicit CRLF line endings instead of Set-Content,
+        # because Set-Content behaviour varies across environments (e.g. self-hosted runners with
+        # git autocrlf=false may produce LF-only files).  The INI functions always write CRLF, so
+        # the baseline file must also use CRLF for -FileContentMatchMultiline assertions to pass.
+        [System.IO.File]::WriteAllText($IniPath, "[MySection]`r`nMyKey=MyValue`r`n", [System.Text.Encoding]::ASCII)
     }
 
     Context 'Functionality' {
@@ -56,9 +60,9 @@ MyKey=MyValue
     Context 'Input Validation' {
         It 'Should verify that FilePath is not null, empty or whitespace' {
             $shouldParams = @{
-                Throw = $true
+                Throw         = $true
                 ExceptionType = [System.Management.Automation.ParameterBindingException]
-                ErrorId = 'ParameterArgumentValidationError,Set-ADTIniValue'
+                ErrorId       = 'ParameterArgumentValidationError,Set-ADTIniValue'
             }
             { Set-ADTIniValue -FilePath $null -Section 'Anything' -Key 'Anything' -Value 'Anything' } | Should @shouldParams
             { Set-ADTIniValue -FilePath '' -Section 'Anything' -Key 'Anything' -Value 'Anything' } | Should @shouldParams
@@ -69,9 +73,9 @@ MyKey=MyValue
         }
         It 'Should verify that Section is not null, empty or whitespace' {
             $shouldParams = @{
-                Throw = $true
+                Throw         = $true
                 ExceptionType = [System.Management.Automation.ParameterBindingException]
-                ErrorId = 'ParameterArgumentValidationError,Set-ADTIniValue'
+                ErrorId       = 'ParameterArgumentValidationError,Set-ADTIniValue'
             }
             { Set-ADTIniValue -FilePath $IniPath -Section $null -Key 'Anything' -Value 'Anything' } | Should @shouldParams
             { Set-ADTIniValue -FilePath $IniPath -Section '' -Key 'Anything' -Value 'Anything' } | Should @shouldParams
@@ -79,9 +83,9 @@ MyKey=MyValue
         }
         It 'Should verify that Key is not null, empty or whitespace' {
             $shouldParams = @{
-                Throw = $true
+                Throw         = $true
                 ExceptionType = [System.Management.Automation.ParameterBindingException]
-                ErrorId = 'ParameterArgumentValidationError,Set-ADTIniValue'
+                ErrorId       = 'ParameterArgumentValidationError,Set-ADTIniValue'
             }
             { Set-ADTIniValue -FilePath $IniPath -Section 'MySection' -Key $null -Value 'Anything' } | Should @shouldParams
             { Set-ADTIniValue -FilePath $IniPath -Section 'MySection' -Key '' -Value 'Anything' } | Should @shouldParams

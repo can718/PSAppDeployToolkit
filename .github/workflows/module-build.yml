@@ -5,11 +5,44 @@ on:
 permissions:
   id-token: write # Require write permission to Fetch an OIDC token.
   contents: read
+  actions: read
 env:
   NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
 jobs:
+  run-additional-tests:
+    name: Run Additional Tests
+    uses: ./.github/workflows/run-additional-tests.yml
+    secrets: inherit
+
+  check-additional-test-results:
+    name: Check Additional Test Results
+    needs: run-additional-tests
+    runs-on: windows-latest
+    steps:
+    - name: Download additional test results
+      uses: actions/download-artifact@v4
+      with:
+        name: additional-test-results
+        path: .\TestResults\
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Check test results
+      shell: powershell
+      run: |
+        [xml]$results = Get-Content '.\TestResults\AdditionalTests.xml'
+        $total   = [int]$results.'test-results'.total
+        $failures = [int]$results.'test-results'.failures
+        $errors   = [int]$results.'test-results'.errors
+        Write-Host "Total: $total  Failures: $failures  Errors: $errors"
+        if ($failures -gt 0 -or $errors -gt 0) {
+          Write-Error "Additional tests failed: $failures failure(s), $errors error(s)."
+          exit 1
+        }
+        Write-Host "All additional tests passed."
+
   test:
     name: Run Tests
+    #if: false  # TODO: re-enable after self-hosted runner testing
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -72,6 +105,7 @@ jobs:
       run: |
         Get-ChildItem -Path "$($PWD)\src\Artifacts\ModuleOnly\PSAppDeployToolkit" -Include '*.ps*1', 'PSAppDeployToolkit.dll', 'PSADT*.dll', 'PSADT*.exe', 'iNKORE.UI.WPF*.dll', 'Invoke-AppDeployToolkit.exe' -Recurse | Select-Object -ExpandProperty FullName | Out-File "FilesToSign.txt"
         & azuresigntool.exe sign -s -kvu https://psadt-kv-prod-codesign.vault.azure.net -kvc PSADT -kvm -tr http://timestamp.digicert.com -td sha256 -ifl FilesToSign.txt
+
 
     - name: Generate artifact templates
       id: exports
