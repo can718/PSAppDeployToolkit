@@ -8,13 +8,10 @@ Describe 'Set-ADTIniSection' {
         Mock -ModuleName PSAppDeployToolkit Write-ADTLogEntry { }
     }
     BeforeEach {
-        $IniContent = @"
-[MySection]
-MyKey=MyValue
-MyKey2=MyValue2
-"@
+        # Use explicit CRLF line endings - Set-Content default behaviour varies by environment.
+        $IniContent = "[MySection]`r`nMyKey=MyValue`r`nMyKey2=MyValue2`r`n"
         $IniPath = "$TestDrive\IniFile.ini"
-        Set-Content -Path $IniPath -Value $IniContent -Encoding Ascii -Force
+        [System.IO.File]::WriteAllText($IniPath, $IniContent, [System.Text.Encoding]::ASCII)
     }
 
     Context 'Functionality' {
@@ -27,7 +24,7 @@ MyKey2=MyValue2
         }
         It 'Should overwrite a section when required' {
             $IniSection = [ordered]@{
-                'MyKey' = 'MyNewValue'
+                'MyKey'      = 'MyNewValue'
                 'MyOtherKey' = 'MyOtherValue'
             }
             Set-ADTIniSection -FilePath $IniPath -Section 'MySection' -Content $IniSection -Overwrite
@@ -61,11 +58,11 @@ MyKey2=MyValue2
         It 'Should handle string / number / bool / null inputs' {
             $IniSection = [ordered]@{
                 'StringKey' = 'StringValue'
-                'EmptyKey' = ''
-                'IntKey' = 123
+                'EmptyKey'  = ''
+                'IntKey'    = 123
                 'DoubleKey' = 1.23
-                'BoolKey' = $true
-                'NullKey' = $null
+                'BoolKey'   = $true
+                'NullKey'   = $null
             }
             Set-ADTIniSection -FilePath $IniPath -Section 'NewSection' -Content $IniSection
             $IniPath | Should -FileContentMatchMultiline '\[NewSection\]\r\nStringKey=StringValue\r\nEmptyKey=\r\nIntKey=123\r\nDoubleKey=1.23\r\nBoolKey=True\r\nNullKey=\r\n'
@@ -75,9 +72,9 @@ MyKey2=MyValue2
     Context 'Input Validation' {
         It 'Should verify that FilePath is not null, empty or whitespace' {
             $shouldParams = @{
-                Throw = $true
+                Throw         = $true
                 ExceptionType = [System.Management.Automation.ParameterBindingException]
-                ErrorId = 'ParameterArgumentValidationError,Set-ADTIniSection'
+                ErrorId       = 'ParameterArgumentValidationError,Set-ADTIniSection'
             }
             { Set-ADTIniSection -FilePath $null -Section 'Anything' -Content @{} } | Should @shouldParams
             { Set-ADTIniSection -FilePath '' -Section 'Anything' -Content @{} } | Should @shouldParams
@@ -88,9 +85,9 @@ MyKey2=MyValue2
         }
         It 'Should verify that Section is not null, empty or whitespace' {
             $shouldParams = @{
-                Throw = $true
+                Throw         = $true
                 ExceptionType = [System.Management.Automation.ParameterBindingException]
-                ErrorId = 'ParameterArgumentValidationError,Set-ADTIniSection'
+                ErrorId       = 'ParameterArgumentValidationError,Set-ADTIniSection'
             }
             { Set-ADTIniSection -FilePath $IniPath -Section $null -Content @{} } | Should @shouldParams
             { Set-ADTIniSection -FilePath $IniPath -Section '' -Content @{} } | Should @shouldParams
