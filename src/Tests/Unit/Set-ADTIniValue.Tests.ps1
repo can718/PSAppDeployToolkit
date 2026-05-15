@@ -17,6 +17,10 @@ MyKey=MyValue
         Mock -ModuleName PSAppDeployToolkit Write-ADTLogEntry { }
     }
     BeforeEach {
+        # Use [System.IO.File]::WriteAllText with explicit CRLF line endings instead of Set-Content,
+        # because Set-Content behaviour varies across environments (e.g. self-hosted runners with
+        # git autocrlf=false may produce LF-only files).  The INI functions always write CRLF, so
+        # the baseline file must also use CRLF for -FileContentMatchMultiline assertions to pass.
         [System.IO.File]::WriteAllText($IniPath, "[MySection]`r`nMyKey=MyValue`r`n", [System.Text.Encoding]::ASCII)
     }
 
