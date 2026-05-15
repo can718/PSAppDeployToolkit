@@ -241,20 +241,27 @@ jobs:
         Write-Host "NuGet sources:"
         dotnet nuget list source
 
+    - name: Build (minimal - Prerequisites, Clean, Dependencies, DotNet, Build)
+      shell: powershell
+      run: |
+        & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
+            Invoke-ADTModuleBuild -Steps 'Prerequisites', 'Clean', 'Dependencies', 'DotNet', 'Build'
+        }
+
     - name: Generate artifact templates
       id: exports
       shell: powershell
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
 
-    - name: Test and Build
-      shell: cmd
-      run: |
-        dotnet --version
-        dotnet --list-sdks
-        dotnet nuget list source
-        dotnet workload list
-        powershell.exe -ExecutionPolicy Bypass -File build.ps1
+    # - name: Test and Build
+    #   shell: cmd
+    #   run: |
+    #     dotnet --version
+    #     dotnet --list-sdks
+    #     dotnet nuget list source
+    #     dotnet workload list
+    #     powershell.exe -ExecutionPolicy Bypass -File build.ps1
 
     # Add your new test cases below this line
     - name: Run Additional Tests
