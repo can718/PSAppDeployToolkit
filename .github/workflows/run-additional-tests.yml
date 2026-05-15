@@ -201,6 +201,8 @@ jobs:
       run: |
         dotnet --version
         dotnet --list-sdks
+        dotnet nuget list source
+        dotnet workload list
         powershell.exe -ExecutionPolicy Bypass -File build.ps1
 
     # Add your new test cases below this line
