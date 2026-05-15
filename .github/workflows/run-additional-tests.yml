@@ -197,9 +197,15 @@ jobs:
         Install-Module -Name Alt3.Docusaurus.Powershell -RequiredVersion 1.0.37 -Force -Scope CurrentUser
 
     - name: Configure NuGet source
-      shell: cmd
+      shell: pwsh
       run: |
-        dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org || echo "Source already exists"
+        $sources = dotnet nuget list source
+        if ($sources -notmatch 'nuget\.org') {
+          dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org
+          Write-Host "NuGet source 'nuget.org' added."
+        } else {
+          Write-Host "NuGet source 'nuget.org' already exists, skipping."
+        }
 
     - name: Test and Build
       shell: cmd
