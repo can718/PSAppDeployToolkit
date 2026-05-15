@@ -9,8 +9,7 @@ Describe 'New-ADTTemplate' {
         Mock -ModuleName PSAppDeployToolkit Write-ADTLogEntry { }
 
         # Helper: generate a template and return a hashtable with content strings, BOM flags, and parsed config.
-        function Get-ADTTemplateContent
-        {
+        function Get-ADTTemplateContent {
             [CmdletBinding()]
             [OutputType([System.Collections.Hashtable])]
             param ([System.Collections.Hashtable]$Params = @{})
@@ -23,16 +22,14 @@ Describe 'New-ADTTemplate' {
             $result = @{
                 Path = $template.FullName
             }
-            if (Test-Path -LiteralPath $scriptPath)
-            {
+            if (Test-Path -LiteralPath $scriptPath) {
                 $result.ScriptContent = Get-Content -LiteralPath $scriptPath -Raw
                 $bom = [System.Byte[]]::new(3)
                 $stream = [System.IO.File]::OpenRead($scriptPath)
                 try { $null = $stream.Read($bom, 0, 3) } finally { $stream.Dispose() }
                 $result.ScriptHasBom = $bom[0] -eq 0xEF -and $bom[1] -eq 0xBB -and $bom[2] -eq 0xBF
             }
-            if (Test-Path -LiteralPath $configPath)
-            {
+            if (Test-Path -LiteralPath $configPath) {
                 $result.ConfigData = Import-PowerShellDataFile -LiteralPath $configPath
                 $bom = [System.Byte[]]::new(3)
                 $stream = [System.IO.File]::OpenRead($configPath)
@@ -43,8 +40,7 @@ Describe 'New-ADTTemplate' {
         }
 
         # Helper: parse $adtSession hashtable AST keys from script content and return as a dictionary.
-        function Get-ADTSessionPropertiesFromScriptContent
-        {
+        function Get-ADTSessionPropertiesFromScriptContent {
             [CmdletBinding()]
             [OutputType([System.Collections.Hashtable])]
             param ([System.String]$Content)
@@ -55,28 +51,24 @@ Describe 'New-ADTTemplate' {
                     ($node.Left | Get-Member -Name VariablePath) -and
                     $node.Left.VariablePath.UserPath -eq 'adtSession'
                 }, $true)
-            if (!$assignmentAst)
-            {
+            if (!$assignmentAst) {
                 throw 'Could not find $adtSession assignment in script content.'
             }
             $hashtableAst = $assignmentAst.Right.Expression
             $keys = @{}
-            foreach ($kvp in $hashtableAst.KeyValuePairs)
-            {
+            foreach ($kvp in $hashtableAst.KeyValuePairs) {
                 $keys[$kvp.Item1.Value] = $kvp.Item2.Extent.Text
             }
             $keys
         }
 
-        function Get-ADTTrailingLineBreaks
-        {
+        function Get-ADTTrailingLineBreaks {
             [CmdletBinding()]
             [OutputType([System.String])]
             param ([System.String]$LiteralPath)
             $content = [System.IO.File]::ReadAllText($LiteralPath, [System.Text.UTF8Encoding]::new($true))
             $match = [System.Text.RegularExpressions.Regex]::Match($content, '(?:\r\n|\n)+$')
-            if ($match.Success)
-            {
+            if ($match.Success) {
                 return $match.Value.Replace("`r", '\r').Replace("`n", '\n')
             }
             return [System.String]::Empty
@@ -88,13 +80,13 @@ Describe 'New-ADTTemplate' {
             # Single call with all property types; individual tests assert each aspect.
             $template = Get-ADTTemplateContent -Params @{
                 SessionProperties = [ordered]@{
-                    AppVendor = 'Contoso'
-                    AppName = 'TestApp'
-                    AppVersion = '6.7'
-                    RequireAdmin = $false
+                    AppVendor           = 'Contoso'
+                    AppName             = 'TestApp'
+                    AppVersion          = '6.7'
+                    RequireAdmin        = $false
                     AppSuccessExitCodes = @(0, 3010)
                     AppProcessesToClose = @('notepad', [ordered]@{ Name = 'calc'; Description = 'Calculator' })
-                    LogName = 'CustomLog'
+                    LogName             = 'CustomLog'
                 }
             }
             $content = $template.ScriptContent
@@ -157,7 +149,13 @@ Describe 'New-ADTTemplate' {
         It 'Preserves the source template trailing line breaks' {
             $sourcePath = Join-Path -Path $PSScriptRoot -ChildPath '..\..\PSAppDeployToolkit\opt\Frontend\v4\Invoke-AppDeployToolkit.ps1'
             $generatedPath = Join-Path -Path $template.Path -ChildPath 'Invoke-AppDeployToolkit.ps1'
-            (Get-ADTTrailingLineBreaks -LiteralPath $generatedPath) | Should -Be (Get-ADTTrailingLineBreaks -LiteralPath $sourcePath)
+            # Normalise CRLF (\r\n) to LF (\n) before comparing so the assertion checks the
+            # *count* of trailing line breaks rather than the exact byte sequence.  This prevents
+            # false failures on self-hosted runners where git autocrlf=false causes the source
+            # file to be checked out with LF endings while New-ADTTemplate always writes CRLF.
+            $generatedBreaks = (Get-ADTTrailingLineBreaks -LiteralPath $generatedPath).Replace('\r\n', '\n')
+            $sourceBreaks = (Get-ADTTrailingLineBreaks -LiteralPath $sourcePath).Replace('\r\n', '\n')
+            $generatedBreaks | Should -Be $sourceBreaks
         }
 
         It 'Config\config.psd1 has UTF-8 BOM' {
@@ -171,15 +169,15 @@ Describe 'New-ADTTemplate' {
             $template = Get-ADTTemplateContent -Params @{
                 Config = @{
                     # Level 1: replacement + insertion inside existing 'MSI' section.
-                    MSI = @{ InstallParams = 'InstallParamsText'; MutexWaitTime = 99999; NewMSIParams = 'NewMSIParamsText' }
+                    MSI                   = @{ InstallParams = 'InstallParamsText'; MutexWaitTime = 99999; NewMSIParams = 'NewMSIParamsText' }
                     # Level 1: replacement + insertion inside existing 'Toolkit' section.
-                    Toolkit = @{ LogPath = '$env:TEMP\logs'; NewToolkitParams = 'NewToolkitParamsText' }
+                    Toolkit               = @{ LogPath = '$env:TEMP\logs'; NewToolkitParams = 'NewToolkitParamsText' }
                     # Level 1: replacement + insertion inside existing 'UI' section.
-                    UI = @{ NewUIParams = 'NewUIParamsText'; DefaultTimeout = 7777; MoreNewUIParams = 'MoreNewUIParamsText' }
+                    UI                    = @{ NewUIParams = 'NewUIParamsText'; DefaultTimeout = 7777; MoreNewUIParams = 'MoreNewUIParamsText' }
                     # Level 0: full replacement of existing 'Assets' section (all new values).
-                    Assets = @{ Logo = 'CustomLogo.png'; LogoDark = 'CustomLogoDark.png'; NewAssetsParams = 'NewAssetsParamsText' }
+                    Assets                = @{ Logo = 'CustomLogo.png'; LogoDark = 'CustomLogoDark.png'; NewAssetsParams = 'NewAssetsParamsText' }
                     # Level 0: entirely new top-level section.
-                    CustomAppSettings = @{ Timeout = 3600; CustomAppProperties = @{ Retries = 5 } }
+                    CustomAppSettings     = @{ Timeout = 3600; CustomAppProperties = @{ Retries = 5 } }
                     MoreCustomAppSettings = @{ IsValid = $true; CustomAppProperties = @{ MoreStuff = 'No' } }
                 }
             }
@@ -239,15 +237,15 @@ Describe 'New-ADTTemplate' {
             BeforeAll {
                 [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'content', Justification = "This variable is used within script blocks that PSScriptAnalyzer has no visibility of.")]
                 $content = (Get-ADTTemplateContent -Params @{
-                        PreInstallScriptBlock = { Write-ADTLogEntry -Message 'TEST-pre-install' }
-                        InstallScriptBlock = { Write-ADTLogEntry -Message 'TEST-install' }
-                        PostInstallScriptBlock = { Write-ADTLogEntry -Message 'TEST-post-install' }
-                        PreUninstallScriptBlock = { Write-ADTLogEntry -Message 'TEST-pre-uninstall' }
-                        UninstallScriptBlock = { Write-ADTLogEntry -Message 'TEST-uninstall' }
+                        PreInstallScriptBlock    = { Write-ADTLogEntry -Message 'TEST-pre-install' }
+                        InstallScriptBlock       = { Write-ADTLogEntry -Message 'TEST-install' }
+                        PostInstallScriptBlock   = { Write-ADTLogEntry -Message 'TEST-post-install' }
+                        PreUninstallScriptBlock  = { Write-ADTLogEntry -Message 'TEST-pre-uninstall' }
+                        UninstallScriptBlock     = { Write-ADTLogEntry -Message 'TEST-uninstall' }
                         PostUninstallScriptBlock = { Write-ADTLogEntry -Message 'TEST-post-uninstall' }
-                        PreRepairScriptBlock = { Write-ADTLogEntry -Message 'TEST-pre-repair' }
-                        RepairScriptBlock = { Write-ADTLogEntry -Message 'TEST-repair' }
-                        PostRepairScriptBlock = { Write-ADTLogEntry -Message 'TEST-post-repair' }
+                        PreRepairScriptBlock     = { Write-ADTLogEntry -Message 'TEST-pre-repair' }
+                        RepairScriptBlock        = { Write-ADTLogEntry -Message 'TEST-repair' }
+                        PostRepairScriptBlock    = { Write-ADTLogEntry -Message 'TEST-post-repair' }
                     }).ScriptContent
             }
 
@@ -302,8 +300,7 @@ Describe 'New-ADTTemplate' {
             }
 
             It 'Preserves unspecified scriptblocks when only one scriptblock is modified' {
-                foreach ($phase in 'PreInstall', 'PostInstall', 'PreUninstall', 'Uninstall', 'PostUninstall', 'PreRepair', 'Repair', 'PostRepair')
-                {
+                foreach ($phase in 'PreInstall', 'PostInstall', 'PreUninstall', 'Uninstall', 'PostUninstall', 'PreRepair', 'Repair', 'PostRepair') {
                     $pattern = '(?s)\$' + $phase + ' = \{.*?\r?\n\}'
                     $originalMatch = [regex]::Match($originalContent, $pattern).Value
                     $customMatch = [regex]::Match($content, $pattern).Value
@@ -336,10 +333,10 @@ Describe 'New-ADTTemplate' {
                 BeforeAll {
                     [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'content', Justification = "This variable is used within script blocks that PSScriptAnalyzer has no visibility of.")]
                     $content = (Get-ADTTemplateContent -Params @{
-                            ZeroConfig = $true
-                            InstallScriptBlock = { Write-ADTLogEntry -Message 'USER-install' }
+                            ZeroConfig           = $true
+                            InstallScriptBlock   = { Write-ADTLogEntry -Message 'USER-install' }
                             UninstallScriptBlock = { Write-ADTLogEntry -Message 'USER-uninstall' }
-                            RepairScriptBlock = { Write-ADTLogEntry -Message 'USER-repair' }
+                            RepairScriptBlock    = { Write-ADTLogEntry -Message 'USER-repair' }
                         }).ScriptContent
                 }
 
@@ -376,8 +373,8 @@ Describe 'New-ADTTemplate' {
             BeforeAll {
                 [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'template', Justification = "This variable is used within script blocks that PSScriptAnalyzer has no visibility of.")]
                 $template = Get-ADTTemplateContent -Params @{
-                    Assets = "$TestDrive\SourceAssets\custom.ico"
-                    Files = "$TestDrive\SourceFiles\setup.msi", "$TestDrive\SourceFiles\app.mst"
+                    Assets       = "$TestDrive\SourceAssets\custom.ico"
+                    Files        = "$TestDrive\SourceFiles\setup.msi", "$TestDrive\SourceFiles\app.mst"
                     SupportFiles = "$TestDrive\SourceSupport\settings.xml", "$TestDrive\SourceSupport\SubDir"
                 }
             }
@@ -416,8 +413,8 @@ Describe 'New-ADTTemplate' {
             [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'template', Justification = "This variable is used within script blocks that PSScriptAnalyzer has no visibility of.")]
             $template = Get-ADTTemplateContent -Params @{
                 Version = 3
-                Config = @{ MSI = @{ InstallParams = 'TEST' } }
-                Files = "$TestDrive\SourceFiles\setup.msi"
+                Config  = @{ MSI = @{ InstallParams = 'TEST' } }
+                Files   = "$TestDrive\SourceFiles\setup.msi"
             }
         }
 

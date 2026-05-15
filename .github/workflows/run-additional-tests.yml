@@ -13,11 +13,11 @@ jobs:
     outputs:
       runner-label: ${{ steps.launch-agent.outputs.runner-label }}
     env:
-      INFRA_MI_CLIENT_ID: '2d7fbe0d-b3d6-4905-9584-9dc45065865c'
-      INFRA_KEYVAULT: 'kv-tfp-infra-management'
-      TERRAFORGE_CONFIG_NAME: 'Lite (CM2509 Github)-Agent'
-      TERRAFORGE_API_BASE_URL: 'https://terraforgeapi.southeastasia.cloudapp.azure.com'
-      TERRAFORGE_API_KEY_SECRET: 'TerraforgeApiAccessKey'
+      INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_CONFIG_NAME }}
+      TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+      TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
     steps:
       - name: Launch Agent
         id: launch-agent
