@@ -196,6 +196,11 @@ jobs:
         Install-Module -Name platyPS -RequiredVersion 0.14.2 -Force -Scope CurrentUser
         Install-Module -Name Alt3.Docusaurus.Powershell -RequiredVersion 1.0.37 -Force -Scope CurrentUser
 
+    - name: Configure NuGet source
+      shell: cmd
+      run: |
+        dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org || echo "Source already exists"
+
     - name: Test and Build
       shell: cmd
       run: |
