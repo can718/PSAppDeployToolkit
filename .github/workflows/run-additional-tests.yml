@@ -153,6 +153,44 @@ jobs:
           Write-Host "Node.js already installed: $(node --version)"
         }
 
+    - name: Install 7-Zip (required for build packaging on self-hosted runner)
+      shell: pwsh
+      run: |
+        # Check if 7-Zip is already installed via registry
+        $registryPaths = @(
+          'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+          'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        )
+        $installedVersion = $null
+        foreach ($path in $registryPaths) {
+          $app = Get-ItemProperty $path -ErrorAction SilentlyContinue |
+                 Where-Object { $_.DisplayName -like '*7-Zip*' }
+          if ($app) { $installedVersion = $app.DisplayVersion; break }
+        }
+        if ($installedVersion) {
+          Write-Host "7-Zip $installedVersion is already installed."
+        } else {
+          # Detect architecture and build download URL
+          $arch = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x32' }
+          $fileName = "7z2409-$arch.msi"
+          $downloadUrl = "https://www.7-zip.org/a/$fileName"
+          $tempFile = Join-Path $env:TEMP $fileName
+          Write-Host "Downloading 7-Zip from $downloadUrl ..."
+          (New-Object System.Net.WebClient).DownloadFile($downloadUrl, $tempFile)
+          Write-Host "Installing 7-Zip silently..."
+          $process = Start-Process msiexec.exe -ArgumentList "/i `"$tempFile`" /qn /norestart" -Wait -PassThru
+          Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+          if ($process.ExitCode -ne 0) {
+            throw "7-Zip installation failed with exit code: $($process.ExitCode)"
+          }
+          # Refresh PATH in current session
+          $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+          # Verify
+          $ver = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+                  Where-Object { $_.DisplayName -like '*7-Zip*' }).DisplayVersion
+          Write-Host "7-Zip $ver installed successfully."
+        }
+
     - name: Display the path
       shell: powershell
       run: echo ${env:PATH}
@@ -202,6 +240,12 @@ jobs:
         dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org 2>&1 | Out-Null
         Write-Host "NuGet sources:"
         dotnet nuget list source
+
+    - name: Generate artifact templates
+      id: exports
+      shell: powershell
+      run: |
+        & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
 
     - name: Test and Build
       shell: cmd
