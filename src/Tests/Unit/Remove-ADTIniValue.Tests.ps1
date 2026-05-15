@@ -11,7 +11,7 @@ Describe 'Remove-ADTIniValue' {
         # BeforeEach (not BeforeAll) ensures a fresh file for every test since Remove-ADTIniValue mutates it.
         $IniPath = "$TestDrive\IniFile.ini"
         [System.IO.File]::WriteAllText($IniPath, "[MySection]`r`nMyKey=MyValue`r`nMyOtherKey=MyOtherValue`r`n", [System.Text.Encoding]::ASCII)
-        
+
         # Mock Write-ADTLogEntry due to its expense when running via Pester.
         Mock -ModuleName PSAppDeployToolkit Write-ADTLogEntry { }
     }
