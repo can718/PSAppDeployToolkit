@@ -65,7 +65,7 @@ jobs:
           $launchContent = $launchResponse.Content | ConvertFrom-Json -ErrorAction Stop
 
           $machineId = $launchContent.data.machineIds[0]
-          $agentName = "$machineId" + "_Lite (CM2509 Github)-Agent"
+          $agentName = "$machineId" + "_Intune (Github)-Agent"
           $machineUrl = "https://terraforge.southeastasia.cloudapp.azure.com/machines/$machineId"
 
           Write-Host "Launched agent machine: $agentName"

@@ -1,4 +1,4 @@
-Describe 'Intune Tests' {
+﻿Describe 'Intune Tests' {
     Context 'Sanity checks' {
         It 'PowerShell version is 5.1 or higher' {
             $PSVersionTable.PSVersion.Major | Should -BeGreaterOrEqual 5
