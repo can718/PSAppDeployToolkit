@@ -19,7 +19,8 @@
             # If not installed, this test will be skipped gracefully
             if (-not $graphModule) {
                 Set-ItResult -Skipped -Because 'Microsoft.Graph module is not installed on this runner'
-            } else {
+            }
+            else {
                 $graphModule | Should -Not -BeNullOrEmpty
             }
         }
@@ -35,7 +36,8 @@
             $templates = Get-ChildItem -Path '.\src\Artifacts' -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -ErrorAction SilentlyContinue
             if (-not $templates) {
                 Set-ItResult -Skipped -Because 'Build artifacts not found - build step may not have run'
-            } else {
+            }
+            else {
                 $templates | Should -Not -BeNullOrEmpty
             }
         }
@@ -44,7 +46,8 @@
             $mainScript = Get-ChildItem -Path '.\src\Artifacts' -Filter 'AppDeployToolkitMain.ps1' -Recurse -ErrorAction SilentlyContinue
             if (-not $mainScript) {
                 Set-ItResult -Skipped -Because 'Build artifacts not found - build step may not have run'
-            } else {
+            }
+            else {
                 $mainScript | Should -Not -BeNullOrEmpty
             }
         }
@@ -55,7 +58,8 @@
             $intuneUtil = Get-Command 'IntuneWinAppUtil.exe' -ErrorAction SilentlyContinue
             if (-not $intuneUtil) {
                 Set-ItResult -Skipped -Because 'IntuneWinAppUtil.exe not found on PATH - Intune packaging tool not installed'
-            } else {
+            }
+            else {
                 $intuneUtil | Should -Not -BeNullOrEmpty
             }
         }
@@ -64,7 +68,8 @@
             $moduleManifest = Get-ChildItem -Path '.\src\Artifacts' -Filter 'PSAppDeployToolkit.psd1' -Recurse -ErrorAction SilentlyContinue
             if (-not $moduleManifest) {
                 Set-ItResult -Skipped -Because 'PSAppDeployToolkit.psd1 not found - build step may not have run'
-            } else {
+            }
+            else {
                 $moduleManifest | Should -Not -BeNullOrEmpty
             }
         }
