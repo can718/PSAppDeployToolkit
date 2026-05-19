@@ -1,27 +1,22 @@
-﻿Describe 'Intune Tests'
-{
-    Context 'Sanity checks'
-    {
-        It 'PowerShell version is 5.1 or higher'
-        {
+﻿#pragma warning disable PSPlaceOpenBrace
+
+Describe 'Intune Tests' {
+    Context 'Sanity checks' {
+        It 'PowerShell version is 5.1 or higher' {
             $PSVersionTable.PSVersion.Major | Should -BeGreaterOrEqual 5
         }
 
-        It 'True is true'
-        {
+        It 'True is true' {
             $true | Should -BeTrue
         }
 
-        It 'Basic arithmetic works'
-        {
+        It 'Basic arithmetic works' {
             (1 + 1) | Should -Be 2
         }
     }
 
-    Context 'Intune Module Availability'
-    {
-        It 'Microsoft.Graph.Intune module or Microsoft.Graph is available or can be found'
-        {
+    Context 'Intune Module Availability' {
+        It 'Microsoft.Graph.Intune module or Microsoft.Graph is available or can be found' {
             $graphModule = Get-Module -Name 'Microsoft.Graph*' -ListAvailable
             # If not installed, this test will be skipped gracefully
             if (-not $graphModule)
@@ -35,16 +30,13 @@
         }
     }
 
-    Context 'Intune Package Deployment Checks'
-    {
-        It 'PSADT module artifacts directory exists after build'
-        {
+    Context 'Intune Package Deployment Checks' {
+        It 'PSADT module artifacts directory exists after build' {
             $artifactPath = '.\src\Artifacts'
             Test-Path $artifactPath | Should -BeTrue
         }
 
-        It 'Invoke-AppDeployToolkit.ps1 template exists in v4 artifacts'
-        {
+        It 'Invoke-AppDeployToolkit.ps1 template exists in v4 artifacts' {
             $templates = Get-ChildItem -Path '.\src\Artifacts' -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -ErrorAction SilentlyContinue
             if (-not $templates)
             {
@@ -56,8 +48,7 @@
             }
         }
 
-        It 'AppDeployToolkitMain.ps1 is present in build output'
-        {
+        It 'AppDeployToolkitMain.ps1 is present in build output' {
             $mainScript = Get-ChildItem -Path '.\src\Artifacts' -Filter 'AppDeployToolkitMain.ps1' -Recurse -ErrorAction SilentlyContinue
             if (-not $mainScript)
             {
@@ -70,10 +61,8 @@
         }
     }
 
-    Context 'Intune Win32 App Packaging Requirements'
-    {
-        It 'IntuneWinAppUtil.exe is accessible or PSADT packaging scripts exist'
-        {
+    Context 'Intune Win32 App Packaging Requirements' {
+        It 'IntuneWinAppUtil.exe is accessible or PSADT packaging scripts exist' {
             $intuneUtil = Get-Command 'IntuneWinAppUtil.exe' -ErrorAction SilentlyContinue
             if (-not $intuneUtil)
             {
@@ -85,8 +74,7 @@
             }
         }
 
-        It 'PSAppDeployToolkit module can be found in src output'
-        {
+        It 'PSAppDeployToolkit module can be found in src output' {
             $moduleManifest = Get-ChildItem -Path '.\src\Artifacts' -Filter 'PSAppDeployToolkit.psd1' -Recurse -ErrorAction SilentlyContinue
             if (-not $moduleManifest)
             {
@@ -99,3 +87,5 @@
         }
     }
 }
+
+#pragma warning restore PSPlaceOpenBrace
