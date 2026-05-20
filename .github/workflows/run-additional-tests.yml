@@ -261,6 +261,27 @@ jobs:
         $v3Src = '${{ steps.exports.outputs.Template_v3 }}'
         $v4Src = '${{ steps.exports.outputs.Template_v4 }}'
 
+        Write-Host "=== Build outputs ==="
+        Write-Host "Template_v3 = '$v3Src'"
+        Write-Host "Template_v4 = '$v4Src'"
+
+        # List all exports outputs for debugging
+        Write-Host "=== All step outputs from exports step ==="
+        Write-Host "ModuleOnly   = '${{ steps.exports.outputs.ModuleOnly }}'"
+        Write-Host "Template_v3  = '${{ steps.exports.outputs.Template_v3 }}'"
+        Write-Host "Template_v4  = '${{ steps.exports.outputs.Template_v4 }}'"
+        Write-Host "Template_v4_ZeroConfig = '${{ steps.exports.outputs.Template_v4_ZeroConfig }}'"
+
+        # List Artifacts directory to see what was actually built
+        Write-Host "=== Contents of .\src\Artifacts\ ==="
+        if (Test-Path '.\src\Artifacts') {
+          Get-ChildItem '.\src\Artifacts' -Recurse -Depth 2 | ForEach-Object {
+            Write-Host "  $($_.FullName.Replace((Resolve-Path '.').Path, ''))"
+          }
+        } else {
+          Write-Warning ".\src\Artifacts not found!"
+        }
+
         if (-not $v3Src -or -not (Test-Path $v3Src)) {
           Write-Warning "Template_v3 output not found or path invalid: '$v3Src' - skipping template prep"
           exit 0
@@ -273,22 +294,28 @@ jobs:
         $v3Dest = (New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestTemplates\v3').FullName
         $v4Dest = (New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestTemplates\v4').FullName
 
+        Write-Host "=== Copying templates ==="
         Write-Host "V3 source: $v3Src"
         Write-Host "V4 source: $v4Src"
 
         foreach ($entry in @(@{ Src = $v3Src; Dest = $v3Dest }, @{ Src = $v4Src; Dest = $v4Dest })) {
           if ($entry.Src -match '\.zip$') {
+            Write-Host "Extracting zip: $($entry.Src) -> $($entry.Dest)"
             Expand-Archive -Path $entry.Src -DestinationPath $entry.Dest -Force
             # If zip extracted into a single subdirectory, promote its contents to dest root
             $children = Get-ChildItem -Path $entry.Dest
+            Write-Host "  After extract, root items: $($children.Name -join ', ')"
             if ($children.Count -eq 1 -and $children[0].PSIsContainer) {
               $subDir = $children[0].FullName
+              Write-Host "  Promoting contents from: $subDir"
               Get-ChildItem -Path $subDir | Move-Item -Destination $entry.Dest -Force
               Remove-Item $subDir -Force -ErrorAction SilentlyContinue
             }
           } else {
+            Write-Host "Copying directory: $($entry.Src)\* -> $($entry.Dest)"
             Copy-Item -Path "$($entry.Src)\*" -Destination $entry.Dest -Recurse -Force
           }
+          Write-Host "  Result contents: $(Get-ChildItem $entry.Dest | Select-Object -ExpandProperty Name | Join-String -Separator ', ')"
         }
 
         Write-Host "V3 template ready at: $v3Dest"
