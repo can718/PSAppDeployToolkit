@@ -279,6 +279,13 @@ jobs:
         foreach ($entry in @(@{ Src = $v3Src; Dest = $v3Dest }, @{ Src = $v4Src; Dest = $v4Dest })) {
           if ($entry.Src -match '\.zip$') {
             Expand-Archive -Path $entry.Src -DestinationPath $entry.Dest -Force
+            # If zip extracted into a single subdirectory, promote its contents to dest root
+            $children = Get-ChildItem -Path $entry.Dest
+            if ($children.Count -eq 1 -and $children[0].PSIsContainer) {
+              $subDir = $children[0].FullName
+              Get-ChildItem -Path $subDir | Move-Item -Destination $entry.Dest -Force
+              Remove-Item $subDir -Force -ErrorAction SilentlyContinue
+            }
           } else {
             Copy-Item -Path "$($entry.Src)\*" -Destination $entry.Dest -Recurse -Force
           }

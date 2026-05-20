@@ -49,10 +49,14 @@ $AppVendor    = 'PatchMyPC'
 $AppName      = 'PatchMyPC Publishing Service'
 $AppVersion   = '2.1.110.4'
 
-# SCCM site code and server from Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\SMS\Operations Management
-if (-not $SiteCode) { $SiteCode = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Operations Management" -Name "Site Code" -ErrorAction SilentlyContinue)."Site Code" }
-if (-not $SiteServer) { $SiteServer = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Setup" -Name "Provider Location" -ErrorAction SilentlyContinue)."Provider Location" }
-
+# SCCM site code and server - auto-detect from registry, fallback to hardcoded defaults
+$SiteCode   = ''
+$SiteServer = ''
+$SiteCode   = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Operations Management" -Name "Site Code" -ErrorAction SilentlyContinue)."Site Code"
+$SiteServer = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Setup" -Name "Provider Location" -ErrorAction SilentlyContinue)."Provider Location"
+if (-not $SiteCode)   { $SiteCode   = 'SQT' }
+if (-not $SiteServer) { $SiteServer = 'vm30028301.vm30028301dom.net' }
+write-host "Using SCCM Site: $SiteCode | Server: $SiteServer" -ForegroundColor Cyan
 # Local directories
 $WorkDir         = 'C:\PSADT'
 $MSISourcePath   = Join-Path $WorkDir $MSIFileName

@@ -42,12 +42,16 @@ Describe 'PSADT Build Template Validation' {
 
         It 'V3 template contains AppDeployToolkit subfolder' {
             if (-not $script:v3Dir) { Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V3_DIR not set'; return }
-            Test-Path (Join-Path $script:v3Dir 'AppDeployToolkit') | Should -BeTrue
+            # Search recursively - zip may extract into a subdirectory
+            $found = Get-ChildItem -Path $script:v3Dir -Directory -Filter 'AppDeployToolkit' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            $found | Should -Not -BeNullOrEmpty
         }
 
         It 'V4 template contains Invoke-AppDeployToolkit.ps1' {
             if (-not $script:v4Dir) { Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V4_DIR not set'; return }
-            Test-Path (Join-Path $script:v4Dir 'Invoke-AppDeployToolkit.ps1') | Should -BeTrue
+            # Search recursively - zip may extract into a subdirectory
+            $found = Get-ChildItem -Path $script:v4Dir -File -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            $found | Should -Not -BeNullOrEmpty
         }
     }
 }
