@@ -254,6 +254,41 @@ jobs:
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
 
+    - name: Prepare PSADT templates for deployment test
+      id: template-prep
+      shell: powershell
+      run: |
+        $v3Src = '${{ steps.exports.outputs.Template_v3 }}'
+        $v4Src = '${{ steps.exports.outputs.Template_v4 }}'
+
+        if (-not $v3Src -or -not (Test-Path $v3Src)) {
+          Write-Warning "Template_v3 output not found or path invalid: '$v3Src' - skipping template prep"
+          exit 0
+        }
+        if (-not $v4Src -or -not (Test-Path $v4Src)) {
+          Write-Warning "Template_v4 output not found or path invalid: '$v4Src' - skipping template prep"
+          exit 0
+        }
+
+        $v3Dest = (New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestTemplates\v3').FullName
+        $v4Dest = (New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestTemplates\v4').FullName
+
+        Write-Host "V3 source: $v3Src"
+        Write-Host "V4 source: $v4Src"
+
+        foreach ($entry in @(@{ Src = $v3Src; Dest = $v3Dest }, @{ Src = $v4Src; Dest = $v4Dest })) {
+          if ($entry.Src -match '\.zip$') {
+            Expand-Archive -Path $entry.Src -DestinationPath $entry.Dest -Force
+          } else {
+            Copy-Item -Path "$($entry.Src)\*" -Destination $entry.Dest -Recurse -Force
+          }
+        }
+
+        Write-Host "V3 template ready at: $v3Dest"
+        Write-Host "V4 template ready at: $v4Dest"
+        "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
     # - name: Test and Build
     #   shell: cmd
     #   run: |
@@ -266,6 +301,9 @@ jobs:
     # Add your new test cases below this line
     - name: Run Additional Tests
       shell: powershell
+      env:
+        PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
+        PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
       run: |
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
         $config = New-PesterConfiguration
