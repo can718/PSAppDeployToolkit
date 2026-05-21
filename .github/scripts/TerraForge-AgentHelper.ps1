@@ -888,8 +888,8 @@ function Set-TestRun {
     if ($Action -eq 'Start') {
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
         $payload = @{
-            request = @{
-                MachineId     = $MachineId
+            MachineId = $MachineId
+            request   = @{
                 ConfigName    = $ConfigName
                 IsDevOpsAgent = $IsDevOpsAgent
                 AdoBuildId    = if ($AdoBuildId) { [int64]$AdoBuildId } else { $null }
