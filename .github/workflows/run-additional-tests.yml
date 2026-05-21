@@ -28,14 +28,33 @@ jobs:
 
       - name: Set Test Run Start
         id: set-test-run-start
+        shell: pwsh
         run: |
           # Load shared TerraForge helper functions
           . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
-          $AdoBuildId = ${{ github.event.build.B_ID }}
-          $runTitle = "Additional Tests - Build $AdoBuildId"
-          $runQueuedBy = ${{ github.event.build.queuedBy.displayName }}
-          $testRun = Set-TestRun -Action "Start" -MachineID $env:COMPUTERNAME -AdoBuildId $AdoBuildId -Product "PSADT_CM" -Title $runTitle -QueuedBy $runQueuedBy
-          # Output test-run-id for later use in Set Test Run End Time step
+
+          # 1. Login, retrieve API key and get access token in one step
+          $accessToken = Get-TerraForgeAuthToken `
+              -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
+              -KeyVaultName            $env:INFRA_KEYVAULT `
+              -ApiKeySecretName        $env:TERRAFORGE_API_KEY_SECRET `
+              -ApiBaseUrl              $env:TERRAFORGE_API_BASE_URL
+
+          # 2. Start the test run
+          $AdoBuildId  = '${{ github.run_id }}'
+          $runTitle    = "Additional Tests - Build $AdoBuildId"
+          $runQueuedBy = '${{ github.actor }}'
+          $testRun = Set-TestRun `
+              -ApiBaseUrl   $env:TERRAFORGE_API_BASE_URL `
+              -AccessToken  $accessToken `
+              -Action       'Start' `
+              -MachineId    $env:COMPUTERNAME `
+              -AdoBuildId   $AdoBuildId `
+              -Product      'PSADT_CM' `
+              -Title        $runTitle `
+              -QueuedBy     $runQueuedBy
+
+          # 3. Output test-run-id for later use in Set Test Run End Time step
           Set-GitHubOutput -Name 'test-run-id' -Value $testRun.Id
 
       - name: Launch Agent
