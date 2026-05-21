@@ -96,7 +96,11 @@ function Get-MSIProductCode ([string]$Path) {
         $pc  = $rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,@(1))
         [Runtime.InteropServices.Marshal]::ReleaseComObject($wi) | Out-Null
         return $pc
-    } catch { return $null }
+    }
+    catch
+    {
+        return $null
+    }
 }
 
 #================================================================
@@ -130,9 +134,12 @@ OK "MSI -> $V3Files"
 # Generate Deploy-Application.ps1 (must be created manually - not included in PSADT 4.x v3 template)
 $V3Script = Join-Path $V3PackageDir 'Deploy-Application.ps1'
 
-$v3UninstallBlock = if ($ProductCode) {
+$v3UninstallBlock = if ($ProductCode)
+{
     "        Execute-MSI -Action 'Uninstall' -Path '$ProductCode'"
-} else {
+}
+else
+{
     "        Execute-MSI -Action 'Uninstall' -Path `"`$dirFiles\$MSIFileName`""
 }
 
@@ -290,9 +297,12 @@ $v4 = $v4 -replace "(?m)^(\s*AppVersion\s*=\s*)'[^']*'", "`$1'$AppVersion'"
 # Inject install/uninstall commands
 $v4InstallCmd = "    Start-ADTMsiProcess -Action 'Install' -FilePath '$MSIFileName' -AdditionalArgumentList '/QN REBOOT=ReallySuppress'"
 
-$v4UninstallCmd = if ($ProductCode) {
+$v4UninstallCmd = if ($ProductCode)
+{
     "    Start-ADTMsiProcess -Action 'Uninstall' -FilePath '$ProductCode'"
-} else {
+}
+else
+{
     "    Start-ADTMsiProcess -Action 'Uninstall' -FilePath '$MSIFileName'"
 }
 
@@ -311,9 +321,12 @@ OK "Invoke-AppDeployToolkit.ps1 modified: $V4Script"
 
 # Verify the modifications were applied
 $checkV4 = Get-Content $V4Script -Raw
-if ($checkV4 -match [regex]::Escape("'$AppName'") -and $checkV4 -match 'Start-ADTMsiProcess') {
+if ($checkV4 -match [regex]::Escape("'$AppName'") -and $checkV4 -match 'Start-ADTMsiProcess')
+{
     OK 'V4 script modification verified'
-} else {
+}
+else
+{
     WARN "V4 script modification may be incomplete - please review $V4Script manually"
 }
 
@@ -335,11 +348,14 @@ Get-ChildItem $V4Files | ForEach-Object { Write-Host "        V4/Files/$($_.Name
 #================================================================
 Step '[5/6] Ensuring SMB content share exists...'
 
-if (-not (Get-SmbShare -Name $ContentShareName -ErrorAction SilentlyContinue)) {
+if (-not (Get-SmbShare -Name $ContentShareName -ErrorAction SilentlyContinue))
+{
     New-SmbShare -Name $ContentShareName -Path $WorkDir -FullAccess 'Everyone' `
         -Description 'PSADT SCCM Content Source' | Out-Null
     OK "Share created: \\$env:COMPUTERNAME\$ContentShareName -> $WorkDir"
-} else {
+}
+else
+{
     OK "Share already exists: \\$env:COMPUTERNAME\$ContentShareName"
 }
 
@@ -440,7 +456,9 @@ if (`$app) { exit 0 } else { exit 1 }
         Add-CMDeploymentTypeReturnCode -InputObject $v3dt -ReturnCode 3010 -CodeType SoftReboot -Name 'Reboot Required'    | Out-Null
         Add-CMDeploymentTypeReturnCode -InputObject $v3dt -ReturnCode 1641 -CodeType HardReboot -Name 'Reboot Initiated'  | Out-Null
         OK 'V3 return codes configured (3010/1641)'
-    } catch {
+    }
+    catch
+    {
         WARN "V3 return code configuration skipped: $($_.Exception.Message)"
     }
     OK "V3 application created: $V3AppName"
@@ -485,7 +503,9 @@ if (`$app) { exit 0 } else { exit 1 }
         Add-CMDeploymentTypeReturnCode -InputObject $v4dt -ReturnCode 3010 -CodeType SoftReboot -Name 'Reboot Required'    | Out-Null
         Add-CMDeploymentTypeReturnCode -InputObject $v4dt -ReturnCode 1641 -CodeType HardReboot -Name 'Reboot Initiated'  | Out-Null
         OK 'V4 return codes configured (3010/1641)'
-    } catch {
+    }
+    catch
+    {
         WARN "V4 return code configuration skipped: $($_.Exception.Message)"
     }
     OK "V4 application created: $V4AppName"
@@ -511,7 +531,9 @@ if (`$app) { exit 0 } else { exit 1 }
                     -DistributionPointGroupName $grp.Name -ErrorAction SilentlyContinue | Out-Null
             }
             OK "Content distribution triggered (DP Group): $appDistName -> $($dpGroups.Name -join ', ')"
-        } else {
+        }
+        else
+        {
             foreach ($dp in $dpList) {
                 $dpFQDN = $dp.NetworkOSPath.TrimStart('\')
                 Start-CMContentDistribution -ApplicationName $appDistName `
@@ -583,6 +605,7 @@ if (`$app) { exit 0 } else { exit 1 }
     Write-Host '    2. Deployment is created - clients will install on next policy refresh'
     Write-Host ''
 
-} finally {
+} finally
+{
     Set-Location $origLoc
 }

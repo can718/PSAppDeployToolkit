@@ -281,8 +281,8 @@ jobs:
 
         Write-Host "V3 template ready at: $v3Dest"
         Write-Host "V4 template ready at: $v4Dest"
-        Write-Host "V3 contents: $(Get-ChildItem $v3Dest | Select-Object -ExpandProperty Name | Join-String -Separator ', ')"
-        Write-Host "V4 contents: $(Get-ChildItem $v4Dest | Select-Object -ExpandProperty Name | Join-String -Separator ', ')"
+        Write-Host "V3 contents: $((Get-ChildItem $v3Dest | Select-Object -ExpandProperty Name) -join ', ')"
+        Write-Host "V4 contents: $((Get-ChildItem $v4Dest | Select-Object -ExpandProperty Name) -join ', ')"
 
         "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
