@@ -82,12 +82,26 @@ $V4ContentUNC     = "$ContentUNCRoot\${SafeName}_v4"
 #  Helper functions
 #================================================================
 
-function Step { param([string]$t) Write-Host "`n$t" -ForegroundColor Cyan }
-function OK   { param([string]$m) Write-Host "  [+] $m" -ForegroundColor Green }
-function WARN { param([string]$m) Write-Host "  [!] $m" -ForegroundColor Yellow }
+function Step
+{
+    param([string]$t)
+    Write-Host "`n$t" -ForegroundColor Cyan
+}
+function OK
+{
+    param([string]$m)
+    Write-Host "  [+] $m" -ForegroundColor Green
+}
+function WARN
+{
+    param([string]$m)
+    Write-Host "  [!] $m" -ForegroundColor Yellow
+}
 
-function Get-MSIProductCode ([string]$Path) {
-    try {
+function Get-MSIProductCode ([string]$Path)
+{
+    try
+    {
         $wi  = New-Object -ComObject WindowsInstaller.Installer
         $db  = $wi.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$wi,@($Path,0))
         $vw  = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@("SELECT Value FROM Property WHERE Property='ProductCode'"))
@@ -108,21 +122,39 @@ function Get-MSIProductCode ([string]$Path) {
 #================================================================
 Step '[1/6] Validating source file and local templates...'
 
-if (-not (Test-Path $MSISourcePath))  { throw "MSI not found: $MSISourcePath" }
-if (-not (Test-Path $TemplateV3Dir))  { throw "V3 template not found: $TemplateV3Dir" }
-if (-not (Test-Path $TemplateV4Dir))  { throw "V4 template not found: $TemplateV4Dir" }
+if (-not (Test-Path $MSISourcePath))
+{
+    throw "MSI not found: $MSISourcePath"
+}
+if (-not (Test-Path $TemplateV3Dir))
+{
+    throw "V3 template not found: $TemplateV3Dir"
+}
+if (-not (Test-Path $TemplateV4Dir))
+{
+    throw "V4 template not found: $TemplateV4Dir"
+}
 
 $ProductCode = Get-MSIProductCode -Path $MSISourcePath
 OK "MSI: $MSIFileName"
-if ($ProductCode) { OK "ProductCode: $ProductCode" }
-else              { WARN "Could not read ProductCode - will use registry DisplayName for detection" }
+if ($ProductCode)
+{
+    OK "ProductCode: $ProductCode"
+}
+else
+{
+    WARN "Could not read ProductCode - will use registry DisplayName for detection"
+}
 
 #================================================================
 #  STEP 2 -- Build V3 package
 #================================================================
 Step '[2/6] Building V3 package directory...'
 
-if (Test-Path $V3PackageDir) { Remove-Item $V3PackageDir -Recurse -Force }
+if (Test-Path $V3PackageDir)
+{
+    Remove-Item $V3PackageDir -Recurse -Force
+}
 Copy-Item -Path $TemplateV3Dir -Destination $V3PackageDir -Recurse
 OK "Template copied -> $V3PackageDir"
 
@@ -274,7 +306,10 @@ OK "Deploy-Application.ps1 created: $V3Script"
 #================================================================
 Step '[3/6] Building V4 package directory...'
 
-if (Test-Path $V4PackageDir) { Remove-Item $V4PackageDir -Recurse -Force }
+if (Test-Path $V4PackageDir)
+{
+    Remove-Item $V4PackageDir -Recurse -Force
+}
 Copy-Item -Path $TemplateV4Dir -Destination $V4PackageDir -Recurse
 OK "Template copied -> $V4PackageDir"
 
@@ -285,7 +320,10 @@ OK "MSI -> $V4Files"
 
 # Modify Invoke-AppDeployToolkit.ps1 with app-specific values
 $V4Script = Join-Path $V4PackageDir 'Invoke-AppDeployToolkit.ps1'
-if (-not (Test-Path $V4Script)) { throw "Invoke-AppDeployToolkit.ps1 not found: $V4Script" }
+if (-not (Test-Path $V4Script))
+{
+    throw "Invoke-AppDeployToolkit.ps1 not found: $V4Script"
+}
 
 $v4 = Get-Content $V4Script -Raw
 
@@ -365,29 +403,37 @@ else
 Step '[6/6] Importing into SCCM (Site: SQT)...'
 
 # Load the ConfigurationManager module
-if (-not (Get-Module ConfigurationManager -ErrorAction SilentlyContinue)) {
+if (-not (Get-Module ConfigurationManager -ErrorAction SilentlyContinue))
+{
     $possiblePaths = @(
         'C:\Program Files (x86)\Microsoft Configuration Manager\AdminConsole\bin\ConfigurationManager.psd1',
         'C:\Program Files\Microsoft Configuration Manager\AdminConsole\bin\ConfigurationManager.psd1'
     )
-    if ($env:SMS_ADMIN_UI_PATH) {
+    if ($env:SMS_ADMIN_UI_PATH)
+    {
         $possiblePaths += Join-Path (Split-Path $env:SMS_ADMIN_UI_PATH -Parent) 'ConfigurationManager.psd1'
     }
     $cmModule = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $cmModule) { throw 'ConfigurationManager.psd1 not found - ensure the SCCM Admin Console is installed' }
+    if (-not $cmModule)
+    {
+        throw 'ConfigurationManager.psd1 not found - ensure the SCCM Admin Console is installed'
+    }
     Import-Module $cmModule -ErrorAction Stop
     OK "Module loaded: $cmModule"
 }
 
 $origLoc = Get-Location
-if (-not (Get-PSDrive -Name $SiteCode -ErrorAction SilentlyContinue)) {
+if (-not (Get-PSDrive -Name $SiteCode -ErrorAction SilentlyContinue))
+{
     New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $SiteServer | Out-Null
 }
 Set-Location "${SiteCode}:\"
 
-try {
+try
+{
     # Detection script (registry check, supports both x86 and x64 uninstall keys)
-    $detectScript = if ($ProductCode) {
+    $detectScript = if ($ProductCode)
+    {
         @"
 `$paths = @(
     'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$ProductCode',
@@ -395,7 +441,9 @@ try {
 )
 if (`$paths | Where-Object { Test-Path `$_ }) { exit 0 } else { exit 1 }
 "@
-    } else {
+    }
+    else
+    {
         @"
 `$app = Get-ItemProperty `
     'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -407,20 +455,46 @@ if (`$app) { exit 0 } else { exit 1 }
     }
 
     # Launch commands (prefer .exe launcher if present, fall back to powershell.exe)
-    $V3InstallCmd   = if (Test-Path (Join-Path $V3PackageDir 'Deploy-Application.exe')) { 'Deploy-Application.exe Install' }
-                      else { 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Deploy-Application.ps1" -DeploymentType Install' }
-    $V3UninstallCmd = if (Test-Path (Join-Path $V3PackageDir 'Deploy-Application.exe')) { 'Deploy-Application.exe Uninstall' }
-                      else { 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Deploy-Application.ps1" -DeploymentType Uninstall' }
-    $V4InstallCmd   = if (Test-Path (Join-Path $V4PackageDir 'Invoke-AppDeployToolkit.exe')) { 'Invoke-AppDeployToolkit.exe Install' }
-                      else { 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Install' }
-    $V4UninstallCmd = if (Test-Path (Join-Path $V4PackageDir 'Invoke-AppDeployToolkit.exe')) { 'Invoke-AppDeployToolkit.exe Uninstall' }
-                      else { 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Uninstall' }
+    $V3InstallCmd = if (Test-Path (Join-Path $V3PackageDir 'Deploy-Application.exe'))
+    {
+        'Deploy-Application.exe Install'
+    }
+    else
+    {
+        'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Deploy-Application.ps1" -DeploymentType Install'
+    }
+    $V3UninstallCmd = if (Test-Path (Join-Path $V3PackageDir 'Deploy-Application.exe'))
+    {
+        'Deploy-Application.exe Uninstall'
+    }
+    else
+    {
+        'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Deploy-Application.ps1" -DeploymentType Uninstall'
+    }
+    $V4InstallCmd = if (Test-Path (Join-Path $V4PackageDir 'Invoke-AppDeployToolkit.exe'))
+    {
+        'Invoke-AppDeployToolkit.exe Install'
+    }
+    else
+    {
+        'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Install'
+    }
+    $V4UninstallCmd = if (Test-Path (Join-Path $V4PackageDir 'Invoke-AppDeployToolkit.exe'))
+    {
+        'Invoke-AppDeployToolkit.exe Uninstall'
+    }
+    else
+    {
+        'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Uninstall'
+    }
 
     # -- V3 Application --
     $V3AppName = "$AppName (PSADT v3)"
-    if (Get-CMApplication -Name $V3AppName -ErrorAction SilentlyContinue) {
+    if (Get-CMApplication -Name $V3AppName -ErrorAction SilentlyContinue)
+    {
         WARN "'$V3AppName' already exists - removing deployments then application..."
-        Get-CMApplicationDeployment -Name $V3AppName -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-CMApplicationDeployment -Name $V3AppName -ErrorAction SilentlyContinue | ForEach-Object
+        {
             Remove-CMApplicationDeployment -Name $V3AppName -CollectionName $_.CollectionName -Force -ErrorAction SilentlyContinue
         }
         Remove-CMApplication -Name $V3AppName -Force
@@ -451,7 +525,8 @@ if (`$app) { exit 0 } else { exit 1 }
         -EstimatedRuntimeMins     5 | Out-Null
 
     # Add PSADT return codes: 3010 = restart required (SoftReboot), 1641 = restart initiated (HardReboot)
-    try {
+    try
+    {
         $v3dt = Get-CMDeploymentType -ApplicationName $V3AppName -DeploymentTypeName $V3DTName
         Add-CMDeploymentTypeReturnCode -InputObject $v3dt -ReturnCode 3010 -CodeType SoftReboot -Name 'Reboot Required'    | Out-Null
         Add-CMDeploymentTypeReturnCode -InputObject $v3dt -ReturnCode 1641 -CodeType HardReboot -Name 'Reboot Initiated'  | Out-Null
@@ -465,9 +540,11 @@ if (`$app) { exit 0 } else { exit 1 }
 
     # -- V4 Application --
     $V4AppName = "$AppName (PSADT v4)"
-    if (Get-CMApplication -Name $V4AppName -ErrorAction SilentlyContinue) {
+    if (Get-CMApplication -Name $V4AppName -ErrorAction SilentlyContinue)
+    {
         WARN "'$V4AppName' already exists - removing deployments then application..."
-        Get-CMApplicationDeployment -Name $V4AppName -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-CMApplicationDeployment -Name $V4AppName -ErrorAction SilentlyContinue | ForEach-Object
+        {
             Remove-CMApplicationDeployment -Name $V4AppName -CollectionName $_.CollectionName -Force -ErrorAction SilentlyContinue
         }
         Remove-CMApplication -Name $V4AppName -Force
@@ -498,7 +575,8 @@ if (`$app) { exit 0 } else { exit 1 }
         -EstimatedRuntimeMins     5 | Out-Null
 
     # Add PSADT return codes: 3010 = restart required (SoftReboot), 1641 = restart initiated (HardReboot)
-    try {
+    try
+    {
         $v4dt = Get-CMDeploymentType -ApplicationName $V4AppName -DeploymentTypeName $V4DTName
         Add-CMDeploymentTypeReturnCode -InputObject $v4dt -ReturnCode 3010 -CodeType SoftReboot -Name 'Reboot Required'    | Out-Null
         Add-CMDeploymentTypeReturnCode -InputObject $v4dt -ReturnCode 1641 -CodeType HardReboot -Name 'Reboot Initiated'  | Out-Null
@@ -520,13 +598,17 @@ if (`$app) { exit 0 } else { exit 1 }
     $dpGroups = Get-CMDistributionPointGroup -ErrorAction SilentlyContinue
     $dpList   = Get-CMDistributionPoint -ErrorAction SilentlyContinue
 
-    if (-not $dpGroups -and -not $dpList) {
+    if (-not $dpGroups -and -not $dpList)
+    {
         throw 'No distribution points or distribution point groups found - configure a DP in SCCM first'
     }
 
-    foreach ($appDistName in @($V3AppName, $V4AppName)) {
-        if ($dpGroups) {
-            foreach ($grp in $dpGroups) {
+    foreach ($appDistName in @($V3AppName, $V4AppName))
+    {
+        if ($dpGroups)
+        {
+            foreach ($grp in $dpGroups)
+            {
                 Start-CMContentDistribution -ApplicationName $appDistName `
                     -DistributionPointGroupName $grp.Name -ErrorAction SilentlyContinue | Out-Null
             }
@@ -534,7 +616,8 @@ if (`$app) { exit 0 } else { exit 1 }
         }
         else
         {
-            foreach ($dp in $dpList) {
+            foreach ($dp in $dpList)
+            {
                 $dpFQDN = $dp.NetworkOSPath.TrimStart('\')
                 Start-CMContentDistribution -ApplicationName $appDistName `
                     -DistributionPointName $dpFQDN -ErrorAction SilentlyContinue | Out-Null
@@ -550,16 +633,22 @@ if (`$app) { exit 0 } else { exit 1 }
     Step "Deploying applications to collection: $TargetCollection"
 
     # Validate the collection exists if not using the default
-    if ($TargetCollection -ne 'All Systems') {
+    if ($TargetCollection -ne 'All Systems')
+    {
         $col = Get-CMDeviceCollection -Name $TargetCollection -ErrorAction SilentlyContinue
-        if (-not $col) { throw "Collection not found: '$TargetCollection' - create it in SCCM first" }
+        if (-not $col)
+        {
+            throw "Collection not found: '$TargetCollection' - create it in SCCM first"
+        }
         OK "Collection validated: $TargetCollection ($($col.MemberCount) device(s))"
     }
 
-    foreach ($appDeployName in @($V3AppName, $V4AppName)) {
+    foreach ($appDeployName in @($V3AppName, $V4AppName))
+    {
         # Remove existing deployment to the same collection before recreating
         $existDeploy = Get-CMApplicationDeployment -Name $appDeployName -CollectionName $TargetCollection -ErrorAction SilentlyContinue
-        if ($existDeploy) {
+        if ($existDeploy)
+        {
             Remove-CMApplicationDeployment -Name $appDeployName -CollectionName $TargetCollection -Force
             WARN "Removed existing deployment: $appDeployName -> $TargetCollection"
         }
@@ -593,7 +682,8 @@ if (`$app) { exit 0 } else { exit 1 }
     Write-Host '  Local package directories:'
     Write-Host "    $V3PackageDir"
     Write-Host "    $V4PackageDir"
-    if ($ProductCode) {
+    if ($ProductCode)
+    {
         Write-Host ''
         Write-Host "  MSI ProductCode: $ProductCode"
     }
