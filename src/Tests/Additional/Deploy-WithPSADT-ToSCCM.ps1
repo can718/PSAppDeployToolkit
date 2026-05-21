@@ -20,6 +20,9 @@
     SCCM: Site SQT | Server vm30028301.vm30028301dom.net
 #>
 
+# Write-Host is intentional here: this is a deployment diagnostic script where
+# color-coded console output is required and Write-Output/Write-Verbose are insufficient.
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '')]
 [CmdletBinding()]
 param(
     # Target deployment collection. Defaults to 'All Systems'. If overridden, the script validates the collection exists first.
