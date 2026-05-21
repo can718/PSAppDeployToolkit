@@ -907,8 +907,8 @@ function Set-TestRun {
 
     try {
         Write-Host "$Action test run (MachineId: $MachineId)..."
-        Write-Verbose "URI    : $uri"
-        Write-Verbose "Payload: $payload"
+        Write-Host "URI    : $uri"
+        Write-Host "Payload: $payload"
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
@@ -920,7 +920,7 @@ function Set-TestRun {
     } catch {
         # Surface the full response body to aid debugging
         $responseBody = $null
-        try { $responseBody = $_.Exception.Response.Content.ReadAsStringAsync().Result } catch {}
+        try { $responseBody = $_.ErrorDetails.Message } catch {}
         $detail = if ($responseBody) { " | Response: $responseBody" } else { '' }
         throw "Failed to $Action test run: $($_.Exception.Message)$detail"
     }
