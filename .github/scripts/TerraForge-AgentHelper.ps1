@@ -575,7 +575,7 @@ function Start-AzureSessionVM {
         'X-Client-Type' = 'Automated'
     }
 
-    $uri = "$($ApiBaseUrl.TrimEnd('/'))/v1/TestRun/Activate"
+    $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Activate"
     $payload = @{
         configName   = $ConfigName
         poolType     = $PoolType
@@ -642,7 +642,7 @@ function Reset-AzureSessionVM {
         'X-Client-Type' = 'Automated'
     }
 
-    $uri = "$($ApiBaseUrl.TrimEnd('/'))/v1/TestRun/Reset"
+    $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Reset"
     $payload = @{
         results = @(
             @{
@@ -699,7 +699,7 @@ function Get-AzureVMStatus {
         'X-Client-Type' = 'Automated'
     }
 
-    $uri = "$($ApiBaseUrl.TrimEnd('/'))/v1/Machines/$MachineId/PowerStatus"
+    $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/Machines/$MachineId/PowerStatus"
 
     try {
         Write-Host "Getting power status for VM '$MachineId'..."
@@ -747,7 +747,7 @@ function Get-TFPFSStorageAccountAccessKey {
         'X-Client-Type' = 'Automated'
     }
 
-    $uri = "$($ApiBaseUrl.TrimEnd('/'))/v1/KeyVault/Secret/TFPFSStorageAccountAccessKey"
+    $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/KeyVault/Secret/TFPFSStorageAccountAccessKey"
 
     try {
         Write-Host "Retrieving TFPFS storage account access key..."
@@ -886,7 +886,7 @@ function Set-TestRun {
     }
 
     if ($Action -eq 'Start') {
-        $uri = "$($ApiBaseUrl.TrimEnd('/'))/v1/TestRun/Start"
+        $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
         $payload = @{
             MachineId     = $MachineId
             ConfigName    = $ConfigName
@@ -898,7 +898,7 @@ function Set-TestRun {
             BranchName    = $BranchName
         } | ConvertTo-Json
     } else {
-        $uri = "$($ApiBaseUrl.TrimEnd('/'))/v1/TestRun/Complete"
+        $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Complete"
         $payload = @{
             Id            = $TestRunId
             IsDevOpsAgent = $IsDevOpsAgent
@@ -976,7 +976,7 @@ function New-TestRunResults {
         'X-Client-Type' = 'Automated'
     }
 
-    $uri = "$($ApiBaseUrl.TrimEnd('/'))/v1/TestRunResults/Create"
+    $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRunResults/Create"
     $payload = @{
         MachineId      = $MachineId
         SessionId      = $SessionId
@@ -1046,7 +1046,7 @@ function Update-TestRunResults {
         'X-Client-Type' = 'Automated'
     }
 
-    $uri = "$($ApiBaseUrl.TrimEnd('/'))/v1/TestRunResults/Update/$TestRunResultId"
+    $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRunResults/Update/$TestRunResultId"
     $payload = @{
         TestRunResultId = $TestRunResultId
         Result          = $Result

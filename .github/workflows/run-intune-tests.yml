@@ -10,6 +10,7 @@ jobs:
   discover-agent:
     name: Discover Agent Machine
     runs-on: [self-hosted, Windows, X64, API]
+    if: false  # TODO: re-enable after self-hosted runner testing
     outputs:
       runner-label: ${{ steps.launch-agent.outputs.runner-label }}
     env:
