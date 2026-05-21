@@ -888,20 +888,24 @@ function Set-TestRun {
     if ($Action -eq 'Start') {
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
         $payload = @{
-            MachineId     = $MachineId
-            ConfigName    = $ConfigName
-            IsDevOpsAgent = $IsDevOpsAgent
-            AdoBuildId    = $AdoBuildId
-            Product       = $Product
-            Title         = $Title
-            QueuedBy      = $QueuedBy
-            BranchName    = $BranchName
+            request = @{
+                MachineId     = $MachineId
+                ConfigName    = $ConfigName
+                IsDevOpsAgent = $IsDevOpsAgent
+                AdoBuildId    = if ($AdoBuildId) { [int]$AdoBuildId } else { $null }
+                Product       = $Product
+                Title         = $Title
+                QueuedBy      = $QueuedBy
+                BranchName    = $BranchName
+            }
         } | ConvertTo-Json -Depth 5
     } else {
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Complete"
         $payload = @{
-            Id            = $TestRunId
-            IsDevOpsAgent = $IsDevOpsAgent
+            request = @{
+                Id            = $TestRunId
+                IsDevOpsAgent = $IsDevOpsAgent
+            }
         } | ConvertTo-Json -Depth 5
     }
 
