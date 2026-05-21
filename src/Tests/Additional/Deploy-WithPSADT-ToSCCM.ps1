@@ -44,28 +44,28 @@ $ErrorActionPreference = 'Stop'
 #  Configuration -- edit this section for each new application
 #================================================================
 
-$MSIFileName  = 'PatchMyPC-Publishing-Service-2.1.110.4 (2).msi'
-$AppVendor    = 'PatchMyPC'
-$AppName      = 'PatchMyPC Publishing Service'
-$AppVersion   = '2.1.110.4'
+$MSIFileName = 'PatchMyPC-Publishing-Service-2.1.110.4 (2).msi'
+$AppVendor = 'PatchMyPC'
+$AppName = 'PatchMyPC Publishing Service'
+$AppVersion = '2.1.110.4'
 
 # SCCM site code and server - auto-detect from registry, fallback to hardcoded defaults
-$SiteCode   = ''
+$SiteCode = ''
 $SiteServer = ''
-$SiteCode   = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Operations Management" -Name "Site Code" -ErrorAction SilentlyContinue)."Site Code"
+$SiteCode = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Operations Management" -Name "Site Code" -ErrorAction SilentlyContinue)."Site Code"
 $SiteServer = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Setup" -Name "Provider Location" -ErrorAction SilentlyContinue)."Provider Location"
-if (-not $SiteCode)   { $SiteCode   = 'SQT' }
+if (-not $SiteCode) { $SiteCode = 'SQT' }
 if (-not $SiteServer) { $SiteServer = 'vm30028301.vm30028301dom.net' }
-write-host "Using SCCM Site: $SiteCode | Server: $SiteServer" -ForegroundColor Cyan
+Write-Host "Using SCCM Site: $SiteCode | Server: $SiteServer" -ForegroundColor Cyan
 # Local directories
-$WorkDir         = 'C:\PSADT'
-$MSISourcePath   = Join-Path $WorkDir $MSIFileName
+$WorkDir = 'C:\PSADT'
+$MSISourcePath = Join-Path $WorkDir $MSIFileName
 # Template directories: use parameters if provided, otherwise fall back to local defaults
 if (-not $TemplateV3Dir) { $TemplateV3Dir = Join-Path $WorkDir 'PSADT_Template_v3' }
 if (-not $TemplateV4Dir) { $TemplateV4Dir = Join-Path $WorkDir 'PSADT_Template_v4' }
 
 # Package output directories (rebuilt on each run)
-$SafeName     = ($AppName -replace '[^\w]','_')
+$SafeName = ($AppName -replace '[^\w]', '_')
 $V3PackageDir = Join-Path $WorkDir "${SafeName}_v3"
 $V4PackageDir = Join-Path $WorkDir "${SafeName}_v4"
 
@@ -74,9 +74,9 @@ $TargetCollection = $CollectionName
 
 # SCCM content share
 $ContentShareName = 'PSADT_Content$'
-$ContentUNCRoot   = "\\$env:COMPUTERNAME\$ContentShareName"
-$V3ContentUNC     = "$ContentUNCRoot\${SafeName}_v3"
-$V4ContentUNC     = "$ContentUNCRoot\${SafeName}_v4"
+$ContentUNCRoot = "\\$env:COMPUTERNAME\$ContentShareName"
+$V3ContentUNC = "$ContentUNCRoot\${SafeName}_v3"
+$V4ContentUNC = "$ContentUNCRoot\${SafeName}_v4"
 
 #================================================================
 #  Helper functions
@@ -102,12 +102,12 @@ function Get-MSIProductCode ([string]$Path)
 {
     try
     {
-        $wi  = New-Object -ComObject WindowsInstaller.Installer
-        $db  = $wi.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$wi,@($Path,0))
-        $vw  = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@("SELECT Value FROM Property WHERE Property='ProductCode'"))
-        $vw.GetType().InvokeMember('Execute','InvokeMethod',$null,$vw,$null)
-        $rec = $vw.GetType().InvokeMember('Fetch','InvokeMethod',$null,$vw,$null)
-        $pc  = $rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,@(1))
+        $wi = New-Object -ComObject WindowsInstaller.Installer
+        $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($Path, 0))
+        $vw = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @("SELECT Value FROM Property WHERE Property='ProductCode'"))
+        $vw.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $vw, $null)
+        $rec = $vw.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $vw, $null)
+        $pc = $rec.GetType().InvokeMember('StringData', 'GetProperty', $null, $rec, @(1))
         [Runtime.InteropServices.Marshal]::ReleaseComObject($wi) | Out-Null
         return $pc
     }
@@ -329,7 +329,7 @@ $v4 = Get-Content $V4Script -Raw
 
 # Inject app info into the $adtSession hashtable (replace empty string fields)
 $v4 = $v4 -replace "(?m)^(\s*AppVendor\s*=\s*)'[^']*'", "`$1'$AppVendor'"
-$v4 = $v4 -replace "(?m)^(\s*AppName\s*=\s*)'[^']*'",   "`$1'$AppName'"
+$v4 = $v4 -replace "(?m)^(\s*AppName\s*=\s*)'[^']*'", "`$1'$AppName'"
 $v4 = $v4 -replace "(?m)^(\s*AppVersion\s*=\s*)'[^']*'", "`$1'$AppVersion'"
 
 # Inject install/uninstall commands
@@ -493,9 +493,10 @@ if (`$app) { exit 0 } else { exit 1 }
     if (Get-CMApplication -Name $V3AppName -ErrorAction SilentlyContinue)
     {
         WARN "'$V3AppName' already exists - removing deployments then application..."
-        Get-CMApplicationDeployment -Name $V3AppName -ErrorAction SilentlyContinue | ForEach-Object
+        $v3Deployments = Get-CMApplicationDeployment -Name $V3AppName -ErrorAction SilentlyContinue
+        foreach ($dep in $v3Deployments)
         {
-            Remove-CMApplicationDeployment -Name $V3AppName -CollectionName $_.CollectionName -Force -ErrorAction SilentlyContinue
+            Remove-CMApplicationDeployment -Name $V3AppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
         }
         Remove-CMApplication -Name $V3AppName -Force
         Start-Sleep -Seconds 2
@@ -543,9 +544,10 @@ if (`$app) { exit 0 } else { exit 1 }
     if (Get-CMApplication -Name $V4AppName -ErrorAction SilentlyContinue)
     {
         WARN "'$V4AppName' already exists - removing deployments then application..."
-        Get-CMApplicationDeployment -Name $V4AppName -ErrorAction SilentlyContinue | ForEach-Object
+        $v4Deployments = Get-CMApplicationDeployment -Name $V4AppName -ErrorAction SilentlyContinue
+        foreach ($dep in $v4Deployments)
         {
-            Remove-CMApplicationDeployment -Name $V4AppName -CollectionName $_.CollectionName -Force -ErrorAction SilentlyContinue
+            Remove-CMApplicationDeployment -Name $V4AppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
         }
         Remove-CMApplication -Name $V4AppName -Force
         Start-Sleep -Seconds 2
@@ -596,7 +598,7 @@ if (`$app) { exit 0 } else { exit 1 }
 
     # Prefer DP groups; fall back to distributing to individual DPs
     $dpGroups = Get-CMDistributionPointGroup -ErrorAction SilentlyContinue
-    $dpList   = Get-CMDistributionPoint -ErrorAction SilentlyContinue
+    $dpList = Get-CMDistributionPoint -ErrorAction SilentlyContinue
 
     if (-not $dpGroups -and -not $dpList)
     {
@@ -695,7 +697,8 @@ if (`$app) { exit 0 } else { exit 1 }
     Write-Host '    2. Deployment is created - clients will install on next policy refresh'
     Write-Host ''
 
-} finally
+}
+finally
 {
     Set-Location $origLoc
 }
