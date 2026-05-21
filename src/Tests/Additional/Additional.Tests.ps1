@@ -76,7 +76,7 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
                 # Get-MSIProductCode will fail gracefully and return $null)
                 [System.IO.File]::WriteAllBytes($script:msiPath, [byte[]](0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1))
                 $script:dummyCreated = $true
-                Write-Host "  [setup] Created dummy MSI at: $($script:msiPath)"
+                Write-Verbose "  [setup] Created dummy MSI at: $($script:msiPath)"
             }
         }
 
@@ -85,7 +85,7 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
             if ($script:dummyCreated -and (Test-Path $script:msiPath))
             {
                 Remove-Item $script:msiPath -Force -ErrorAction SilentlyContinue
-                Write-Host "  [teardown] Removed dummy MSI: $($script:msiPath)"
+                Write-Verbose "  [teardown] Removed dummy MSI: $($script:msiPath)"
             }
         }
 
