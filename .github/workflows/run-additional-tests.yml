@@ -51,7 +51,7 @@ jobs:
               -MachineId    $env:COMPUTERNAME `
               -ConfigName   $env:TERRAFORGE_CONFIG_NAME `
               -AdoBuildId   $AdoBuildId `
-              -Product      'PSADT_CM' `
+              -Product      'PSADT' `
               -Title        $runTitle `
               -QueuedBy     $runQueuedBy
 

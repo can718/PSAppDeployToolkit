@@ -582,10 +582,10 @@ function Start-AzureSessionVM
         [string]$AccessToken,
 
         [Parameter()]
-        [string]$ConfigName = 'Catalog-AppRunner',
+        [string]$ConfigName = 'PSADT-AppRunner',
 
         [Parameter()]
-        [int]$PoolType = 2,
+        [int]$PoolType = 3,
 
         [Parameter()]
         [string]$OsName = 'Windows11',
@@ -908,7 +908,7 @@ function Set-TestRun
         [string]$AdoBuildId,
 
         [Parameter()]
-        [string]$Product,
+        [string]$Product = 'PSADT',
 
         [Parameter()]
         [string]$Title,
@@ -1119,7 +1119,9 @@ function Update-TestRunResults
         }
         Write-Host "Test run result '$TestRunResultId' updated successfully."
         return @{ Id = $content.data.id }
-    } catch {
+    } 
+    catch
+    {
         throw "Failed to update test run result '$TestRunResultId': $($_.Exception.Message)"
     }
 }
