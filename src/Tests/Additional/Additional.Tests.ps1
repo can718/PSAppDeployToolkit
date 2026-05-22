@@ -39,6 +39,10 @@ BeforeAll {
         )
         $script:TFCurrentResultId = $null
         if (-not $script:TFReportingEnabled) { return }
+        if ([string]::IsNullOrWhiteSpace($TestName)) {
+            Write-Warning "[TerraForge] Skipping result entry creation: TestName is empty."
+            return
+        }
         try {
             $result = New-TestRunResults `
                 -ApiBaseUrl  $script:TFApiBaseUrl `
@@ -91,7 +95,7 @@ BeforeAll {
 Describe 'Additional Tests' {
     Context 'Sanity checks' {
         BeforeEach {
-            Invoke-TFReportTestCase -TestClass 'Additional Tests / Sanity checks' -TestName $PSItem.Name
+            Invoke-TFReportTestCase -TestClass 'Additional Tests / Sanity checks' -TestName ($PSItem.ExpandedName ?? $PSItem.Name)
         }
         AfterEach {
             Invoke-TFUpdateTestCase -TestResult $PSItem
@@ -120,7 +124,7 @@ Describe 'PSADT Build Template Validation' {
         }
 
         BeforeEach {
-            Invoke-TFReportTestCase -TestClass 'PSADT Build Template Validation / Template paths from build output' -TestName $PSItem.Name
+            Invoke-TFReportTestCase -TestClass 'PSADT Build Template Validation / Template paths from build output' -TestName ($PSItem.ExpandedName ?? $PSItem.Name)
         }
         AfterEach {
             Invoke-TFUpdateTestCase -TestResult $PSItem
@@ -194,7 +198,7 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
         }
 
         BeforeEach {
-            Invoke-TFReportTestCase -TestClass 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates' -TestName $PSItem.Name
+            Invoke-TFReportTestCase -TestClass 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates' -TestName ($PSItem.ExpandedName ?? $PSItem.Name)
         }
         AfterEach {
             Invoke-TFUpdateTestCase -TestResult $PSItem

@@ -392,6 +392,14 @@ jobs:
              $status = 4 # Failed
         }
         Write-Host "Test run status set to $status"
-        # reset the Azure session VM
+        # 4. Upload test results to Azure Blob Storage
+        Copy-ResultsToAzureBlobStorage `
+            -ApiBaseUrl  $env:TERRAFORGE_API_BASE_URL `
+            -AccessToken $accessToken `
+            -TestRunId   $env:TEST_RUN_ID `
+            -Files       @($xmlPath)
+        Write-Host "Test results copied to Azure Blob Storage."
+
+        # 5. Reset the Azure session VM
         $machineId = Get-MachineID
         Reset-AzureSessionVM -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL -AccessToken $accessToken -TestStatus $status -MachineId $machineId

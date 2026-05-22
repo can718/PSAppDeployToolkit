@@ -857,7 +857,7 @@ function Set-TestRun
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Complete"
         $payload = @{
             request = @{
-                Id            = $TestRunId
+                Id            = [int64]$TestRunId
                 IsDevOpsAgent = $IsDevOpsAgent
             }
         } | ConvertTo-Json -Depth 5
