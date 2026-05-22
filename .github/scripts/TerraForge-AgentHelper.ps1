@@ -690,42 +690,105 @@ function Start-AzCopy
     }
 }
 
+function Copy-ResultsToAzureBlobStorage
+{
+    <#
+    .SYNOPSIS
+        Uploads one or more files to TFPFS Azure Blob Storage under the specified test run path.
+    .PARAMETER ApiBaseUrl
+        The TerraForge API base URL (used to retrieve the storage account access key).
+    .PARAMETER AccessToken
+        The bearer access token (used to retrieve the storage account access key).
+    .PARAMETER TestRunId
+        The test run ID, used to build the blob destination path (testruns/{TestRunId}/<filename>).
+    .PARAMETER Files
+        One or more local file paths to upload. Each file is uploaded as testruns/{TestRunId}/<filename>.
+    #>
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string]$ApiBaseUrl,
+
+        [Parameter(Mandatory)]
+        [string]$AccessToken,
+
+        [Parameter(Mandatory)]
+        [string]$TestRunId,
+
+        [Parameter()]
+        [string[]]$Files
+    )
+
+    # Retrieve storage account access key via TerraForge API
+    $TFPFSStorageAccountAccessKey = Get-TFPFSStorageAccountAccessKey -ApiBaseUrl $ApiBaseUrl -AccessToken $AccessToken
+
+    # Ensure Az.Storage module is available
+    if (-not (Get-Module -ListAvailable Az.Storage))
+    {
+        Write-Host "Az.Storage module not found. Installing..."
+        Install-Module -Name Az.Storage -Scope AllUsers -Force -Confirm:$false
+        Import-Module -Name Az.Storage
+        if (Get-Module -Name Az.Storage)
+        {
+            Write-Host "Az.Storage module imported successfully."
+        }
+        else
+        {
+            throw "Az.Storage module import failed."
+        }
+    }
+    else
+    {
+        Write-Host "Az.Storage module already available."
+        Import-Module -Name Az.Storage
+        if (Get-Module -Name Az.Storage)
+        {
+            Write-Host "Az.Storage module imported successfully."
+        }
+        else
+        {
+            throw "Az.Storage module import failed."
+        }
+    }
+
+    $ctx = New-AzStorageContext -StorageAccountName 'tfpfsstorage' -StorageAccountKey $TFPFSStorageAccountAccessKey
+
+    # Upload each file
+    if ($Files -and $Files.Count -gt 0)
+    {
+        foreach ($file in $Files)
+        {
+            if (Test-Path $file)
+            {
+                $fileName = Split-Path $file -Leaf
+                $blobPath = "testruns/{0}/{1}" -f $TestRunId, $fileName
+                Write-Host "Uploading '$fileName' to Azure Blob Storage: $blobPath"
+                $null = Set-AzStorageBlobContent -File $file `
+                    -Container 'tfp-shares' `
+                    -Blob $blobPath `
+                    -Context $ctx `
+                    -Force
+                Write-Host "Uploaded successfully: $blobPath"
+            }
+            else
+            {
+                Write-Host "File '$file' not found, skipping."
+            }
+        }
+    }
+    else
+    {
+        Write-Host "No files specified, skipping upload."
+    }
+}
+
 #endregion
 
 #region Test Run Management
 
 function Set-TestRun
 {
-    <#
-    .SYNOPSIS
-        Starts or completes a TerraForge test run.
-    .PARAMETER ApiBaseUrl
-        The TerraForge API base URL.
-    .PARAMETER AccessToken
-        The bearer access token.
-    .PARAMETER Action
-        Either 'Start' or 'Complete'.
-    .PARAMETER MachineId
-        The machine ID (required for Start).
-    .PARAMETER ConfigName
-        The configuration name (default: 'Catalog-Agent').
-    .PARAMETER IsDevOpsAgent
-        Whether this is a DevOps agent (default: $true).
-    .PARAMETER TestRunId
-        The test run ID (required for Complete).
-    .PARAMETER AdoBuildId
-        Optional ADO build ID.
-    .PARAMETER Product
-        Product name for the test run.
-    .PARAMETER Title
-        Title for the test run.
-    .PARAMETER QueuedBy
-        Who queued the test run.
-    .PARAMETER BranchName
-        The source branch name.
-    .OUTPUTS
-        Hashtable with key 'Id' containing the test run ID.
-    #>
     [CmdletBinding()]
     param
     (
