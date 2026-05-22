@@ -125,11 +125,15 @@ function Get-TerraForgeAccessToken
         [string]$ApiAccessKey
     )
 
-    $headers = @{
+    $headers = @
+    {
         "Content-Type"  = "application/json"
         "X-Client-Type" = "Automated"
     }
-    $payload = @{ accessKey = $ApiAccessKey } | ConvertTo-Json
+    $payload = @
+    {
+        accessKey = $ApiAccessKey
+    } | ConvertTo-Json
 
     Write-Host "Requesting TerraForge access token..."
     $response = Invoke-WebRequest -Uri "$ApiBaseUrl/api/auth/token" `
@@ -176,12 +180,14 @@ function Invoke-TerraForgeLaunchAgent
         [int]$PoolType = 3
     )
 
-    $authHeaders = @{
+    $authHeaders = @
+    {
         "Authorization" = "Bearer $AccessToken"
         "Content-Type"  = "application/json"
         "X-Client-Type" = "Automated"
     }
-    $launchPayload = @{
+    $launchPayload = @
+    {
         configName = $ConfigName
         poolType   = $PoolType
     } | ConvertTo-Json
@@ -198,7 +204,8 @@ function Invoke-TerraForgeLaunchAgent
     Write-Host "Launched agent machine: $agentName"
     Write-Host "Machine URL: $machineUrl"
 
-    return [PSCustomObject]@{
+    return [PSCustomObject]@
+    {
         MachineId  = $machineId
         AgentName  = $agentName
         MachineUrl = $machineUrl
@@ -446,7 +453,10 @@ function Get-AzureKeyVaultSecretValue
 
             if ($AsPlainText) {
                 $secretValue = Get-AzKeyVaultSecret -VaultName $VaultName -Name $SecretName -AsPlainText
-                return @{ SecretValue = $secretValue }
+                return @
+                {
+                    SecretValue = $secretValue
+                }
             } else {
                 $secret = Get-AzKeyVaultSecret -VaultName $VaultName -Name $SecretName
                 if (-not $secret.SecretValue) {
@@ -597,14 +607,16 @@ function Start-AzureSessionVM
         [string]$AdoBuildId
     )
 
-    $headers = @{
+    $headers = @
+    {
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
     }
 
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Activate"
-    $payload = @{
+    $payload = @
+    {
         configName   = $ConfigName
         poolType     = $PoolType
         osName       = $OsName
@@ -623,7 +635,8 @@ function Start-AzureSessionVM
         }
 
         Write-Host "Started VM — MachineId: $($content.data.machineId), SessionId: $($content.data.sessionId), IP: $($content.data.ipAddress)"
-        return @{
+    return @
+    {
             MachineId = $content.data.machineId
             SessionId = $content.data.sessionId
             IPAddress = $content.data.ipAddress
@@ -669,16 +682,19 @@ function Reset-AzureSessionVM
         [int]$TestStatus
     )
 
-    $headers = @{
+    $headers = @
+    {
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
     }
 
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Reset"
-    $payload = @{
+    $payload = @
+    {
         results = @(
-            @{
+            @
+            {
                 machineId    = $MachineId
                 status       = $TestStatus
                 isForceReset = $true
@@ -728,7 +744,8 @@ function Get-AzureVMStatus
         [string]$MachineId
     )
 
-    $headers = @{
+    $headers = @
+    {
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
@@ -778,7 +795,8 @@ function Get-TFPFSStorageAccountAccessKey
         [string]$AccessToken
     )
 
-    $headers = @{
+    $headers = @
+    {
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
@@ -920,7 +938,8 @@ function Set-TestRun
         [string]$BranchName
     )
 
-    $headers = @{
+    $headers = @
+    {
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
@@ -928,9 +947,11 @@ function Set-TestRun
 
     if ($Action -eq 'Start') {
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
-        $payload = @{
+    $payload = @
+    {
             MachineId = $MachineId
-            request   = @{
+            request   = @
+            {
                 ConfigName    = $ConfigName
                 IsDevOpsAgent = $IsDevOpsAgent
                 AdoBuildId    = if ($AdoBuildId) { [int64]$AdoBuildId } else { $null }
@@ -942,8 +963,10 @@ function Set-TestRun
         } | ConvertTo-Json -Depth 5
     } else {
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Complete"
-        $payload = @{
-            request = @{
+    $payload = @
+    {
+            request = @
+            {
                 Id            = $TestRunId
                 IsDevOpsAgent = $IsDevOpsAgent
             }
@@ -961,7 +984,10 @@ function Set-TestRun
             throw "Invalid response received from $uri"
         }
         Write-Host "Test run '$Action' succeeded. Id: $($content.data.id)"
-        return @{ Id = $content.data.id }
+        return @
+        {
+            Id = $content.data.id
+        }
     } catch {
         # Surface the full response body to aid debugging
         $responseBody = $null
@@ -1023,7 +1049,8 @@ function New-TestRunResults
         [string]$TestCaseId = '0'
     )
 
-    $headers = @{
+    $headers = @
+    {
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
@@ -1102,7 +1129,8 @@ function Update-TestRunResults
     }
 
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRunResults/Update/$TestRunResultId"
-    $payload = @{
+    $payload = @
+    {
         TestRunResultId = $TestRunResultId
         Result          = $Result
         FinishedTimeUtc = (Get-Date).ToUniversalTime()
@@ -1114,7 +1142,8 @@ function Update-TestRunResults
         $response = Invoke-WebRequest -Uri $uri -Method Patch -Headers $headers -Body $payload -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
-        if (-not $content -or -not $content.data -or -not $content.success) {
+        if (-not $content -or -not $content.data -or -not $content.success) 
+        {
             throw "Invalid response received from $uri"
         }
         Write-Host "Test run result '$TestRunResultId' updated successfully."
