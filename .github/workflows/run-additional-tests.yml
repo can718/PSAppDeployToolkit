@@ -67,6 +67,8 @@ jobs:
         TERRAFORGE_CONFIG_NAME: "Lite (CM2509 Github)-Agent"
         TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
         TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_ACTOR: ${{ github.actor }}
       run: |
         # Load shared TerraForge helper functions
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
@@ -75,9 +77,9 @@ jobs:
         $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
 
         # 2. Start the test run
-        $AdoBuildId  = '${{ github.run_id }}'
+        $AdoBuildId  = $env:GITHUB_RUN_ID
         $runTitle    = "Additional Tests - Build $AdoBuildId"
-        $runQueuedBy = '${{ github.actor }}'
+        $runQueuedBy = $env:GITHUB_ACTOR
         $testRun = Set-TestRun `
             -ApiBaseUrl   $env:TERRAFORGE_API_BASE_URL `
             -AccessToken  $accessToken `
@@ -360,8 +362,24 @@ jobs:
             -AccessToken $accessToken `
             -TestRunId $env:TEST_RUN_ID
 
-       
-        # 4. Upload test results to Azure Blob Storage
+    - name: Upload Test Results to Azure Blob Storage
+      if: always()
+      shell: pwsh
+      env:
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
+        INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+        INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+        TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+        TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+      run: |
+        # Load shared TerraForge helper functions
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+
+        # 1. Login, retrieve API key and get access token in one step
+        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
+
+        # 2. Upload test results to Azure Blob Storage
+        $xmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"
         Copy-ResultsToAzureBlobStorage `
             -ApiBaseUrl  $env:TERRAFORGE_API_BASE_URL `
             -AccessToken $accessToken `
