@@ -40,8 +40,14 @@ BeforeAll {
         $script:TFCurrentResultId = $null
         if (-not $script:TFReportingEnabled) { return }
 
-        # Resolve test name: ExpandedName → Name → FullyQualifiedName → fallback
+        # Debug: dump available properties to diagnose name resolution
+        Write-Host "[TerraForge][DEBUG] PesterTest type: $($PesterTest.GetType().FullName)"
+        Write-Host "[TerraForge][DEBUG] Name='$($PesterTest.Name)' ExpandedName='$($PesterTest.ExpandedName)' DisplayName='$($PesterTest.DisplayName)' FullyQualifiedName='$($PesterTest.FullyQualifiedName)'"
+        $PesterTest | Get-Member -MemberType Property | ForEach-Object { Write-Host "[TerraForge][DEBUG] Property: $($_.Name) = $($PesterTest.$($_.Name))" }
+
+        # Resolve test name: ExpandedName → DisplayName → Name → FullyQualifiedName
         $testName = $PesterTest.ExpandedName
+        if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.DisplayName }
         if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.Name }
         if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.FullyQualifiedName }
         if ([string]::IsNullOrWhiteSpace($testName)) {

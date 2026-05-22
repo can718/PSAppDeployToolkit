@@ -6,14 +6,14 @@ function Get-TerraForgeAuthToken
     [OutputType([string])]
     param
     (
-        [Parameter(Mandatory)]
-        [string]$ManagedIdentityClientId,
+        [Parameter()]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
 
-        [Parameter(Mandatory)]
-        [string]$KeyVaultName,
+        [Parameter()]
+        [string]$KeyVaultName = $env:INFRA_KEYVAULT,
 
-        [Parameter(Mandatory)]
-        [string]$ApiKeySecretName,
+        [Parameter()]
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET,
 
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl

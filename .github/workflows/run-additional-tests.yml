@@ -12,7 +12,6 @@ jobs:
     runs-on: [self-hosted, Windows, X64, API]
     outputs:
       runner-label: ${{ steps.launch-agent.outputs.runner-label }}
-      test-run-id: ${{ steps.set-test-run-start.outputs.test-run-id }}
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
@@ -26,38 +25,6 @@ jobs:
           sparse-checkout: .github/scripts
           sparse-checkout-cone-mode: false
 
-      - name: Set Test Run Start
-        id: set-test-run-start
-        shell: pwsh
-        run: |
-          # Load shared TerraForge helper functions
-          . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
-
-          # 1. Login, retrieve API key and get access token in one step
-          $accessToken = Get-TerraForgeAuthToken `
-              -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
-              -KeyVaultName            $env:INFRA_KEYVAULT `
-              -ApiKeySecretName        $env:TERRAFORGE_API_KEY_SECRET `
-              -ApiBaseUrl              $env:TERRAFORGE_API_BASE_URL
-
-          # 2. Start the test run
-          $AdoBuildId  = '${{ github.run_id }}'
-          $runTitle    = "Additional Tests - Build $AdoBuildId"
-          $runQueuedBy = '${{ github.actor }}'
-          $testRun = Set-TestRun `
-              -ApiBaseUrl   $env:TERRAFORGE_API_BASE_URL `
-              -AccessToken  $accessToken `
-              -Action       'Start' `
-              -MachineId    $env:COMPUTERNAME `
-              -ConfigName   $env:TERRAFORGE_CONFIG_NAME `
-              -AdoBuildId   $AdoBuildId `
-              -Product      'PSADT' `
-              -Title        $runTitle `
-              -QueuedBy     $runQueuedBy
-
-          # 3. Output test-run-id for later use in Set Test Run End Time step
-          Set-GitHubOutput -Name 'test-run-id' -Value $testRun.Id
-
       - name: Launch Agent
         id: launch-agent
         shell: pwsh
@@ -66,11 +33,7 @@ jobs:
           . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
 
           # 1. Login, retrieve API key and get access token in one step
-          $accessToken = Get-TerraForgeAuthToken `
-              -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
-              -KeyVaultName            $env:INFRA_KEYVAULT `
-              -ApiKeySecretName        $env:TERRAFORGE_API_KEY_SECRET `
-              -ApiBaseUrl              $env:TERRAFORGE_API_BASE_URL
+          $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
 
           # 2. Launch/discover agent machine
           $agent = Invoke-TerraForgeLaunchAgent `
@@ -94,6 +57,40 @@ jobs:
         GIT_CONFIG_COUNT: 1
         GIT_CONFIG_KEY_0: core.autocrlf
         GIT_CONFIG_VALUE_0: 'false'
+
+    - name: Set Test Run Start
+      id: set-test-run-start
+      shell: pwsh
+      env:
+        INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+        INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+        TERRAFORGE_CONFIG_NAME: "Lite (CM2509 Github)-Agent"
+        TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+        TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+      run: |
+        # Load shared TerraForge helper functions
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+
+        # 1. Login, retrieve API key and get access token in one step
+        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
+
+        # 2. Start the test run
+        $AdoBuildId  = '${{ github.run_id }}'
+        $runTitle    = "Additional Tests - Build $AdoBuildId"
+        $runQueuedBy = '${{ github.actor }}'
+        $testRun = Set-TestRun `
+            -ApiBaseUrl   $env:TERRAFORGE_API_BASE_URL `
+            -AccessToken  $accessToken `
+            -Action       'Start' `
+            -MachineId    $env:COMPUTERNAME `
+            -ConfigName   $env:TERRAFORGE_CONFIG_NAME `
+            -AdoBuildId   $AdoBuildId `
+            -Product      'PSADT' `
+            -Title        $runTitle `
+            -QueuedBy     $runQueuedBy
+
+        # 3. Output test-run-id for later steps
+        Set-GitHubOutput -Name 'test-run-id' -Value $testRun.Id
 
     - name: Check runner environment
       shell: pwsh
@@ -310,7 +307,7 @@ jobs:
       env:
         PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
         PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
-        TEST_RUN_ID: ${{ needs.discover-agent.outputs.test-run-id }}
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
         INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
         INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
         TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
@@ -345,7 +342,7 @@ jobs:
       if: always()
       shell: pwsh
       env:
-        TEST_RUN_ID: ${{ needs.discover-agent.outputs.test-run-id }}
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
         INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
         INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
         TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
@@ -355,11 +352,7 @@ jobs:
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
 
         # 1. Login, retrieve API key and get access token in one step
-        $accessToken = Get-TerraForgeAuthToken `
-            -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
-            -KeyVaultName            $env:INFRA_KEYVAULT `
-            -ApiKeySecretName        $env:TERRAFORGE_API_KEY_SECRET `
-            -ApiBaseUrl              $env:TERRAFORGE_API_BASE_URL
+        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
 
         # 2. Complete the test run
         Set-TestRun -Action 'Complete' `
@@ -367,31 +360,7 @@ jobs:
             -AccessToken $accessToken `
             -TestRunId $env:TEST_RUN_ID
 
-        # 3. Parse AdditionalTests.xml to get failed test case count,passed case count, if not all case passed, use Set-TestRun to update test run status
-        $total = 0
-        $failures = 0
-        $errors = 0
-        $ignored = 0
-        $xmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"
-        $status = 4 # Failed
-        if (Test-Path $xmlPath) {
-            [xml]$results = Get-Content $xmlPath
-            $total    = [int]$results.'test-results'.total
-            $failures = [int]$results.'test-results'.failures
-            $errors   = [int]$results.'test-results'.errors
-            $ignored  = [int]$results.'test-results'.ignored            
-            if ($failures -gt 0 -or $errors -gt 0 -or $ignored -gt 0) {
-                $status = 4 # Failed
-                write-host "Some test cases did not pass. Total: $total, Failures: $failures, Errors: $errors, Ignored: $ignored"
-            } else {
-             $status = 3 # Passed
-            }
-            Write-Host "All test results uploaded."
-        } else {
-            Write-Warning "Test result file not found: $xmlPath"
-             $status = 4 # Failed
-        }
-        Write-Host "Test run status set to $status"
+       
         # 4. Upload test results to Azure Blob Storage
         Copy-ResultsToAzureBlobStorage `
             -ApiBaseUrl  $env:TERRAFORGE_API_BASE_URL `
@@ -400,6 +369,51 @@ jobs:
             -Files       @($xmlPath)
         Write-Host "Test results copied to Azure Blob Storage."
 
-        # 5. Reset the Azure session VM
+    - name: Reset Azure Session VM
+      if: always()
+      shell: pwsh
+      env:
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
+        INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+        INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+        TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+        TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+      run: |
+        # Load shared TerraForge helper functions
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+
+        # 1. Login, retrieve API key and get access token in one step
+        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
+
+        # 2. Parse AdditionalTests.xml to determine test run status
+        $total = 0
+        $failures = 0
+        $errors = 0
+        $ignored = 0
+        $xmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"
+        $status = 4 # Default: Failed
+        if (Test-Path $xmlPath) {
+            [xml]$results = Get-Content $xmlPath
+            $total    = [int]$results.'test-results'.total
+            $failures = [int]$results.'test-results'.failures
+            $errors   = [int]$results.'test-results'.errors
+            $ignored  = [int]$results.'test-results'.ignored
+            if ($failures -gt 0 -or $errors -gt 0 -or $ignored -gt 0) {
+                $status = 4 # Failed
+                Write-Host "Some test cases did not pass. Total: $total, Failures: $failures, Errors: $errors, Ignored: $ignored"
+            } else {
+                $status = 3 # Passed
+            }
+        } else {
+            Write-Warning "Test result file not found: $xmlPath"
+            $status = 4 # Failed
+        }
+        Write-Host "Test run status set to $status"
+
+        # 3. Reset the Azure session VM
         $machineId = Get-MachineID
-        Reset-AzureSessionVM -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL -AccessToken $accessToken -TestStatus $status -MachineId $machineId
+        Reset-AzureSessionVM `
+            -ApiBaseUrl  $env:TERRAFORGE_API_BASE_URL `
+            -AccessToken $accessToken `
+            -MachineId   $machineId `
+            -TestStatus  $status
