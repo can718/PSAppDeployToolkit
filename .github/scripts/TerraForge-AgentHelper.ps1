@@ -247,7 +247,7 @@ function Get-RegistryValue {
     }
 
     $value = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
-    return $value ? $value.$Name : $null
+    if ($value) { return $value.$Name } else { return $null }
 }
 
 function Set-RegistryValue {
@@ -332,8 +332,7 @@ function Get-MachineID {
     [CmdletBinding()]
     param ()
     $machineId = Get-RegistryValue -Name 'MachineID'
-    return $machineId ? $machineId : $env:COMPUTERNAME.ToLower()
-}
+    if ($machineId) { return $machineId } else { return $env:COMPUTERNAME.ToLower() }}
 
 #endregion
 
@@ -349,7 +348,7 @@ function Get-VHDDriveLetter {
     [CmdletBinding()]
     param ()
     $drive = Get-PSDrive -Name 'F' -ErrorAction SilentlyContinue
-    return $drive ? 'F' : 'C'
+    if ($drive) { return 'F' } else { return 'C' }
 }
 
 function Get-VHDDirectoryPath {

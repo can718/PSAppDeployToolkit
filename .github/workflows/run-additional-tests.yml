@@ -309,6 +309,11 @@ jobs:
       env:
         PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
         PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
+        TEST_RUN_ID: ${{ needs.discover-agent.outputs.test-run-id }}
+        INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+        INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+        TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+        TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       run: |
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
         $config = New-PesterConfiguration
@@ -318,6 +323,13 @@ jobs:
         $config.TestResult.OutputPath = '.\src\Artifacts\TestOutput\AdditionalTests.xml'
         $config.TestResult.OutputFormat = 'NUnitXml'
         Invoke-Pester -Configuration $config
+
+        # Parse and display test result summary
+        [xml]$results = Get-Content '.\src\Artifacts\TestOutput\AdditionalTests.xml'
+        $total    = [int]$results.'test-results'.total
+        $failures = [int]$results.'test-results'.failures
+        $errors   = [int]$results.'test-results'.errors
+        Write-Host "Total: $total  Failures: $failures  Errors: $errors"
 
     - name: Upload additional test results
       if: always()
@@ -353,4 +365,35 @@ jobs:
             -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL `
             -AccessToken $accessToken `
             -TestRunId $env:TEST_RUN_ID
-  
+
+        # 3. Parse AdditionalTests.xml and upload each test case result via New-TestRunResults
+        $xmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"
+        if (Test-Path $xmlPath) {
+            [xml]$results = Get-Content $xmlPath
+
+            foreach ($suite in $results.'test-results'.'test-suite') {
+                foreach ($testCase in $suite.SelectNodes('.//test-case')) {
+                    $testName   = $testCase.name
+                    $resultCode = switch ($testCase.result) {
+                        'Success' { 2 }
+                        'Failure' { 0 }
+                        'Ignored' { 3 }
+                        default   { 5 }
+                    }
+                    $errMsg = $testCase.failure?.message
+
+                    Write-Host "Uploading result for: $testName ($($testCase.result))"
+                    New-TestRunResults `
+                        -ApiBaseUrl   $env:TERRAFORGE_API_BASE_URL `
+                        -AccessToken  $accessToken `
+                        -TestRunId    $env:TEST_RUN_ID `
+                        -MachineId    $env:COMPUTERNAME `
+                        -TestClass    $suite.name `
+                        -ProductName  $testName `
+                        -ErrorMessage $errMsg
+                }
+            }
+            Write-Host "All test results uploaded."
+        } else {
+            Write-Warning "Test result file not found: $xmlPath"
+        }
