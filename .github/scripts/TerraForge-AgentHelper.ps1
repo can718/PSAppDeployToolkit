@@ -3,7 +3,8 @@
     Shared helper functions for TerraForge agent discovery and launch.
 #>
 
-function Get-TerraForgeAuthToken {
+function Get-TerraForgeAuthToken
+{
     <#
     .SYNOPSIS
         One-stop helper: logs into Azure with a Managed Identity, retrieves the
@@ -28,7 +29,8 @@ function Get-TerraForgeAuthToken {
     #>
     [CmdletBinding()]
     [OutputType([string])]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ManagedIdentityClientId,
 
@@ -52,7 +54,8 @@ function Get-TerraForgeAuthToken {
     return Get-TerraForgeAccessToken -ApiBaseUrl $ApiBaseUrl -ApiAccessKey $apiKey
 }
 
-function Connect-AzureWithManagedIdentity {
+function Connect-AzureWithManagedIdentity
+{
     <#
     .SYNOPSIS
         Login to Azure using a Managed Identity.
@@ -60,7 +63,8 @@ function Connect-AzureWithManagedIdentity {
         The client ID of the Managed Identity.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ClientId
     )
@@ -70,7 +74,8 @@ function Connect-AzureWithManagedIdentity {
     Write-Host "Connected to Azure successfully."
 }
 
-function Get-TerraForgeApiKey {
+function Get-TerraForgeApiKey
+{
     <#
     .SYNOPSIS
         Retrieves the TerraForge API access key from Azure Key Vault.
@@ -83,7 +88,8 @@ function Get-TerraForgeApiKey {
     #>
     [CmdletBinding()]
     [OutputType([string])]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$SecretName,
 
@@ -96,7 +102,8 @@ function Get-TerraForgeApiKey {
     return $apiKey
 }
 
-function Get-TerraForgeAccessToken {
+function Get-TerraForgeAccessToken
+{
     <#
     .SYNOPSIS
         Requests a TerraForge access token using the provided API access key.
@@ -109,7 +116,8 @@ function Get-TerraForgeAccessToken {
     #>
     [CmdletBinding()]
     [OutputType([string])]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl,
 
@@ -135,7 +143,8 @@ function Get-TerraForgeAccessToken {
     return $content.data.accessToken
 }
 
-function Invoke-TerraForgeLaunchAgent {
+function Invoke-TerraForgeLaunchAgent
+{
     <#
     .SYNOPSIS
         Launches/discovers a TerraForge agent machine and returns its details.
@@ -152,7 +161,8 @@ function Invoke-TerraForgeLaunchAgent {
     #>
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl,
 
@@ -195,7 +205,8 @@ function Invoke-TerraForgeLaunchAgent {
     }
 }
 
-function Set-GitHubOutput {
+function Set-GitHubOutput
+{
     <#
     .SYNOPSIS
         Writes a key-value pair to the GitHub Actions output file.
@@ -208,7 +219,8 @@ function Set-GitHubOutput {
         Set-GitHubOutput -Name 'version' -Value '1.0.0'
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$Name,
 
@@ -222,7 +234,8 @@ function Set-GitHubOutput {
 
 #region Registry Helpers
 
-function Get-RegistryValue {
+function Get-RegistryValue
+{
     <#
     .SYNOPSIS
         Reads a value from the Windows registry.
@@ -234,7 +247,8 @@ function Get-RegistryValue {
         [object] The registry value, or $null if not found.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter()]
         [string]$Path = 'HKLM:\SOFTWARE\Microsoft\TerraforgeAgent',
 
@@ -250,7 +264,8 @@ function Get-RegistryValue {
     if ($value) { return $value.$Name } else { return $null }
 }
 
-function Set-RegistryValue {
+function Set-RegistryValue
+{
     <#
     .SYNOPSIS
         Writes a value to the Windows registry, creating the key if necessary.
@@ -264,7 +279,8 @@ function Set-RegistryValue {
         The registry value type (default: String).
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter()]
         [string]$Path = 'HKLM:\SOFTWARE\Microsoft\TerraforgeAgent',
 
@@ -298,7 +314,8 @@ function Set-RegistryValue {
     Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force
 }
 
-function Get-SessionID {
+function Get-SessionID
+{
     <#
     .SYNOPSIS
         Reads the TerraForge SessionID from the agent registry.
@@ -310,7 +327,8 @@ function Get-SessionID {
     return Get-RegistryValue -Name 'SessionID'
 }
 
-function Get-ConfigName {
+function Get-ConfigName
+{
     <#
     .SYNOPSIS
         Reads the TerraForge ConfigName from the agent registry.
@@ -322,7 +340,8 @@ function Get-ConfigName {
     return Get-RegistryValue -Name 'ConfigName'
 }
 
-function Get-MachineID {
+function Get-MachineID
+{
     <#
     .SYNOPSIS
         Returns the TerraForge MachineID from the agent registry, falling back to $env:COMPUTERNAME.
@@ -338,7 +357,8 @@ function Get-MachineID {
 
 #region VHD Helpers
 
-function Get-VHDDriveLetter {
+function Get-VHDDriveLetter
+{
     <#
     .SYNOPSIS
         Returns the preferred VHD drive letter (F if available, otherwise C).
@@ -351,7 +371,8 @@ function Get-VHDDriveLetter {
     if ($drive) { return 'F' } else { return 'C' }
 }
 
-function Get-VHDDirectoryPath {
+function Get-VHDDirectoryPath
+{
     <#
     .SYNOPSIS
         Returns the full path to the VHD directory on the preferred drive.
@@ -368,7 +389,8 @@ function Get-VHDDirectoryPath {
 
 #region Azure Key Vault
 
-function Get-AzureKeyVaultSecretValue {
+function Get-AzureKeyVaultSecretValue
+{
     <#
     .SYNOPSIS
         Retrieves a secret from Azure Key Vault using a Managed Identity, with retry logic.
@@ -387,7 +409,8 @@ function Get-AzureKeyVaultSecretValue {
         otherwise the raw Az secret object.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$SecretName,
 
@@ -441,7 +464,8 @@ function Get-AzureKeyVaultSecretValue {
     }
 }
 
-function Get-SessionAdministratorSecretName {
+function Get-SessionAdministratorSecretName
+{
     <#
     .SYNOPSIS
         Builds the Key Vault secret name for a session administrator credential.
@@ -455,7 +479,8 @@ function Get-SessionAdministratorSecretName {
         [string] The secret name in format '{SessionId}-{MachineId}-{Username}'.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [int]$SessionId,
 
@@ -471,7 +496,8 @@ function Get-SessionAdministratorSecretName {
     return $secretName
 }
 
-function Get-SessionAdministratorCredential {
+function Get-SessionAdministratorCredential
+{
     <#
     .SYNOPSIS
         Retrieves the PSCredential for a session administrator from Azure Key Vault.
@@ -489,7 +515,8 @@ function Get-SessionAdministratorCredential {
         [PSCredential]
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [int]$SessionId,
 
@@ -523,7 +550,8 @@ function Get-SessionAdministratorCredential {
 
 #region TerraForge VM Lifecycle
 
-function Start-AzureSessionVM {
+function Start-AzureSessionVM
+{
     <#
     .SYNOPSIS
         Activates a TerraForge Azure session VM and returns its machine/session details.
@@ -545,7 +573,8 @@ function Start-AzureSessionVM {
         Hashtable with MachineId, SessionId, IPAddress; or $null on 404.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl,
 
@@ -583,7 +612,8 @@ function Start-AzureSessionVM {
         AdoBuildId   = $AdoBuildId
     } | ConvertTo-Json
 
-    try {
+    try 
+    {
         Write-Host "Starting Azure session VM (config: $ConfigName)..."
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
@@ -598,7 +628,9 @@ function Start-AzureSessionVM {
             SessionId = $content.data.sessionId
             IPAddress = $content.data.ipAddress
         }
-    } catch {
+    } 
+    catch 
+    {
         if ($_.Exception.Message -match '404') {
             Write-Warning "Start-AzureSessionVM: resource not found (404). Returning null."
             return $null
@@ -607,7 +639,8 @@ function Start-AzureSessionVM {
     }
 }
 
-function Reset-AzureSessionVM {
+function Reset-AzureSessionVM
+{
     <#
     .SYNOPSIS
         Resets a TerraForge Azure session VM.
@@ -621,7 +654,8 @@ function Reset-AzureSessionVM {
         The test status code to report with the reset.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl,
 
@@ -666,7 +700,8 @@ function Reset-AzureSessionVM {
     }
 }
 
-function Get-AzureVMStatus {
+function Get-AzureVMStatus
+{
     <#
     .SYNOPSIS
         Retrieves the power status of a TerraForge Azure VM.
@@ -681,7 +716,8 @@ function Get-AzureVMStatus {
     #>
     [CmdletBinding()]
     [OutputType([string])]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl,
 
@@ -719,7 +755,8 @@ function Get-AzureVMStatus {
 
 #region TerraForge Storage
 
-function Get-TFPFSStorageAccountAccessKey {
+function Get-TFPFSStorageAccountAccessKey
+{
     <#
     .SYNOPSIS
         Retrieves the TFPFS storage account access key via the TerraForge API.
@@ -732,7 +769,8 @@ function Get-TFPFSStorageAccountAccessKey {
     #>
     [CmdletBinding()]
     [OutputType([string])]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl,
 
@@ -763,7 +801,8 @@ function Get-TFPFSStorageAccountAccessKey {
     }
 }
 
-function Start-AzCopy {
+function Start-AzCopy
+{
     <#
     .SYNOPSIS
         Copies files using AzCopy with MSI authentication.
@@ -775,7 +814,8 @@ function Start-AzCopy {
         The Managed Identity client ID for AzCopy MSI login.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$Source,
 
@@ -807,7 +847,8 @@ function Start-AzCopy {
 
 #region Test Run Management
 
-function Set-TestRun {
+function Set-TestRun
+{
     <#
     .SYNOPSIS
         Starts or completes a TerraForge test run.
@@ -839,7 +880,8 @@ function Set-TestRun {
         Hashtable with key 'Id' containing the test run ID.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl,
 
@@ -929,7 +971,8 @@ function Set-TestRun {
     }
 }
 
-function New-TestRunResults {
+function New-TestRunResults
+{
     <#
     .SYNOPSIS
         Creates a new test run result entry in TerraForge.
@@ -953,7 +996,8 @@ function New-TestRunResults {
         Hashtable with key 'Id' containing the created result ID.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl,
 
@@ -1014,7 +1058,8 @@ function New-TestRunResults {
     }
 }
 
-function Update-TestRunResults {
+function Update-TestRunResults
+{
     <#
     .SYNOPSIS
         Updates an existing TerraForge test run result with a final status.
@@ -1032,7 +1077,8 @@ function Update-TestRunResults {
         Hashtable with key 'Id' containing the updated result ID.
     #>
     [CmdletBinding()]
-    param (
+    param
+    (
         [Parameter(Mandatory)]
         [string]$ApiBaseUrl,
 
