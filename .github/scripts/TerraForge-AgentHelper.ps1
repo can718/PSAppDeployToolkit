@@ -1,32 +1,7 @@
-<#
-.SYNOPSIS
-    Shared helper functions for TerraForge agent discovery and launch.
-#>
+
 
 function Get-TerraForgeAuthToken
 {
-    <#
-    .SYNOPSIS
-        One-stop helper: logs into Azure with a Managed Identity, retrieves the
-        TerraForge API access key from Key Vault, and returns a bearer access token.
-        Use this instead of calling the three individual functions separately.
-    .PARAMETER ManagedIdentityClientId
-        The client ID of the Managed Identity (maps to INFRA_MI_CLIENT_ID).
-    .PARAMETER KeyVaultName
-        The Azure Key Vault name (maps to INFRA_KEYVAULT).
-    .PARAMETER ApiKeySecretName
-        The Key Vault secret name for the TerraForge API key (maps to TERRAFORGE_API_KEY_SECRET).
-    .PARAMETER ApiBaseUrl
-        The TerraForge API base URL (maps to TERRAFORGE_API_BASE_URL).
-    .OUTPUTS
-        [string] The bearer access token, ready to pass as -AccessToken to other functions.
-    .EXAMPLE
-        $accessToken = Get-TerraForgeAuthToken `
-            -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
-            -KeyVaultName            $env:INFRA_KEYVAULT `
-            -ApiKeySecretName        $env:TERRAFORGE_API_KEY_SECRET `
-            -ApiBaseUrl              $env:TERRAFORGE_API_BASE_URL
-    #>
     [CmdletBinding()]
     [OutputType([string])]
     param
@@ -56,12 +31,6 @@ function Get-TerraForgeAuthToken
 
 function Connect-AzureWithManagedIdentity
 {
-    <#
-    .SYNOPSIS
-        Login to Azure using a Managed Identity.
-    .PARAMETER ClientId
-        The client ID of the Managed Identity.
-    #>
     [CmdletBinding()]
     param
     (
@@ -76,16 +45,6 @@ function Connect-AzureWithManagedIdentity
 
 function Get-TerraForgeApiKey
 {
-    <#
-    .SYNOPSIS
-        Retrieves the TerraForge API access key from Azure Key Vault.
-    .PARAMETER SecretName
-        The name of the secret in Key Vault.
-    .PARAMETER VaultName
-        The name of the Azure Key Vault.
-    .OUTPUTS
-        [string] The plain-text API access key.
-    #>
     [CmdletBinding()]
     [OutputType([string])]
     param
@@ -104,16 +63,6 @@ function Get-TerraForgeApiKey
 
 function Get-TerraForgeAccessToken
 {
-    <#
-    .SYNOPSIS
-        Requests a TerraForge access token using the provided API access key.
-    .PARAMETER ApiBaseUrl
-        The base URL of the TerraForge API.
-    .PARAMETER ApiAccessKey
-        The API access key retrieved from Key Vault.
-    .OUTPUTS
-        [string] The bearer access token.
-    #>
     [CmdletBinding()]
     [OutputType([string])]
     param
@@ -125,22 +74,19 @@ function Get-TerraForgeAccessToken
         [string]$ApiAccessKey
     )
 
-    $headers = @
-    {
+    $headers = @{
         "Content-Type"  = "application/json"
         "X-Client-Type" = "Automated"
     }
-    $payload = @
-    {
-        accessKey = $ApiAccessKey
-    } | ConvertTo-Json
+    $payload = @{ accessKey = $ApiAccessKey } | ConvertTo-Json
 
     Write-Host "Requesting TerraForge access token..."
     $response = Invoke-WebRequest -Uri "$ApiBaseUrl/api/auth/token" `
         -Method Post -Headers $headers -Body $payload -ErrorAction Stop
     $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
-    if (-not ($content -and $content.data -and $content.data.accessToken)) {
+    if (-not ($content -and $content.data -and $content.data.accessToken))
+    {
         throw "Failed to get access token from response: $($response.Content)"
     }
 
@@ -149,20 +95,6 @@ function Get-TerraForgeAccessToken
 
 function Invoke-TerraForgeLaunchAgent
 {
-    <#
-    .SYNOPSIS
-        Launches/discovers a TerraForge agent machine and returns its details.
-    .PARAMETER ApiBaseUrl
-        The base URL of the TerraForge API.
-    .PARAMETER AccessToken
-        The bearer access token from Get-TerraForgeAccessToken.
-    .PARAMETER ConfigName
-        The TerraForge configuration name to use for the launch.
-    .PARAMETER PoolType
-        The pool type (default: 3).
-    .OUTPUTS
-        [PSCustomObject] with MachineId, AgentName, and MachineUrl.
-    #>
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param
@@ -180,14 +112,12 @@ function Invoke-TerraForgeLaunchAgent
         [int]$PoolType = 3
     )
 
-    $authHeaders = @
-    {
+    $authHeaders = @{
         "Authorization" = "Bearer $AccessToken"
         "Content-Type"  = "application/json"
         "X-Client-Type" = "Automated"
     }
-    $launchPayload = @
-    {
+    $launchPayload = @{
         configName = $ConfigName
         poolType   = $PoolType
     } | ConvertTo-Json
@@ -204,8 +134,7 @@ function Invoke-TerraForgeLaunchAgent
     Write-Host "Launched agent machine: $agentName"
     Write-Host "Machine URL: $machineUrl"
 
-    return [PSCustomObject]@
-    {
+    return [PSCustomObject]@{
         MachineId  = $machineId
         AgentName  = $agentName
         MachineUrl = $machineUrl
@@ -214,17 +143,6 @@ function Invoke-TerraForgeLaunchAgent
 
 function Set-GitHubOutput
 {
-    <#
-    .SYNOPSIS
-        Writes a key-value pair to the GitHub Actions output file.
-    .PARAMETER Name
-        The output variable name (key).
-    .PARAMETER Value
-        The output variable value.
-    .EXAMPLE
-        Set-GitHubOutput -Name 'runner-label' -Value $agentName
-        Set-GitHubOutput -Name 'version' -Value '1.0.0'
-    #>
     [CmdletBinding()]
     param
     (
@@ -243,16 +161,6 @@ function Set-GitHubOutput
 
 function Get-RegistryValue
 {
-    <#
-    .SYNOPSIS
-        Reads a value from the Windows registry.
-    .PARAMETER Path
-        The registry key path. Defaults to the TerraForge agent registry path.
-    .PARAMETER Name
-        The name of the registry value to read.
-    .OUTPUTS
-        [object] The registry value, or $null if not found.
-    #>
     [CmdletBinding()]
     param
     (
@@ -263,12 +171,20 @@ function Get-RegistryValue
         [string]$Name
     )
 
-    if (-not (Test-Path $Path)) {
+    if (-not (Test-Path $Path))
+    {
         return $null
     }
 
     $value = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
-    if ($value) { return $value.$Name } else { return $null }
+    if ($value)
+    {
+        return $value.$Name
+    }
+    else
+    {
+        return $null
+    }
 }
 
 function Set-RegistryValue
@@ -301,20 +217,35 @@ function Set-RegistryValue
         [Microsoft.Win32.RegistryValueKind]$Type = [Microsoft.Win32.RegistryValueKind]::String
     )
 
-    if (-not (Test-Path $Path)) {
+    if (-not (Test-Path $Path))
+    {
         New-Item -Path $Path -Force | Out-Null
     }
 
-    if ($Type -eq [Microsoft.Win32.RegistryValueKind]::DWord) {
-        if ($Value -is [bool]) {
+    if ($Type -eq [Microsoft.Win32.RegistryValueKind]::DWord)
+    {
+        if ($Value -is [bool])
+        {
             $Value = [int]$Value
-        } elseif ($Value -in 'True', 'true', '1') {
+        }
+        elseif ($Value -in 'True', 'true', '1')
+        {
             $Value = 1
-        } elseif ($Value -in 'False', 'false', '0') {
+        }
+        elseif ($Value -in 'False', 'false', '0')
+        {
             $Value = 0
-        } else {
-            try { $Value = [int]$Value }
-            catch { throw "Cannot convert value '$Value' to integer for DWord registry type." }
+        }
+        else
+        {
+            try
+            {
+                $Value = [int]$Value
+            }
+            catch
+            {
+                throw "Cannot convert value '$Value' to integer for DWord registry type."
+            }
         }
     }
 
@@ -323,12 +254,6 @@ function Set-RegistryValue
 
 function Get-SessionID
 {
-    <#
-    .SYNOPSIS
-        Reads the TerraForge SessionID from the agent registry.
-    .OUTPUTS
-        [string] The SessionID value, or $null.
-    #>
     [CmdletBinding()]
     param ()
     return Get-RegistryValue -Name 'SessionID'
@@ -336,12 +261,6 @@ function Get-SessionID
 
 function Get-ConfigName
 {
-    <#
-    .SYNOPSIS
-        Reads the TerraForge ConfigName from the agent registry.
-    .OUTPUTS
-        [string] The ConfigName value, or $null.
-    #>
     [CmdletBinding()]
     param ()
     return Get-RegistryValue -Name 'ConfigName'
@@ -349,72 +268,23 @@ function Get-ConfigName
 
 function Get-MachineID
 {
-    <#
-    .SYNOPSIS
-        Returns the TerraForge MachineID from the agent registry, falling back to $env:COMPUTERNAME.
-    .OUTPUTS
-        [string] The MachineID.
-    #>
     [CmdletBinding()]
     param ()
     $machineId = Get-RegistryValue -Name 'MachineID'
-    if ($machineId) { return $machineId } else { return $env:COMPUTERNAME.ToLower() }}
-
-#endregion
-
-#region VHD Helpers
-
-function Get-VHDDriveLetter
-{
-    <#
-    .SYNOPSIS
-        Returns the preferred VHD drive letter (F if available, otherwise C).
-    .OUTPUTS
-        [string] Single drive letter.
-    #>
-    [CmdletBinding()]
-    param ()
-    $drive = Get-PSDrive -Name 'F' -ErrorAction SilentlyContinue
-    if ($drive) { return 'F' } else { return 'C' }
-}
-
-function Get-VHDDirectoryPath
-{
-    <#
-    .SYNOPSIS
-        Returns the full path to the VHD directory on the preferred drive.
-    .OUTPUTS
-        [string] Path such as 'F:\VHD' or 'C:\VHD'.
-    #>
-    [CmdletBinding()]
-    param ()
-    $drive = Get-VHDDriveLetter
-    return "${drive}:\VHD"
+    if ($machineId)
+    {
+        return $machineId
+    }
+    else
+    {
+        return $env:COMPUTERNAME.ToLower()
+    }
 }
 
 #endregion
-
-#region Azure Key Vault
 
 function Get-AzureKeyVaultSecretValue
 {
-    <#
-    .SYNOPSIS
-        Retrieves a secret from Azure Key Vault using a Managed Identity, with retry logic.
-    .PARAMETER SecretName
-        The name of the secret to retrieve.
-    .PARAMETER VaultName
-        The Azure Key Vault name.
-    .PARAMETER ManagedIdentityClientId
-        The client ID of the Managed Identity used to authenticate.
-    .PARAMETER AsPlainText
-        If specified, returns the secret as plain text inside a hashtable with key 'SecretValue'.
-    .PARAMETER RetryCount
-        Number of retry attempts on failure (default: 3).
-    .OUTPUTS
-        Hashtable with key 'SecretValue' (plain text) when -AsPlainText is used,
-        otherwise the raw Az secret object.
-    #>
     [CmdletBinding()]
     param
     (
@@ -435,12 +305,15 @@ function Get-AzureKeyVaultSecretValue
     )
 
     $attempt = $RetryCount
-    while ($attempt -gt 0) {
-        try {
+    while ($attempt -gt 0)
+    {
+        try
+        {
             Start-Sleep -Seconds 3
 
             $ctx = Get-AzContext
-            while ($ctx) {
+            while ($ctx)
+            {
                 Write-Verbose "Clearing existing Azure context for account: $($ctx.Account)"
                 Disconnect-AzAccount -ErrorAction SilentlyContinue
                 Clear-AzContext -Force -ErrorAction SilentlyContinue
@@ -451,23 +324,29 @@ function Get-AzureKeyVaultSecretValue
             Connect-AzAccount -Identity -AccountId $ManagedIdentityClientId | Out-Null
             Write-Host "Retrieving secret '$SecretName' from Key Vault '$VaultName'..."
 
-            if ($AsPlainText) {
+            if ($AsPlainText)
+            {
                 $secretValue = Get-AzKeyVaultSecret -VaultName $VaultName -Name $SecretName -AsPlainText
-                return @
-                {
+                return @{
                     SecretValue = $secretValue
                 }
-            } else {
+            }
+            else
+            {
                 $secret = Get-AzKeyVaultSecret -VaultName $VaultName -Name $SecretName
-                if (-not $secret.SecretValue) {
+                if (-not $secret.SecretValue)
+                {
                     throw "Secret '$SecretName' returned an empty value."
                 }
                 return $secret
             }
-        } catch {
+        }
+        catch
+        {
             $attempt--
             Write-Warning "Failed to retrieve secret (attempts left: $attempt): $($_.Exception.Message)"
-            if ($attempt -eq 0) {
+            if ($attempt -eq 0)
+            {
                 throw "Failed to retrieve secret '$SecretName' after $RetryCount attempts: $($_.Exception.Message)"
             }
         }
@@ -476,18 +355,6 @@ function Get-AzureKeyVaultSecretValue
 
 function Get-SessionAdministratorSecretName
 {
-    <#
-    .SYNOPSIS
-        Builds the Key Vault secret name for a session administrator credential.
-    .PARAMETER SessionId
-        The session ID.
-    .PARAMETER MachineId
-        The machine ID.
-    .PARAMETER Username
-        The administrator username (default: Administrator).
-    .OUTPUTS
-        [string] The secret name in format '{SessionId}-{MachineId}-{Username}'.
-    #>
     [CmdletBinding()]
     param
     (
@@ -508,22 +375,6 @@ function Get-SessionAdministratorSecretName
 
 function Get-SessionAdministratorCredential
 {
-    <#
-    .SYNOPSIS
-        Retrieves the PSCredential for a session administrator from Azure Key Vault.
-    .PARAMETER SessionId
-        The session ID.
-    .PARAMETER MachineId
-        The machine ID.
-    .PARAMETER VaultName
-        The Azure Key Vault name containing user credentials.
-    .PARAMETER ManagedIdentityClientId
-        The Managed Identity client ID used to access the Key Vault.
-    .PARAMETER Username
-        The administrator username (default: Administrator).
-    .OUTPUTS
-        [PSCredential]
-    #>
     [CmdletBinding()]
     param
     (
@@ -562,26 +413,6 @@ function Get-SessionAdministratorCredential
 
 function Start-AzureSessionVM
 {
-    <#
-    .SYNOPSIS
-        Activates a TerraForge Azure session VM and returns its machine/session details.
-    .PARAMETER ApiBaseUrl
-        The TerraForge API base URL (e.g. 'https://terraforgeapi.southeastasia.cloudapp.azure.com/api').
-    .PARAMETER AccessToken
-        The bearer access token from Get-TerraForgeAccessToken.
-    .PARAMETER ConfigName
-        The TerraForge configuration name (default: 'Catalog-AppRunner').
-    .PARAMETER PoolType
-        The pool type (default: 2).
-    .PARAMETER OsName
-        The OS name (default: 'Windows11').
-    .PARAMETER Architecture
-        The CPU architecture (default: 'X64').
-    .PARAMETER AdoBuildId
-        Optional ADO build ID to associate with this run.
-    .OUTPUTS
-        Hashtable with MachineId, SessionId, IPAddress; or $null on 404.
-    #>
     [CmdletBinding()]
     param
     (
@@ -607,16 +438,14 @@ function Start-AzureSessionVM
         [string]$AdoBuildId
     )
 
-    $headers = @
-    {
+    $headers = @{
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
     }
 
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Activate"
-    $payload = @
-    {
+    $payload = @{
         configName   = $ConfigName
         poolType     = $PoolType
         osName       = $OsName
@@ -624,27 +453,28 @@ function Start-AzureSessionVM
         AdoBuildId   = $AdoBuildId
     } | ConvertTo-Json
 
-    try 
+    try
     {
         Write-Host "Starting Azure session VM (config: $ConfigName)..."
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
-        if (-not $content -or -not $content.data -or -not $content.data.machineId -or -not $content.data.sessionId) {
+        if (-not $content -or -not $content.data -or -not $content.data.machineId -or -not $content.data.sessionId)
+        {
             throw "Invalid response received from $uri"
         }
 
         Write-Host "Started VM — MachineId: $($content.data.machineId), SessionId: $($content.data.sessionId), IP: $($content.data.ipAddress)"
-    return @
-    {
+        return @{
             MachineId = $content.data.machineId
             SessionId = $content.data.sessionId
             IPAddress = $content.data.ipAddress
         }
-    } 
-    catch 
+    }
+    catch
     {
-        if ($_.Exception.Message -match '404') {
+        if ($_.Exception.Message -match '404')
+        {
             Write-Warning "Start-AzureSessionVM: resource not found (404). Returning null."
             return $null
         }
@@ -654,18 +484,6 @@ function Start-AzureSessionVM
 
 function Reset-AzureSessionVM
 {
-    <#
-    .SYNOPSIS
-        Resets a TerraForge Azure session VM.
-    .PARAMETER ApiBaseUrl
-        The TerraForge API base URL.
-    .PARAMETER AccessToken
-        The bearer access token.
-    .PARAMETER MachineId
-        The machine ID to reset.
-    .PARAMETER TestStatus
-        The test status code to report with the reset.
-    #>
     [CmdletBinding()]
     param
     (
@@ -682,19 +500,16 @@ function Reset-AzureSessionVM
         [int]$TestStatus
     )
 
-    $headers = @
-    {
+    $headers = @{
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
     }
 
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Reset"
-    $payload = @
-    {
+    $payload = @{
         results = @(
-            @
-            {
+            @{
                 machineId    = $MachineId
                 status       = $TestStatus
                 isForceReset = $true
@@ -702,16 +517,20 @@ function Reset-AzureSessionVM
         )
     } | ConvertTo-Json
 
-    try {
+    try
+    {
         Write-Host "Resetting Azure session VM (MachineId: $MachineId)..."
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
-        if (-not $content -or -not $content.data -or -not $content.success) {
+        if (-not $content -or -not $content.data -or -not $content.success)
+        {
             throw "Invalid response received from $uri"
         }
         Write-Host "Azure session VM '$MachineId' reset successfully."
-    } catch {
+    }
+    catch
+    {
         throw "Failed to reset Azure session VM '$MachineId': $($_.Exception.Message)"
     }
 }
@@ -744,8 +563,7 @@ function Get-AzureVMStatus
         [string]$MachineId
     )
 
-    $headers = @
-    {
+    $headers = @{
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
@@ -753,17 +571,21 @@ function Get-AzureVMStatus
 
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/Machines/$MachineId/PowerStatus"
 
-    try {
+    try
+    {
         Write-Host "Getting power status for VM '$MachineId'..."
         $response = Invoke-WebRequest -Uri $uri -Method Get -Headers $headers -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
-        if (-not $content -or -not $content.data -or -not $content.success) {
+        if (-not $content -or -not $content.data -or -not $content.success)
+        {
             throw "Invalid response received from $uri"
         }
         Write-Host "VM '$MachineId' status: $($content.data.powerStateFriendlyName)"
         return $content.data.powerStateFriendlyName
-    } catch {
+    }
+    catch
+    {
         throw "Failed to get Azure VM status for '$MachineId': $($_.Exception.Message)"
     }
 }
@@ -795,8 +617,7 @@ function Get-TFPFSStorageAccountAccessKey
         [string]$AccessToken
     )
 
-    $headers = @
-    {
+    $headers = @{
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
@@ -804,17 +625,21 @@ function Get-TFPFSStorageAccountAccessKey
 
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/KeyVault/Secret/TFPFSStorageAccountAccessKey"
 
-    try {
+    try
+    {
         Write-Host "Retrieving TFPFS storage account access key..."
         $response = Invoke-WebRequest -Uri $uri -Method Get -Headers $headers -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
-        if (-not $content -or -not $content.data -or -not $content.success) {
+        if (-not $content -or -not $content.data -or -not $content.success)
+        {
             throw "Invalid response received from $uri"
         }
         Write-Host "TFPFS storage account access key retrieved successfully."
         return $content.data.value
-    } catch {
+    }
+    catch
+    {
         throw "Failed to retrieve TFPFS storage account access key: $($_.Exception.Message)"
     }
 }
@@ -847,16 +672,20 @@ function Start-AzCopy
     $env:AZCOPY_AUTO_LOGIN_TYPE  = 'MSI'
     $env:AZCOPY_MSI_CLIENT_ID    = $ManagedIdentityClientId
 
-    try {
+    try
+    {
         Write-Host "Starting AzCopy: '$Source' → '$Destination'"
         $result = & azcopy copy $Source $Destination 2>&1
         $result | ForEach-Object { Write-Verbose "AzCopy: $_" }
 
-        if ($LASTEXITCODE -ne 0) {
+        if ($LASTEXITCODE -ne 0)
+        {
             throw "AzCopy exited with code $LASTEXITCODE for source: $Source"
         }
         Write-Host "AzCopy completed successfully for '$Source'."
-    } catch {
+    }
+    catch
+    {
         throw "AzCopy encountered an error: $($_.Exception.Message)"
     }
 }
@@ -938,20 +767,18 @@ function Set-TestRun
         [string]$BranchName
     )
 
-    $headers = @
-    {
+    $headers = @{
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
     }
 
-    if ($Action -eq 'Start') {
-        $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
-    $payload = @
+    if ($Action -eq 'Start')
     {
+        $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
+        $payload = @{
             MachineId = $MachineId
-            request   = @
-            {
+            request   = @{
                 ConfigName    = $ConfigName
                 IsDevOpsAgent = $IsDevOpsAgent
                 AdoBuildId    = if ($AdoBuildId) { [int64]$AdoBuildId } else { $null }
@@ -961,34 +788,37 @@ function Set-TestRun
                 BranchName    = $BranchName
             }
         } | ConvertTo-Json -Depth 5
-    } else {
-        $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Complete"
-    $payload = @
+    }
+    else
     {
-            request = @
-            {
+        $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Complete"
+        $payload = @{
+            request = @{
                 Id            = $TestRunId
                 IsDevOpsAgent = $IsDevOpsAgent
             }
         } | ConvertTo-Json -Depth 5
     }
 
-    try {
+    try
+    {
         Write-Host "$Action test run (MachineId: $MachineId)..."
         Write-Host "URI    : $uri"
         Write-Host "Payload: $payload"
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
-        if (-not $content -or -not $content.data -or -not $content.success) {
+        if (-not $content -or -not $content.data -or -not $content.success)
+        {
             throw "Invalid response received from $uri"
         }
         Write-Host "Test run '$Action' succeeded. Id: $($content.data.id)"
-        return @
-        {
+        return @{
             Id = $content.data.id
         }
-    } catch {
+    }
+    catch
+    {
         # Surface the full response body to aid debugging
         $responseBody = $null
         try { $responseBody = $_.ErrorDetails.Message } catch {}
@@ -1049,8 +879,7 @@ function New-TestRunResults
         [string]$TestCaseId = '0'
     )
 
-    $headers = @
-    {
+    $headers = @{
         'Authorization' = "Bearer $AccessToken"
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
@@ -1070,17 +899,21 @@ function New-TestRunResults
         Category       = 'SNAP'
     } | ConvertTo-Json
 
-    try {
+    try
+    {
         Write-Host "Creating test run result (TestRunId: $TestRunId, MachineId: $MachineId)..."
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
-        if (-not $content -or -not $content.data -or -not $content.success) {
+        if (-not $content -or -not $content.data -or -not $content.success)
+        {
             throw "Invalid response received from $uri"
         }
         Write-Host "Test run result created. Id: $($content.data.id)"
         return @{ Id = $content.data.id }
-    } catch {
+    }
+    catch
+    {
         throw "Failed to create test run result: $($_.Exception.Message)"
     }
 }
@@ -1129,26 +962,26 @@ function Update-TestRunResults
     }
 
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRunResults/Update/$TestRunResultId"
-    $payload = @
-    {
+    $payload = @{
         TestRunResultId = $TestRunResultId
         Result          = $Result
         FinishedTimeUtc = (Get-Date).ToUniversalTime()
         ErrorMessage    = $ErrorMessage
     } | ConvertTo-Json
 
-    try {
+    try
+    {
         Write-Host "Updating test run result '$TestRunResultId' with result code $Result..."
         $response = Invoke-WebRequest -Uri $uri -Method Patch -Headers $headers -Body $payload -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
-        if (-not $content -or -not $content.data -or -not $content.success) 
+        if (-not $content -or -not $content.data -or -not $content.success)
         {
             throw "Invalid response received from $uri"
         }
         Write-Host "Test run result '$TestRunResultId' updated successfully."
         return @{ Id = $content.data.id }
-    } 
+    }
     catch
     {
         throw "Failed to update test run result '$TestRunResultId': $($_.Exception.Message)"
