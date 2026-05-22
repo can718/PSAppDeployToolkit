@@ -200,11 +200,11 @@ jobs:
         }
 
     - name: Display the path
-      shell: powershell
+      shell: pwsh
       run: echo ${env:PATH}
 
     - name: Version Display
-      shell: powershell
+      shell: pwsh
       run: $PSVersionTable
 
     - name: Install .NET 10 SDK (required for net10.0 build target)
@@ -229,7 +229,7 @@ jobs:
 
     - name: Install PowerShell modules
       if: steps.psmodule-cache.outputs.cache-hit != 'true'
-      shell: powershell
+      shell: pwsh
       run: |
         # Upgrade PowerShellGet and PackageManagement first (required on older self-hosted runners)
         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
@@ -250,7 +250,7 @@ jobs:
         dotnet nuget list source
 
     - name: Build (minimal - Prerequisites, Clean, Dependencies, DotNet, Build)
-      shell: powershell
+      shell: pwsh
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
             Invoke-ADTModuleBuild -Steps 'Prerequisites', 'Clean', 'Dependencies', 'DotNet', 'Build'
@@ -258,13 +258,13 @@ jobs:
 
     - name: Generate artifact templates
       id: exports
-      shell: powershell
+      shell: pwsh
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
 
     - name: Prepare PSADT templates for deployment test
       id: template-prep
-      shell: powershell
+      shell: pwsh
       run: |
         $v3Src = '.\src\Artifacts\Template_v3'
         $v4Src = '.\src\Artifacts\Template_v4'
@@ -306,7 +306,7 @@ jobs:
 
     # Add your new test cases below this line
     - name: Run Additional Tests
-      shell: powershell
+      shell: pwsh
       env:
         PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
         PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
@@ -343,7 +343,7 @@ jobs:
   # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
     - name: Complete Test Run and Reset Azure Session VM
       if: always()
-      shell: powershell
+      shell: pwsh
       env:
         TEST_RUN_ID: ${{ needs.discover-agent.outputs.test-run-id }}
         INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
