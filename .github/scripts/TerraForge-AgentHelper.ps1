@@ -854,13 +854,13 @@ function Set-TestRun {
         [string]$MachineId,
 
         [Parameter()]
-        [string]$ConfigName = 'Catalog-Agent',
+        [string]$ConfigName = 'PSADT-Agent',
 
         [Parameter()]
         [bool]$IsDevOpsAgent = $true,
 
         [Parameter()]
-        [string]$TestRunId,
+        [string]$TestRunId, 
 
         [Parameter()]
         [string]$AdoBuildId,
@@ -995,7 +995,7 @@ function New-TestRunResults {
         TestClass      = $TestClass
         TestMethod     = $ProductName
         Result         = 3
-        StartedTimeUtc = (Get-Date -AsUTC)
+        StartedTimeUtc = (Get-Date).ToUniversalTime()
         Category       = 'SNAP'
     } | ConvertTo-Json
 
@@ -1059,7 +1059,7 @@ function Update-TestRunResults {
     $payload = @{
         TestRunResultId = $TestRunResultId
         Result          = $Result
-        FinishedTimeUtc = (Get-Date -AsUTC)
+        FinishedTimeUtc = (Get-Date).ToUniversalTime()
         ErrorMessage    = $ErrorMessage
     } | ConvertTo-Json
 

@@ -49,6 +49,7 @@ jobs:
               -AccessToken  $accessToken `
               -Action       'Start' `
               -MachineId    $env:COMPUTERNAME `
+              -ConfigName   $env:TERRAFORGE_CONFIG_NAME `
               -AdoBuildId   $AdoBuildId `
               -Product      'PSADT_CM' `
               -Title        $runTitle `
@@ -324,12 +325,12 @@ jobs:
         $config.TestResult.OutputFormat = 'NUnitXml'
         Invoke-Pester -Configuration $config
 
-        # Parse and display test result summary
-        [xml]$results = Get-Content '.\src\Artifacts\TestOutput\AdditionalTests.xml'
-        $total    = [int]$results.'test-results'.total
-        $failures = [int]$results.'test-results'.failures
-        $errors   = [int]$results.'test-results'.errors
-        Write-Host "Total: $total  Failures: $failures  Errors: $errors"
+        # # Parse and display test result summary
+        # [xml]$results = Get-Content '.\src\Artifacts\TestOutput\AdditionalTests.xml'
+        # $total    = [int]$results.'test-results'.total
+        # $failures = [int]$results.'test-results'.failures
+        # $errors   = [int]$results.'test-results'.errors
+        # Write-Host "Total: $total  Failures: $failures  Errors: $errors"
 
     - name: Upload additional test results
       if: always()
@@ -340,7 +341,7 @@ jobs:
         if-no-files-found: error
         overwrite: true
   # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
-    - name: Set Test Run End Time
+    - name: Complete Test Run and Reset Azure Session VM
       if: always()
       shell: powershell
       env:
@@ -366,34 +367,31 @@ jobs:
             -AccessToken $accessToken `
             -TestRunId $env:TEST_RUN_ID
 
-        # 3. Parse AdditionalTests.xml and upload each test case result via New-TestRunResults
+        # 3. Parse AdditionalTests.xml to get failed test case count,passed case count, if not all case passed, use Set-TestRun to update test run status
+        $total = 0
+        $failures = 0
+        $errors = 0
+        $ignored = 0
         $xmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"
+        $status = 4 # Failed
         if (Test-Path $xmlPath) {
             [xml]$results = Get-Content $xmlPath
-
-            foreach ($suite in $results.'test-results'.'test-suite') {
-                foreach ($testCase in $suite.SelectNodes('.//test-case')) {
-                    $testName   = $testCase.name
-                    $resultCode = switch ($testCase.result) {
-                        'Success' { 2 }
-                        'Failure' { 0 }
-                        'Ignored' { 3 }
-                        default   { 5 }
-                    }
-                    $errMsg = $testCase.failure?.message
-
-                    Write-Host "Uploading result for: $testName ($($testCase.result))"
-                    New-TestRunResults `
-                        -ApiBaseUrl   $env:TERRAFORGE_API_BASE_URL `
-                        -AccessToken  $accessToken `
-                        -TestRunId    $env:TEST_RUN_ID `
-                        -MachineId    $env:COMPUTERNAME `
-                        -TestClass    $suite.name `
-                        -ProductName  $testName `
-                        -ErrorMessage $errMsg
-                }
+            $total    = [int]$results.'test-results'.total
+            $failures = [int]$results.'test-results'.failures
+            $errors   = [int]$results.'test-results'.errors
+            $ignored  = [int]$results.'test-results'.ignored            
+            if ($failures -gt 0 -or $errors -gt 0 -or $ignored -gt 0) {
+                $status = 4 # Failed
+                write-host "Some test cases did not pass. Total: $total, Failures: $failures, Errors: $errors, Ignored: $ignored"
+            } else {
+             $status = 3 # Passed
             }
             Write-Host "All test results uploaded."
         } else {
             Write-Warning "Test result file not found: $xmlPath"
+             $status = 4 # Failed
         }
+        Write-Host "Test run status set to $status"
+        # reset the Azure session VM
+        $machineId = Get-MachineID
+        Reset-AzureSessionVM -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL -AccessToken $accessToken -TestStatus $status -MachineId $machineId
