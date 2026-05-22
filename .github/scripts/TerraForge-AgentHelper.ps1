@@ -920,22 +920,6 @@ function New-TestRunResults
 
 function Update-TestRunResults
 {
-    <#
-    .SYNOPSIS
-        Updates an existing TerraForge test run result with a final status.
-    .PARAMETER ApiBaseUrl
-        The TerraForge API base URL.
-    .PARAMETER AccessToken
-        The bearer access token.
-    .PARAMETER TestRunResultId
-        The test run result ID to update.
-    .PARAMETER Result
-        The result status code.
-    .PARAMETER ErrorMessage
-        Optional error message to record.
-    .OUTPUTS
-        Hashtable with key 'Id' containing the updated result ID.
-    #>
     [CmdletBinding()]
     param
     (
