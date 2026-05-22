@@ -35,14 +35,20 @@ BeforeAll {
         #>
         param (
             [string]$TestClass,
-            [string]$TestName
+            [object]$PesterTest
         )
         $script:TFCurrentResultId = $null
         if (-not $script:TFReportingEnabled) { return }
-        if ([string]::IsNullOrWhiteSpace($TestName)) {
-            Write-Warning "[TerraForge] Skipping result entry creation: TestName is empty."
+
+        # Resolve test name: ExpandedName → Name → FullyQualifiedName → fallback
+        $testName = $PesterTest.ExpandedName
+        if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.Name }
+        if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.FullyQualifiedName }
+        if ([string]::IsNullOrWhiteSpace($testName)) {
+            Write-Warning "[TerraForge] Skipping result entry creation: could not resolve test name from PesterTest object."
             return
         }
+
         try {
             $result = New-TestRunResults `
                 -ApiBaseUrl  $script:TFApiBaseUrl `
@@ -51,11 +57,11 @@ BeforeAll {
                 -MachineId   $env:COMPUTERNAME `
                 -TestClass   $TestClass `
                 -SessionId   $env:TEST_SESSION_ID `
-                -ProductName $TestName
+                -ProductName $testName
             $script:TFCurrentResultId = $result.Id
-            Write-Verbose "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestName"
+            Write-Verbose "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $testName"
         } catch {
-            Write-Warning "[TerraForge] Failed to create result entry for '$TestName': $($_.Exception.Message)"
+            Write-Warning "[TerraForge] Failed to create result entry for '$testName': $($_.Exception.Message)"
         }
     }
 
@@ -95,7 +101,7 @@ BeforeAll {
 Describe 'Additional Tests' {
     Context 'Sanity checks' {
         BeforeEach {
-            Invoke-TFReportTestCase -TestClass 'Additional Tests / Sanity checks' -TestName ($PSItem.ExpandedName ?? $PSItem.Name)
+            Invoke-TFReportTestCase -TestClass 'Additional Tests / Sanity checks' -PesterTest $PSItem
         }
         AfterEach {
             Invoke-TFUpdateTestCase -TestResult $PSItem
@@ -124,7 +130,7 @@ Describe 'PSADT Build Template Validation' {
         }
 
         BeforeEach {
-            Invoke-TFReportTestCase -TestClass 'PSADT Build Template Validation / Template paths from build output' -TestName ($PSItem.ExpandedName ?? $PSItem.Name)
+            Invoke-TFReportTestCase -TestClass 'PSADT Build Template Validation / Template paths from build output' -PesterTest $PSItem
         }
         AfterEach {
             Invoke-TFUpdateTestCase -TestResult $PSItem
@@ -198,7 +204,7 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
         }
 
         BeforeEach {
-            Invoke-TFReportTestCase -TestClass 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates' -TestName ($PSItem.ExpandedName ?? $PSItem.Name)
+            Invoke-TFReportTestCase -TestClass 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates' -PesterTest $PSItem
         }
         AfterEach {
             Invoke-TFUpdateTestCase -TestResult $PSItem
