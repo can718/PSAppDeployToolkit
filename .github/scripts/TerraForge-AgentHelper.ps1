@@ -842,6 +842,10 @@ function Set-TestRun
 
     if ($Action -eq 'Start')
     {
+        # if sessionID is not provided, set it to current sessionID
+        if (-not $SessionId) {
+            $SessionId = Get-SessionID
+        }
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
         $payload = @{
             MachineId     = $MachineId

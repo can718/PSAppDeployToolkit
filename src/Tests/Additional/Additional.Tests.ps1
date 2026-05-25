@@ -3,6 +3,7 @@
 # Loaded once per session; silently skipped if env vars are not set
 # ---------------------------------------------------------------------------
 BeforeAll {
+    Write-Host "[Pester] Version: $((Get-Module Pester).Version)"
     $script:TFReportingEnabled = $false
     $script:TFAccessToken      = $null
     $script:TFTestRunId        = $env:TEST_RUN_ID
@@ -35,22 +36,12 @@ BeforeAll {
         #>
         param (
             [string]$TestClass,
-            [object]$PesterTest
+            [string]$TestMethod
         )
         $script:TFCurrentResultId = $null
         if (-not $script:TFReportingEnabled) { return }
 
-        # In Pester v5, $PSItem in AfterEach is the Pester.Test object with Name/Result.
-        # Resolve test name from the actual test object properties.
-        $testName = $PesterTest.Name
-        if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.ExpandedName }
-        if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.DisplayName }
-        if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.ExpandedPath }
-        if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.Path | Select-Object -Last 1 }
-        if ([string]::IsNullOrWhiteSpace($testName)) {
-            # Debug: dump available properties to help diagnose
-            Write-Warning "[TerraForge] Could not resolve test name. Type: $($PesterTest.GetType().FullName)"
-            Write-Warning "[TerraForge] Properties: $(($PesterTest | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name) -join ', ')"
+        if ([string]::IsNullOrWhiteSpace($TestMethod)) {
             Write-Warning "[TerraForge] Skipping result entry creation: could not resolve test name."
             return
         }
@@ -63,11 +54,11 @@ BeforeAll {
                 -MachineId   $env:COMPUTERNAME `
                 -TestClass   $TestClass `
                 -SessionId   $env:TEST_SESSION_ID `
-                -ProductName $testName
+                -ProductName $TestMethod
             $script:TFCurrentResultId = $result.Id
-            Write-Host "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $testName"
+            Write-Host "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod"
         } catch {
-            Write-Warning "[TerraForge] Failed to create result entry for '$testName': $($_.Exception.Message)"
+            Write-Warning "[TerraForge] Failed to create result entry for '$TestMethod': $($_.Exception.Message)"
         }
     }
 
@@ -106,9 +97,18 @@ BeforeAll {
 
 Describe 'Additional Tests' {
     Context 'Sanity checks' {
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass  = 'Additional Tests / Sanity checks'
+            $script:CurrentTestMethod = $testInfo.Name
+            Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
+            Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+        }
+
         AfterEach {
-            Invoke-TFReportTestCase -TestClass 'Additional Tests / Sanity checks' -PesterTest $PSItem
-            Invoke-TFUpdateTestCase -TestResult $PSItem
+            $currentTest = $____Pester.CurrentTest
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
         It 'PowerShell version is 5.1 or higher' {
@@ -133,9 +133,18 @@ Describe 'PSADT Build Template Validation' {
             $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
         }
 
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass  = 'PSADT Build Template Validation / Template paths from build output'
+            $script:CurrentTestMethod = $testInfo.Name
+            Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
+            Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+        }
+
         AfterEach {
-            Invoke-TFReportTestCase -TestClass 'PSADT Build Template Validation / Template paths from build output' -PesterTest $PSItem
-            Invoke-TFUpdateTestCase -TestResult $PSItem
+            $currentTest = $____Pester.CurrentTest
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
         It 'PSADT_TEMPLATE_V3_DIR environment variable is set' {
@@ -205,9 +214,18 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
             }
         }
 
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass  = 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates'
+            $script:CurrentTestMethod = $testInfo.Name
+            Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
+            Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+        }
+
         AfterEach {
-            Invoke-TFReportTestCase -TestClass 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates' -PesterTest $PSItem
-            Invoke-TFUpdateTestCase -TestResult $PSItem
+            $currentTest = $____Pester.CurrentTest
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
         It 'Deploy-WithPSADT-ToSCCM.ps1 script exists' {
