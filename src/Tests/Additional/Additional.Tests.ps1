@@ -45,7 +45,12 @@ BeforeAll {
         $testName = $PesterTest.Name
         if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.ExpandedName }
         if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.DisplayName }
+        if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.ExpandedPath }
+        if ([string]::IsNullOrWhiteSpace($testName)) { $testName = $PesterTest.Path | Select-Object -Last 1 }
         if ([string]::IsNullOrWhiteSpace($testName)) {
+            # Debug: dump available properties to help diagnose
+            Write-Warning "[TerraForge] Could not resolve test name. Type: $($PesterTest.GetType().FullName)"
+            Write-Warning "[TerraForge] Properties: $(($PesterTest | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name) -join ', ')"
             Write-Warning "[TerraForge] Skipping result entry creation: could not resolve test name."
             return
         }
