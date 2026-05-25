@@ -5,9 +5,9 @@
 BeforeAll {
     Write-Host "[Pester] Version: $((Get-Module Pester).Version)"
     $script:TFReportingEnabled = $false
-    $script:TFAccessToken      = $null
-    $script:TFTestRunId        = $env:TEST_RUN_ID
-    $script:TFApiBaseUrl       = $env:TERRAFORGE_API_BASE_URL
+    $script:TFAccessToken = $null
+    $script:TFTestRunId = $env:TEST_RUN_ID
+    $script:TFApiBaseUrl = $env:TERRAFORGE_API_BASE_URL
 
     if ($script:TFTestRunId -and $script:TFApiBaseUrl)
     {
@@ -19,9 +19,9 @@ BeforeAll {
             {
                 $script:TFAccessToken = Get-TerraForgeAuthToken `
                     -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
-                    -KeyVaultName            $env:INFRA_KEYVAULT `
-                    -ApiKeySecretName        $env:TERRAFORGE_API_KEY_SECRET `
-                    -ApiBaseUrl              $script:TFApiBaseUrl
+                    -KeyVaultName $env:INFRA_KEYVAULT `
+                    -ApiKeySecretName $env:TERRAFORGE_API_KEY_SECRET `
+                    -ApiBaseUrl $script:TFApiBaseUrl
                 $script:TFReportingEnabled = $true
                 Write-Host "[TerraForge] Reporting enabled for TestRunId: $script:TFTestRunId"
             }
@@ -61,13 +61,13 @@ BeforeAll {
         try
         {
             $result = New-TestRunResults `
-                -ApiBaseUrl  $script:TFApiBaseUrl `
+                -ApiBaseUrl $script:TFApiBaseUrl `
                 -AccessToken $script:TFAccessToken `
-                -TestRunId   $script:TFTestRunId `
-                -TestClass   $TestClass `
-                -SessionId   $env:TEST_SESSION_ID `
+                -TestRunId $script:TFTestRunId `
+                -TestClass $TestClass `
+                -SessionId $env:TEST_SESSION_ID `
                 -ProductName $TestMethod `
-                -MachineId   $env:COMPUTERNAME
+                -MachineId $env:COMPUTERNAME
             $script:TFCurrentResultId = $result.Id
             Write-Host "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod"
         }
@@ -120,11 +120,11 @@ BeforeAll {
             }
 
             Update-TestRunResults `
-                -ApiBaseUrl       $script:TFApiBaseUrl `
-                -AccessToken      $script:TFAccessToken `
-                -TestRunResultId  $script:TFCurrentResultId `
-                -Result           $resultCode `
-                -ErrorMessage     $errorMsg
+                -ApiBaseUrl $script:TFApiBaseUrl `
+                -AccessToken $script:TFAccessToken `
+                -TestRunResultId $script:TFCurrentResultId `
+                -Result $resultCode `
+                -ErrorMessage $errorMsg
             Write-Verbose "[TerraForge] Updated result Id=$($script:TFCurrentResultId) -> code=$resultCode"
         }
         catch
@@ -140,7 +140,7 @@ Describe 'Additional Tests' {
     Context 'Sanity checks' {
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass  = 'Additional Tests / Sanity checks'
+            $script:CurrentTestClass = 'Additional Tests / Sanity checks'
             $script:CurrentTestMethod = $testInfo.Name
             Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
             Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
@@ -176,7 +176,7 @@ Describe 'PSADT Build Template Validation' {
 
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass  = 'PSADT Build Template Validation / Template paths from build output'
+            $script:CurrentTestClass = 'PSADT Build Template Validation / Template paths from build output'
             $script:CurrentTestMethod = $testInfo.Name
             Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
             Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
@@ -242,14 +242,14 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
     Context 'SCCM deployment using build output templates' {
 
         BeforeAll {
-            $script:v3Dir        = $env:PSADT_TEMPLATE_V3_DIR
-            $script:v4Dir        = $env:PSADT_TEMPLATE_V4_DIR
+            $script:v3Dir = $env:PSADT_TEMPLATE_V3_DIR
+            $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
             $script:deployScript = Join-Path $PSScriptRoot 'Deploy-WithPSADT-ToSCCM.ps1'
 
             # Create a dummy MSI file if it does not exist (CI environments won't have the real installer)
-            $script:workDir      = 'C:\PSADT'
-            $script:msiName      = 'PatchMyPC-Publishing-Service-2.1.110.4 (2).msi'
-            $script:msiPath      = Join-Path $script:workDir $script:msiName
+            $script:workDir = 'C:\PSADT'
+            $script:msiName = 'PatchMyPC-Publishing-Service-2.1.110.4 (2).msi'
+            $script:msiPath = Join-Path $script:workDir $script:msiName
             $script:dummyCreated = $false
             if (-not (Test-Path $script:msiPath))
             {
@@ -273,7 +273,7 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
 
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass  = 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates'
+            $script:CurrentTestClass = 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates'
             $script:CurrentTestMethod = $testInfo.Name
             Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
             Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"

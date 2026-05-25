@@ -50,6 +50,12 @@ jobs:
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     strategy:
       fail-fast: false
+    env:
+      INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+      TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+      TERRAFORGE_CONFIG_NAME: "Lite (CM2509 Github)-Agent"
     steps:
     - name: Check out repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
@@ -62,11 +68,6 @@ jobs:
       id: set-test-run-start
       shell: pwsh
       env:
-        INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
-        INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
-        TERRAFORGE_CONFIG_NAME: "Lite (CM2509 Github)-Agent"
-        TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
-        TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
         GITHUB_RUN_ID: ${{ github.run_id }}
         GITHUB_ACTOR: ${{ github.actor }}
       run: |
@@ -250,10 +251,6 @@ jobs:
         PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
         PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
-        INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
-        INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
-        TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
-        TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       run: |
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
         $config = New-PesterConfiguration
@@ -278,93 +275,22 @@ jobs:
       shell: pwsh
       env:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
-        INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
-        INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
-        TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
-        TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       run: |
-        # Load shared TerraForge helper functions
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
-
-        # 1. Login, retrieve API key and get access token in one step
-        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
-
-        # 2. Complete the test run
-        Set-TestRun -Action 'Complete' `
-            -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL `
-            -AccessToken $accessToken `
-            -TestRunId $env:TEST_RUN_ID
+        Invoke-TFCompleteTestRun
 
     - name: Upload Test Results to Azure Blob Storage
       if: always()
       shell: pwsh
       env:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
-        INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
-        INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
-        TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
-        TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       run: |
-        # Load shared TerraForge helper functions
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
-
-        # 1. Login, retrieve API key and get access token in one step
-        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
-
-        # 2. Upload test results to Azure Blob Storage
-        $xmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"
-        Copy-ResultsToAzureBlobStorage `
-            -ApiBaseUrl  $env:TERRAFORGE_API_BASE_URL `
-            -AccessToken $accessToken `
-            -TestRunId   $env:TEST_RUN_ID `
-            -Files       @($xmlPath)
-        Write-Host "Test results copied to Azure Blob Storage."
+        Invoke-TFUploadTestResults
 
     - name: Reset Azure Session VM
       if: always()
       shell: pwsh
-      env:
-        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
-        INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
-        INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
-        TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
-        TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       run: |
-        # Load shared TerraForge helper functions
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
-
-        # 1. Login, retrieve API key and get access token in one step
-        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
-
-        # 2. Parse AdditionalTests.xml to determine test run status
-        $total = 0
-        $failures = 0
-        $errors = 0
-        $ignored = 0
-        $xmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"
-        $status = 4 # Default: Failed
-        if (Test-Path $xmlPath) {
-            [xml]$results = Get-Content $xmlPath
-            $total    = [int]$results.'test-results'.total
-            $failures = [int]$results.'test-results'.failures
-            $errors   = [int]$results.'test-results'.errors
-            $ignored  = [int]$results.'test-results'.ignored
-            if ($failures -gt 0 -or $errors -gt 0 -or $ignored -gt 0) {
-                $status = 4 # Failed
-                Write-Host "Some test cases did not pass. Total: $total, Failures: $failures, Errors: $errors, Ignored: $ignored"
-            } else {
-                $status = 3 # Passed
-            }
-        } else {
-            Write-Warning "Test result file not found: $xmlPath"
-            $status = 4 # Failed
-        }
-        Write-Host "Test run status set to $status"
-
-        # 3. Reset the Azure session VM
-        $machineId = Get-MachineID
-        Reset-AzureSessionVM `
-            -ApiBaseUrl  $env:TERRAFORGE_API_BASE_URL `
-            -AccessToken $accessToken `
-            -MachineId   $machineId `
-            -TestStatus  $status
+        Invoke-TFResetSessionVM

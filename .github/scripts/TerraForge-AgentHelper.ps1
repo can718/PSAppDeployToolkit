@@ -1050,3 +1050,143 @@ function Update-TestRunResults
 }
 
 #endregion
+
+#region Workflow Teardown
+
+function Invoke-TFCompleteTestRun
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
+
+        [Parameter()]
+        [string]$TestRunId = $env:TEST_RUN_ID,
+
+        [Parameter()]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter()]
+        [string]$KeyVaultName = $env:INFRA_KEYVAULT,
+
+        [Parameter()]
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
+    )
+
+    $accessToken = Get-TerraForgeAuthToken `
+        -ApiBaseUrl              $ApiBaseUrl `
+        -ManagedIdentityClientId $ManagedIdentityClientId `
+        -KeyVaultName            $KeyVaultName `
+        -ApiKeySecretName        $ApiKeySecretName
+
+    Write-Host "==> Completing test run $TestRunId ..."
+    Set-TestRun `
+        -ApiBaseUrl  $ApiBaseUrl `
+        -AccessToken $accessToken `
+        -Action      'Complete' `
+        -TestRunId   $TestRunId
+}
+
+function Invoke-TFUploadTestResults
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
+
+        [Parameter()]
+        [string]$TestRunId = $env:TEST_RUN_ID,
+
+        [Parameter()]
+        [string]$TestResultXmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml",
+
+        [Parameter()]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter()]
+        [string]$KeyVaultName = $env:INFRA_KEYVAULT,
+
+        [Parameter()]
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
+    )
+
+    $accessToken = Get-TerraForgeAuthToken `
+        -ApiBaseUrl              $ApiBaseUrl `
+        -ManagedIdentityClientId $ManagedIdentityClientId `
+        -KeyVaultName            $KeyVaultName `
+        -ApiKeySecretName        $ApiKeySecretName
+
+    Write-Host "==> Uploading test results to Azure Blob Storage ..."
+    Copy-ResultsToAzureBlobStorage `
+        -ApiBaseUrl  $ApiBaseUrl `
+        -AccessToken $accessToken `
+        -TestRunId   $TestRunId `
+        -Files       @($TestResultXmlPath)
+    Write-Host "Test results copied to Azure Blob Storage."
+}
+
+function Invoke-TFResetSessionVM
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
+
+        [Parameter()]
+        [string]$TestResultXmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml",
+
+        [Parameter()]
+        [string]$MachineId = (Get-MachineID),
+
+        [Parameter()]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter()]
+        [string]$KeyVaultName = $env:INFRA_KEYVAULT,
+
+        [Parameter()]
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
+    )
+
+    $accessToken = Get-TerraForgeAuthToken `
+        -ApiBaseUrl              $ApiBaseUrl `
+        -ManagedIdentityClientId $ManagedIdentityClientId `
+        -KeyVaultName            $KeyVaultName `
+        -ApiKeySecretName        $ApiKeySecretName
+
+    $vmStatus = 4   # default: Failed
+    if (Test-Path $TestResultXmlPath)
+    {
+        [xml]$xml = Get-Content $TestResultXmlPath
+        $total    = [int]$xml.'test-results'.total
+        $failures = [int]$xml.'test-results'.failures
+        $errors   = [int]$xml.'test-results'.errors
+        $ignored  = [int]$xml.'test-results'.ignored
+
+        if ($failures -gt 0 -or $errors -gt 0 -or $ignored -gt 0)
+        {
+            $vmStatus = 4   # Failed
+            Write-Host "Some test cases did not pass. Total: $total, Failures: $failures, Errors: $errors, Ignored: $ignored"
+        }
+        else
+        {
+            $vmStatus = 3   # Passed
+        }
+    }
+    else
+    {
+        Write-Warning "Test result file not found: $TestResultXmlPath — resetting VM with status Failed."
+    }
+
+    Write-Host "==> Resetting Azure session VM '$MachineId' with status $vmStatus ..."
+    Reset-AzureSessionVM `
+        -ApiBaseUrl  $ApiBaseUrl `
+        -AccessToken $accessToken `
+        -MachineId   $MachineId `
+        -TestStatus  $vmStatus
+}
+
+#endregion
