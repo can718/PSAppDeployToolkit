@@ -1053,6 +1053,64 @@ function Update-TestRunResults
 
 #region Workflow Teardown
 
+function Invoke-TFStartTestRun
+{
+    [CmdletBinding()]
+    [OutputType([string])]
+    param
+    (
+        [Parameter()]
+        [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
+
+        [Parameter()]
+        [string]$ConfigName = $env:TERRAFORGE_CONFIG_NAME,
+
+        [Parameter()]
+        [string]$AdoBuildId = $env:GITHUB_RUN_ID,
+
+        [Parameter()]
+        [string]$QueuedBy = $env:GITHUB_ACTOR,
+
+        [Parameter()]
+        [string]$Title,
+
+        [Parameter()]
+        [string]$Product = 'PSADT',
+
+        [Parameter()]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter()]
+        [string]$KeyVaultName = $env:INFRA_KEYVAULT,
+
+        [Parameter()]
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
+    )
+
+    $accessToken = Get-TerraForgeAuthToken `
+        -ApiBaseUrl              $ApiBaseUrl `
+        -ManagedIdentityClientId $ManagedIdentityClientId `
+        -KeyVaultName            $KeyVaultName `
+        -ApiKeySecretName        $ApiKeySecretName
+
+    $runTitle = if ($Title) { $Title } else { "$Product Tests - Build $AdoBuildId" }
+
+    Write-Host "==> Starting test run (Config: $ConfigName, Build: $AdoBuildId) ..."
+    $testRun = Set-TestRun `
+        -ApiBaseUrl  $ApiBaseUrl `
+        -AccessToken $accessToken `
+        -Action      'Start' `
+        -MachineId   $env:COMPUTERNAME `
+        -ConfigName  $ConfigName `
+        -AdoBuildId  $AdoBuildId `
+        -Product     $Product `
+        -Title       $runTitle `
+        -QueuedBy    $QueuedBy
+
+    Set-GitHubOutput -Name 'test-run-id' -Value $testRun.Id
+    return $testRun.Id
+}
+
 function Invoke-TFCompleteTestRun
 {
     [CmdletBinding()]

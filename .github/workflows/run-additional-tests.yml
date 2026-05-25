@@ -74,26 +74,9 @@ jobs:
         # Load shared TerraForge helper functions
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
 
-        # 1. Login, retrieve API key and get access token in one step
-        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
-
-        # 2. Start the test run
-        $AdoBuildId  = $env:GITHUB_RUN_ID
-        $runTitle    = "Additional Tests - Build $AdoBuildId"
-        $runQueuedBy = $env:GITHUB_ACTOR
-        $testRun = Set-TestRun `
-            -ApiBaseUrl   $env:TERRAFORGE_API_BASE_URL `
-            -AccessToken  $accessToken `
-            -Action       'Start' `
-            -MachineId    $env:COMPUTERNAME `
-            -ConfigName   $env:TERRAFORGE_CONFIG_NAME `
-            -AdoBuildId   $AdoBuildId `
-            -Product      'PSADT' `
-            -Title        $runTitle `
-            -QueuedBy     $runQueuedBy
-
-        # 3. Output test-run-id for later steps
-        Set-GitHubOutput -Name 'test-run-id' -Value $testRun.Id
+        # Start the test run and write test-run-id to GitHub output
+        Invoke-TFStartTestRun `
+            -Title "Additional Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
 
     - name: Install Node.js (required for GitHub Actions on self-hosted runner)
       shell: pwsh
