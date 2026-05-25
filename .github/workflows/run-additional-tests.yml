@@ -29,20 +29,13 @@ jobs:
         id: launch-agent
         shell: pwsh
         run: |
-          # Load shared TerraForge helper functions
+          # Load shared TerraForge helper functions (extracted for reuse across workflows)
           . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
 
-          # 1. Login, retrieve API key and get access token in one step
-          $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
-
-          # 2. Launch/discover agent machine
-          $agent = Invoke-TerraForgeLaunchAgent `
-              -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL `
-              -AccessToken $accessToken `
-              -ConfigName $env:TERRAFORGE_CONFIG_NAME
-
-          # 5. Output runner label for next job
-          Set-GitHubOutput -Name 'runner-label' -Value $agent.AgentName
+          # Authenticate, discover an agent machine for the given config, and expose
+          # its name as the 'runner-label' output consumed by the next job.
+          # ConfigName is read from the job-level env: TERRAFORGE_CONFIG_NAME.
+          Invoke-TFLaunchAgent -ConfigName "Lite (CM2509 Github)-Agent"
 
   run-additional-tests:
     name: Run Additional Tests

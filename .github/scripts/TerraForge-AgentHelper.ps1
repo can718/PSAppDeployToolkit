@@ -1053,6 +1053,42 @@ function Update-TestRunResults
 
 #region Workflow Teardown
 
+function Invoke-TFLaunchAgent
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
+
+        [Parameter()]
+        [string]$ConfigName = $env:TERRAFORGE_CONFIG_NAME,
+
+        [Parameter()]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter()]
+        [string]$KeyVaultName = $env:INFRA_KEYVAULT,
+
+        [Parameter()]
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
+    )
+
+    $accessToken = Get-TerraForgeAuthToken `
+        -ApiBaseUrl              $ApiBaseUrl `
+        -ManagedIdentityClientId $ManagedIdentityClientId `
+        -KeyVaultName            $KeyVaultName `
+        -ApiKeySecretName        $ApiKeySecretName
+
+    $agent = Invoke-TerraForgeLaunchAgent `
+        -ApiBaseUrl  $ApiBaseUrl `
+        -AccessToken $accessToken `
+        -ConfigName  $ConfigName
+
+    Set-GitHubOutput -Name 'runner-label' -Value $agent.AgentName
+    return $agent
+}
+
 function Invoke-TFStartTestRun
 {
     [CmdletBinding()]
