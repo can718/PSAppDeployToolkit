@@ -827,8 +827,12 @@ function Set-TestRun
         [string]$QueuedBy,
 
         [Parameter()]
-        [string]$BranchName
+        [string]$BranchName,
+
+        [Parameter()]
+        [string]$SessionId
     )
+
 
     $headers = @{
         'Authorization' = "Bearer $AccessToken"
@@ -841,14 +845,14 @@ function Set-TestRun
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
         $payload = @{
             MachineId = $MachineId
-            request   = @{
-                ConfigName    = $ConfigName
+             ConfigName    = $ConfigName
                 IsDevOpsAgent = $IsDevOpsAgent
                 AdoBuildId    = if ($AdoBuildId) { [int64]$AdoBuildId } else { $null }
                 Product       = $Product
                 Title         = $Title
                 QueuedBy      = $QueuedBy
                 BranchName    = $BranchName
+                SessionId     = if ($SessionId) { [int64]$SessionId } else { $null }
             }
         } | ConvertTo-Json -Depth 5
     }
@@ -949,10 +953,10 @@ function New-TestRunResults
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRunResults/Create"
     $payload = @{
         MachineId      = $MachineId
-        SessionId      = $SessionId
+        SessionId      = if ($SessionId) { [int64]$SessionId } else { $null }
         TestRunId      = $TestRunId
         TestCaseId     = $TestCaseId
-        Owner          = 'PMPCSH-Test-Team'
+        Owner          = 'PSADT-Test-Team'
         TestClass      = $TestClass
         TestMethod     = $ProductName
         Result         = 3

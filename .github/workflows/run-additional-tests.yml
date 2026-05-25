@@ -340,7 +340,7 @@ jobs:
         if-no-files-found: error
         overwrite: true
   # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
-    - name: Complete Test Run and Reset Azure Session VM
+    - name: Complete Test Run
       if: always()
       shell: pwsh
       env:
