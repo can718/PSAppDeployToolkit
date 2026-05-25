@@ -53,7 +53,8 @@ BeforeAll {
                 -TestRunId   $script:TFTestRunId `
                 -TestClass   $TestClass `
                 -SessionId   $env:TEST_SESSION_ID `
-                -ProductName $TestMethod
+                -ProductName $TestMethod `
+                -MachineId   $env:COMPUTERNAME
             $script:TFCurrentResultId = $result.Id
             Write-Host "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod"
         } catch {

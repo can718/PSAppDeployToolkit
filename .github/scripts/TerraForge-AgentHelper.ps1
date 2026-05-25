@@ -932,8 +932,8 @@ function New-TestRunResults
         [Parameter(Mandatory)]
         [string]$TestRunId,
 
-        [Parameter(Mandatory)]
-        [string]$MachineId,
+        [Parameter()]
+        [string]$MachineId = $env:COMPUTERNAME,
 
         [Parameter(Mandatory)]
         [string]$TestClass,
