@@ -844,16 +844,15 @@ function Set-TestRun
     {
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
         $payload = @{
-            MachineId = $MachineId
-             ConfigName    = $ConfigName
-                IsDevOpsAgent = $IsDevOpsAgent
-                AdoBuildId    = if ($AdoBuildId) { [int64]$AdoBuildId } else { $null }
-                Product       = $Product
-                Title         = $Title
-                QueuedBy      = $QueuedBy
-                BranchName    = $BranchName
-                SessionId     = if ($SessionId) { [int64]$SessionId } else { $null }
-            }
+            MachineId     = $MachineId
+            ConfigName    = $ConfigName
+            IsDevOpsAgent = $IsDevOpsAgent
+            AdoBuildId    = if ($AdoBuildId) { [int64]$AdoBuildId } else { $null }
+            Product       = $Product
+            Title         = $Title
+            QueuedBy      = $QueuedBy
+            BranchName    = $BranchName
+            SessionId     = if ($SessionId) { [int64]$SessionId } else { $null }
         } | ConvertTo-Json -Depth 5
     }
     else
