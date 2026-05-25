@@ -590,7 +590,7 @@ function Update-TestRunResults {
         [Parameter(Mandatory = $true)]
         [string]$TestRunResultId,
         [Parameter(Mandatory = $true)]
-        [int]$Result,
+        [int]$Result, # 0:failed, 2 passed, 3: running
         [Parameter(Mandatory = $false)]
         [string]$ErrorMessage
 

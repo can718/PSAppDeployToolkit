@@ -847,7 +847,8 @@ function Set-TestRun
             MachineId     = $MachineId
             ConfigName    = $ConfigName
             IsDevOpsAgent = $IsDevOpsAgent
-            AdoBuildId    = if ($AdoBuildId) { [int64]$AdoBuildId } else { $null }
+            AdoBuildId    = 123456
+            #if ($AdoBuildId) { [int64]$AdoBuildId } else { $null }
             Product       = $Product
             Title         = $Title
             QueuedBy      = $QueuedBy
