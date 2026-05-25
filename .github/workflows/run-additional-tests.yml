@@ -94,57 +94,6 @@ jobs:
         # 3. Output test-run-id for later steps
         Set-GitHubOutput -Name 'test-run-id' -Value $testRun.Id
 
-    - name: Check runner environment
-      shell: pwsh
-      run: |
-        Write-Host "========== Runner Info =========="
-        Write-Host "Hostname:       $env:COMPUTERNAME"
-        Write-Host "Runner Name:    $env:RUNNER_NAME"
-        Write-Host "Runner OS:      $env:RUNNER_OS"
-        Write-Host "Runner Arch:    $env:RUNNER_ARCH"
-        Write-Host "Workspace:      $env:GITHUB_WORKSPACE"
-
-        Write-Host "`n========== OS =========="
-        [System.Environment]::OSVersion
-        (Get-CimInstance Win32_OperatingSystem).Caption
-
-        Write-Host "`n========== PowerShell =========="
-        $PSVersionTable
-
-        Write-Host "`n========== .NET SDK =========="
-        $dotnet = Get-Command dotnet -ErrorAction Ignore
-        if ($dotnet) {
-          Write-Host "dotnet path:    $($dotnet.Source)"
-          & dotnet --version
-          & dotnet --list-sdks
-        } else {
-          Write-Warning ".NET SDK not found!"
-        }
-
-        Write-Host "`n========== Git =========="
-        $git = Get-Command git -ErrorAction Ignore
-        if ($git) {
-          Write-Host "git path:       $($git.Source)"
-          & git --version
-        } else {
-          Write-Warning "git not found!"
-        }
-
-        Write-Host "`n========== Node.js =========="
-        $node = Get-Command node -ErrorAction Ignore
-        if ($node) {
-          Write-Host "node path:      $($node.Source)"
-          & node --version
-        } else {
-          Write-Warning "Node.js not found!"
-        }
-
-        Write-Host "`n========== Disk Space =========="
-        Get-PSDrive C | Select-Object Name, @{N='Used(GB)';E={[math]::Round($_.Used/1GB,1)}}, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,1)}}
-
-        Write-Host "`n========== Environment Variables =========="
-        Get-ChildItem Env: | Where-Object { $_.Name -match 'GITHUB|RUNNER|DOTNET|NUGET|PATH' } | Sort-Object Name | Format-Table Name, Value -AutoSize
-
     - name: Install Node.js (required for GitHub Actions on self-hosted runner)
       shell: pwsh
       run: |
@@ -294,15 +243,6 @@ jobs:
         "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-    # - name: Test and Build
-    #   shell: cmd
-    #   run: |
-    #     dotnet --version
-    #     dotnet --list-sdks
-    #     dotnet nuget list source
-    #     dotnet workload list
-    #     powershell.exe -ExecutionPolicy Bypass -File build.ps1
-
     # Add your new test cases below this line
     - name: Run Additional Tests
       shell: pwsh
@@ -323,13 +263,6 @@ jobs:
         $config.TestResult.OutputPath = '.\src\Artifacts\TestOutput\AdditionalTests.xml'
         $config.TestResult.OutputFormat = 'NUnitXml'
         Invoke-Pester -Configuration $config
-
-        # # Parse and display test result summary
-        # [xml]$results = Get-Content '.\src\Artifacts\TestOutput\AdditionalTests.xml'
-        # $total    = [int]$results.'test-results'.total
-        # $failures = [int]$results.'test-results'.failures
-        # $errors   = [int]$results.'test-results'.errors
-        # Write-Host "Total: $total  Failures: $failures  Errors: $errors"
 
     - name: Upload additional test results
       if: always()

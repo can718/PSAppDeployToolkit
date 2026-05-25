@@ -47,7 +47,7 @@ jobs:
 
   test:
     name: Run Tests
-    if: false  # TODO: re-enable after self-hosted runner testing
+    # if: false  # TODO: re-enable after self-hosted runner testing
     runs-on: windows-latest
     strategy:
       fail-fast: false

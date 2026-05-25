@@ -873,7 +873,7 @@ function Set-TestRun
     {
         Write-Host "$Action test run (MachineId: $MachineId)..."
         Write-Host "URI    : $uri"
-        Write-Host "Payload: $payload"
+        # Write-Host "Payload: $payload"
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
         $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
@@ -975,7 +975,7 @@ function New-TestRunResults
         StartedTimeUtc = (Get-Date).ToUniversalTime()
         Category       = 'SNAP'
     } | ConvertTo-Json
-    Write-Host "Payload: $payload"
+    # Write-Host "Payload: $payload"
     try
     {
         Write-Host "Creating test run result (TestRunId: $TestRunId, MachineId: $MachineId)..."
