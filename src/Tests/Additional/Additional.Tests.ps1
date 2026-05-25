@@ -9,11 +9,14 @@ BeforeAll {
     $script:TFTestRunId        = $env:TEST_RUN_ID
     $script:TFApiBaseUrl       = $env:TERRAFORGE_API_BASE_URL
 
-    if ($script:TFTestRunId -and $script:TFApiBaseUrl) {
+    if ($script:TFTestRunId -and $script:TFApiBaseUrl)
+    {
         $helperPath = Join-Path $PSScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'
-        if (Test-Path $helperPath) {
+        if (Test-Path $helperPath)
+        {
             . $helperPath
-            try {
+            try
+            {
                 $script:TFAccessToken = Get-TerraForgeAuthToken `
                     -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
                     -KeyVaultName            $env:INFRA_KEYVAULT `
@@ -21,15 +24,20 @@ BeforeAll {
                     -ApiBaseUrl              $script:TFApiBaseUrl
                 $script:TFReportingEnabled = $true
                 Write-Host "[TerraForge] Reporting enabled for TestRunId: $script:TFTestRunId"
-            } catch {
+            }
+            catch
+            {
                 Write-Warning "[TerraForge] Could not obtain access token, reporting disabled: $($_.Exception.Message)"
             }
-        } else {
+        }
+        else
+        {
             Write-Warning "[TerraForge] Helper script not found at: $helperPath"
         }
     }
 
-    function script:Invoke-TFReportTestCase {
+    function script:Invoke-TFReportTestCase
+    {
         <#
             Creates a test run result entry before the test executes.
             Stores the returned ID in $script:TFCurrentResultId for AfterEach to update.
@@ -39,14 +47,19 @@ BeforeAll {
             [string]$TestMethod
         )
         $script:TFCurrentResultId = $null
-        if (-not $script:TFReportingEnabled) { return }
+        if (-not $script:TFReportingEnabled)
+        {
+            return
+        }
 
-        if ([string]::IsNullOrWhiteSpace($TestMethod)) {
+        if ([string]::IsNullOrWhiteSpace($TestMethod))
+        {
             Write-Warning "[TerraForge] Skipping result entry creation: could not resolve test name."
             return
         }
 
-        try {
+        try
+        {
             $result = New-TestRunResults `
                 -ApiBaseUrl  $script:TFApiBaseUrl `
                 -AccessToken $script:TFAccessToken `
@@ -57,12 +70,15 @@ BeforeAll {
                 -MachineId   $env:COMPUTERNAME
             $script:TFCurrentResultId = $result.Id
             Write-Host "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod"
-        } catch {
+        }
+        catch
+        {
             Write-Warning "[TerraForge] Failed to create result entry for '$TestMethod': $($_.Exception.Message)"
         }
     }
 
-    function script:Invoke-TFUpdateTestCase {
+    function script:Invoke-TFUpdateTestCase
+    {
         <#
             Updates the test run result after the test completes.
             Result codes: 2 = Passed, 0 = Failed, 4 = Skipped
@@ -73,21 +89,33 @@ BeforeAll {
         param (
             [object]$TestResult
         )
-        if (-not $script:TFReportingEnabled -or -not $script:TFCurrentResultId) { return }
-        try {
+        if (-not $script:TFReportingEnabled -or -not $script:TFCurrentResultId)
+        {
+            return
+        }
+        try
+        {
             # $TestResult.Result is still "Running" inside AfterEach.
             # Derive outcome: Skipped flag is set before AfterEach runs;
             # ErrorRecord accumulates test body errors before AfterEach runs.
-            $resultCode = if ($TestResult.Skipped) {
+            $resultCode = if ($TestResult.Skipped)
+            {
                 4   # Skipped
-            } elseif ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0) {
+            }
+            elseif ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0)
+            {
                 0   # Failed
-            } else {
+            }
+            else
+            {
                 2   # Passed
             }
-            $errorMsg = if ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0) {
+            $errorMsg = if ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0)
+            {
                 $TestResult.ErrorRecord[0].Exception.Message
-            } else {
+            }
+            else
+            {
                 $null
             }
 
@@ -97,8 +125,10 @@ BeforeAll {
                 -TestRunResultId  $script:TFCurrentResultId `
                 -Result           $resultCode `
                 -ErrorMessage     $errorMsg
-            Write-Verbose "[TerraForge] Updated result Id=$($script:TFCurrentResultId) → code=$resultCode"
-        } catch {
+            Write-Verbose "[TerraForge] Updated result Id=$($script:TFCurrentResultId) -> code=$resultCode"
+        }
+        catch
+        {
             Write-Warning "[TerraForge] Failed to update result Id=$($script:TFCurrentResultId): $($_.Exception.Message)"
         }
     }
@@ -167,24 +197,40 @@ Describe 'PSADT Build Template Validation' {
         }
 
         It 'V3 template directory exists on disk' {
-            if (-not $script:v3Dir) { Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V3_DIR not set'; return }
+            if (-not $script:v3Dir)
+            {
+                Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V3_DIR not set'
+                return
+            }
             Test-Path $script:v3Dir | Should -BeTrue
         }
 
         It 'V4 template directory exists on disk' {
-            if (-not $script:v4Dir) { Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V4_DIR not set'; return }
+            if (-not $script:v4Dir)
+            {
+                Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V4_DIR not set'
+                return
+            }
             Test-Path $script:v4Dir | Should -BeTrue
         }
 
         It 'V3 template contains AppDeployToolkit subfolder' {
-            if (-not $script:v3Dir) { Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V3_DIR not set'; return }
+            if (-not $script:v3Dir)
+            {
+                Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V3_DIR not set'
+                return
+            }
             # Search recursively - zip may extract into a subdirectory
             $found = Get-ChildItem -Path $script:v3Dir -Directory -Filter 'AppDeployToolkit' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             $found | Should -Not -BeNullOrEmpty
         }
 
         It 'V4 template contains Invoke-AppDeployToolkit.ps1' {
-            if (-not $script:v4Dir) { Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V4_DIR not set'; return }
+            if (-not $script:v4Dir)
+            {
+                Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V4_DIR not set'
+                return
+            }
             # Search recursively - zip may extract into a subdirectory
             $found = Get-ChildItem -Path $script:v4Dir -File -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             $found | Should -Not -BeNullOrEmpty
@@ -196,14 +242,14 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
     Context 'SCCM deployment using build output templates' {
 
         BeforeAll {
-            $script:v3Dir = $env:PSADT_TEMPLATE_V3_DIR
-            $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
+            $script:v3Dir        = $env:PSADT_TEMPLATE_V3_DIR
+            $script:v4Dir        = $env:PSADT_TEMPLATE_V4_DIR
             $script:deployScript = Join-Path $PSScriptRoot 'Deploy-WithPSADT-ToSCCM.ps1'
 
             # Create a dummy MSI file if it does not exist (CI environments won't have the real installer)
-            $script:workDir = 'C:\PSADT'
-            $script:msiName = 'PatchMyPC-Publishing-Service-2.1.110.4 (2).msi'
-            $script:msiPath = Join-Path $script:workDir $script:msiName
+            $script:workDir      = 'C:\PSADT'
+            $script:msiName      = 'PatchMyPC-Publishing-Service-2.1.110.4 (2).msi'
+            $script:msiPath      = Join-Path $script:workDir $script:msiName
             $script:dummyCreated = $false
             if (-not (Test-Path $script:msiPath))
             {
