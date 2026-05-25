@@ -3,7 +3,7 @@
 # Loaded once per session; silently skipped if env vars are not set
 # ---------------------------------------------------------------------------
 BeforeAll {
-    Write-Host "[Pester] Version: $((Get-Module Pester).Version)"
+    Write-Information "[Pester] Version: $((Get-Module Pester).Version)" -InformationAction Continue
     $script:TFReportingEnabled = $false
     $script:TFAccessToken = $null
     $script:TFTestRunId = $env:TEST_RUN_ID
@@ -23,7 +23,7 @@ BeforeAll {
                     -ApiKeySecretName $env:TERRAFORGE_API_KEY_SECRET `
                     -ApiBaseUrl $script:TFApiBaseUrl
                 $script:TFReportingEnabled = $true
-                Write-Host "[TerraForge] Reporting enabled for TestRunId: $script:TFTestRunId"
+                Write-Information "[TerraForge] Reporting enabled for TestRunId: $script:TFTestRunId" -InformationAction Continue
             }
             catch
             {
@@ -69,7 +69,7 @@ BeforeAll {
                 -ProductName $TestMethod `
                 -MachineId $env:COMPUTERNAME
             $script:TFCurrentResultId = $result.Id
-            Write-Host "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod"
+            Write-Information "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod" -InformationAction Continue
         }
         catch
         {
@@ -142,8 +142,8 @@ Describe 'Additional Tests' {
             $testInfo = $____Pester.CurrentTest
             $script:CurrentTestClass = 'Additional Tests / Sanity checks'
             $script:CurrentTestMethod = $testInfo.Name
-            Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
-            Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+            Write-Verbose "[BeforeEach] TestClass: $($script:CurrentTestClass)"
+            Write-Verbose "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
 
@@ -178,8 +178,8 @@ Describe 'PSADT Build Template Validation' {
             $testInfo = $____Pester.CurrentTest
             $script:CurrentTestClass = 'PSADT Build Template Validation / Template paths from build output'
             $script:CurrentTestMethod = $testInfo.Name
-            Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
-            Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+            Write-Verbose "[BeforeEach] TestClass: $($script:CurrentTestClass)"
+            Write-Verbose "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
 
@@ -275,8 +275,8 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
             $testInfo = $____Pester.CurrentTest
             $script:CurrentTestClass = 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates'
             $script:CurrentTestMethod = $testInfo.Name
-            Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
-            Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+            Write-Verbose "[BeforeEach] TestClass: $($script:CurrentTestClass)"
+            Write-Verbose "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
 
