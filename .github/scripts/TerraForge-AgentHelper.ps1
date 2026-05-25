@@ -953,6 +953,14 @@ function New-TestRunResults
         'Content-Type'  = 'application/json'
         'X-Client-Type' = 'Automated'
     }
+    # if sessionID is not provided, set it to current sessionID
+    if (-not $SessionId) {
+        $SessionId = Get-SessionID
+    }
+    # if machineID is not provided, set it to current machineID
+    if (-not $MachineId) {
+        $MachineId = $env:COMPUTERNAME
+    }
 
     $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRunResults/Create"
     $payload = @{
@@ -967,7 +975,7 @@ function New-TestRunResults
         StartedTimeUtc = (Get-Date).ToUniversalTime()
         Category       = 'SNAP'
     } | ConvertTo-Json
-
+    Write-Host "Payload: $payload"
     try
     {
         Write-Host "Creating test run result (TestRunId: $TestRunId, MachineId: $MachineId)..."

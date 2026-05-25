@@ -51,7 +51,6 @@ BeforeAll {
                 -ApiBaseUrl  $script:TFApiBaseUrl `
                 -AccessToken $script:TFAccessToken `
                 -TestRunId   $script:TFTestRunId `
-                -MachineId   $env:COMPUTERNAME `
                 -TestClass   $TestClass `
                 -SessionId   $env:TEST_SESSION_ID `
                 -ProductName $TestMethod
@@ -65,20 +64,31 @@ BeforeAll {
     function script:Invoke-TFUpdateTestCase {
         <#
             Updates the test run result after the test completes.
-            Result codes: 1 = Passed, 2 = Failed, 4 = Skipped
+            Result codes: 2 = Passed, 0 = Failed, 4 = Skipped
+            NOTE: Called from AfterEach where Pester has not yet written back
+            Test.Passed/Result, so we derive the outcome from ErrorRecord count
+            and the Skipped flag instead.
         #>
         param (
             [object]$TestResult
         )
         if (-not $script:TFReportingEnabled -or -not $script:TFCurrentResultId) { return }
         try {
-            $resultCode = switch ($TestResult.Result) {
-                'Passed'  { 2 } # Passed
-                'Failed'  { 0 } # Failed
-                'Skipped' { 4 } # Skipped
-                default   { 3 } # Unknown → treat as Failed
+            # $TestResult.Result is still "Running" inside AfterEach.
+            # Derive outcome: Skipped flag is set before AfterEach runs;
+            # ErrorRecord accumulates test body errors before AfterEach runs.
+            $resultCode = if ($TestResult.Skipped) {
+                4   # Skipped
+            } elseif ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0) {
+                0   # Failed
+            } else {
+                2   # Passed
             }
-            $errorMsg = if ($TestResult.ErrorRecord) { $TestResult.ErrorRecord.Exception.Message } else { $null }
+            $errorMsg = if ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0) {
+                $TestResult.ErrorRecord[0].Exception.Message
+            } else {
+                $null
+            }
 
             Update-TestRunResults `
                 -ApiBaseUrl       $script:TFApiBaseUrl `
@@ -86,7 +96,7 @@ BeforeAll {
                 -TestRunResultId  $script:TFCurrentResultId `
                 -Result           $resultCode `
                 -ErrorMessage     $errorMsg
-            Write-Verbose "[TerraForge] Updated result Id=$($script:TFCurrentResultId) → $($TestResult.Result)"
+            Write-Verbose "[TerraForge] Updated result Id=$($script:TFCurrentResultId) → code=$resultCode"
         } catch {
             Write-Warning "[TerraForge] Failed to update result Id=$($script:TFCurrentResultId): $($_.Exception.Message)"
         }
@@ -103,11 +113,11 @@ Describe 'Additional Tests' {
             $script:CurrentTestMethod = $testInfo.Name
             Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
             Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
 
         AfterEach {
             $currentTest = $____Pester.CurrentTest
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
             Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
@@ -139,11 +149,11 @@ Describe 'PSADT Build Template Validation' {
             $script:CurrentTestMethod = $testInfo.Name
             Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
             Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
 
         AfterEach {
             $currentTest = $____Pester.CurrentTest
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
             Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
@@ -220,11 +230,11 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
             $script:CurrentTestMethod = $testInfo.Name
             Write-Host "[BeforeEach] TestClass: $($script:CurrentTestClass)"
             Write-Host "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
 
         AfterEach {
             $currentTest = $____Pester.CurrentTest
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
             Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
