@@ -19,13 +19,13 @@ function Get-TerraForgeAuthToken
         [string]$ApiBaseUrl
     )
 
-    # Step 1 – Login
+    # Step 1 - Login
     Connect-AzureWithManagedIdentity -ClientId $ManagedIdentityClientId
 
-    # Step 2 – Get API access key from Key Vault
+    # Step 2 - Get API access key from Key Vault
     $apiKey = Get-TerraForgeApiKey -SecretName $ApiKeySecretName -VaultName $KeyVaultName
 
-    # Step 3 – Exchange for bearer token
+    # Step 3 - Exchange for bearer token
     return Get-TerraForgeAccessToken -ApiBaseUrl $ApiBaseUrl -ApiAccessKey $apiKey
 }
 
@@ -464,7 +464,7 @@ function Start-AzureSessionVM
             throw "Invalid response received from $uri"
         }
 
-        Write-Host "Started VM — MachineId: $($content.data.machineId), SessionId: $($content.data.sessionId), IP: $($content.data.ipAddress)"
+        Write-Host "Started VM -- MachineId: $($content.data.machineId), SessionId: $($content.data.sessionId), IP: $($content.data.ipAddress)"
         return @{
             MachineId = $content.data.machineId
             SessionId = $content.data.sessionId
@@ -674,7 +674,7 @@ function Start-AzCopy
 
     try
     {
-        Write-Host "Starting AzCopy: '$Source' → '$Destination'"
+        Write-Host "Starting AzCopy: '$Source' -> '$Destination'"
         $result = & azcopy copy $Source $Destination 2>&1
         $result | ForEach-Object { Write-Verbose "AzCopy: $_" }
 
@@ -1088,7 +1088,7 @@ function Invoke-TFLaunchAgent
 
         try
         {
-            # Re-authenticate on every attempt — the access token may expire during long waits
+            # Re-authenticate on every attempt -- the access token may expire during long waits
             $accessToken = Get-TerraForgeAuthToken `
                 -ApiBaseUrl              $ApiBaseUrl `
                 -ManagedIdentityClientId $ManagedIdentityClientId `
@@ -1100,7 +1100,7 @@ function Invoke-TFLaunchAgent
                 -AccessToken $accessToken `
                 -ConfigName  $ConfigName
 
-            # Success — expose the runner label and return
+            # Success -- expose the runner label and return
             Set-GitHubOutput -Name 'runner-label' -Value $agent.AgentName
             return $agent
         }
@@ -1285,7 +1285,7 @@ function Invoke-TFResetSessionVM
 
     $vmStatus = 4   # default: Failed
 
-    # Check all XML result files — if any file reports failures/errors/ignored, mark VM as Failed
+    # Check all XML result files -- if any file reports failures/errors/ignored, mark VM as Failed
     $anyXmlFound = $false
     $overallPassed = $true
 
@@ -1293,7 +1293,7 @@ function Invoke-TFResetSessionVM
     {
         if (-not (Test-Path $xmlPath))
         {
-            Write-Warning "Test result file not found: $xmlPath — treating as failed."
+            Write-Warning "Test result file not found: $xmlPath -- treating as failed."
             $overallPassed = $false
             continue
         }
@@ -1315,7 +1315,7 @@ function Invoke-TFResetSessionVM
 
     if (-not $anyXmlFound)
     {
-        Write-Warning "No test result files found — resetting VM with status Failed."
+        Write-Warning "No test result files found -- resetting VM with status Failed."
     }
     elseif ($overallPassed)
     {
