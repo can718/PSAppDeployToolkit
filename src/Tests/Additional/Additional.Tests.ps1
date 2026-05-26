@@ -3,10 +3,12 @@
 # in all Pester scopes (BeforeAll / BeforeEach / AfterEach / It).
 # ---------------------------------------------------------------------------
 $_tfScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
-$script:_tfHelperPath = [System.IO.Path]::GetFullPath((Join-Path $_tfScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
-if (Test-Path $script:_tfHelperPath)
+Write-Information "[TerraForge] PSScriptRoot='$PSScriptRoot' MyCommand='$($MyInvocation.MyCommand.Path)' ScriptRoot='$_tfScriptRoot'" -InformationAction Continue
+$global:_tfHelperPath = [System.IO.Path]::GetFullPath((Join-Path $_tfScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
+Write-Information "[TerraForge] Helper script path: $global:_tfHelperPath  Exists=$(Test-Path $global:_tfHelperPath)" -InformationAction Continue
+if (Test-Path $global:_tfHelperPath)
 {
-    try { . $script:_tfHelperPath }
+    try { . $global:_tfHelperPath }
     catch { Write-Warning "[TerraForge] Failed to load helper script: $($_.Exception.Message)" }
 }
 
@@ -42,7 +44,7 @@ BeforeAll {
         }
         else
         {
-            Write-Warning "[TerraForge] Helper script not found or failed to load (path: $($script:_tfHelperPath)) -- reporting disabled."
+            Write-Warning "[TerraForge] Helper script not found or failed to load (path: $($global:_tfHelperPath)) -- reporting disabled."
         }
     }
 
