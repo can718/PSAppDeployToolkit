@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------
 BeforeAll {
     Write-Information "[Pester] Version: $((Get-Module Pester).Version)" -InformationAction Continue
-    $script:TFReportingEnabled = $false
+    $script:TFReportingEnabled = $true
     $script:TFAccessToken = $null
     $script:TFTestRunId = $env:TEST_RUN_ID
     $script:TFApiBaseUrl = $env:TERRAFORGE_API_BASE_URL
@@ -134,7 +134,7 @@ Describe 'Intune Tests' {
     Context 'Sanity checks' {
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass  = 'Intune Tests / Sanity checks'
+            $script:CurrentTestClass = 'Intune Tests / Sanity checks'
             $script:CurrentTestMethod = $testInfo.Name
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
@@ -159,7 +159,7 @@ Describe 'Intune Tests' {
     Context 'Intune Module Availability' {
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass  = 'Intune Tests / Intune Module Availability'
+            $script:CurrentTestClass = 'Intune Tests / Intune Module Availability'
             $script:CurrentTestMethod = $testInfo.Name
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
@@ -185,7 +185,7 @@ Describe 'Intune Tests' {
     Context 'Intune Package Deployment Checks' {
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass  = 'Intune Tests / Intune Package Deployment Checks'
+            $script:CurrentTestClass = 'Intune Tests / Intune Package Deployment Checks'
             $script:CurrentTestMethod = $testInfo.Name
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
@@ -227,7 +227,7 @@ Describe 'Intune Tests' {
     Context 'Intune Win32 App Packaging Requirements' {
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass  = 'Intune Tests / Intune Win32 App Packaging Requirements'
+            $script:CurrentTestClass = 'Intune Tests / Intune Win32 App Packaging Requirements'
             $script:CurrentTestMethod = $testInfo.Name
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
