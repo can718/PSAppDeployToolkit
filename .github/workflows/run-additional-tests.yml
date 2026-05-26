@@ -15,63 +15,24 @@ jobs:
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
-      TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_CONFIG_NAME }}
+      TERRAFORGE_CONFIG_NAME: "Lite (CM2509 Github)-Agent"
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
     steps:
+      - name: Check out scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
       - name: Launch Agent
         id: launch-agent
         shell: pwsh
         run: |
-          # Login with Managed Identity (same as original Azure DevOps pipeline)
-          Connect-AzAccount -Identity -AccountId $env:INFRA_MI_CLIENT_ID | Out-Null
+          # Load shared TerraForge helper functions (extracted for reuse across workflows)
+          . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
 
-          # Get TerraForge API access key from Key Vault
-          $terraforgeApiAccessValue = Get-AzKeyVaultSecret `
-            -SecretName $env:TERRAFORGE_API_KEY_SECRET `
-            -VaultName $env:INFRA_KEYVAULT `
-            -AsPlainText
-
-          # Get TerraForge access token
-          $headers = @{
-              "Content-Type"  = "application/json"
-              "X-Client-Type" = "Automated"
-          }
-          $payload = @{ accessKey = $terraforgeApiAccessValue } | ConvertTo-Json
-
-          Write-Host "Requesting TerraForge access token..."
-          $response = Invoke-WebRequest -Uri "$env:TERRAFORGE_API_BASE_URL/api/auth/token" `
-              -Method Post -Headers $headers -Body $payload -ErrorAction Stop
-          $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
-
-          if (-not ($content -and $content.data -and $content.data.accessToken)) {
-              throw "Failed to get access token from response: $($response.Content)"
-          }
-
-          # Launch/discover agent machine
-          $authHeaders = @{
-              "Authorization" = "Bearer $($content.data.accessToken)"
-              "Content-Type"  = "application/json"
-              "X-Client-Type" = "Automated"
-          }
-          $launchPayload = @{
-              configName = $env:TERRAFORGE_CONFIG_NAME
-              poolType   = 3
-          } | ConvertTo-Json
-
-          Write-Host "Sending discover agent request for config: $env:TERRAFORGE_CONFIG_NAME ..."
-          $launchResponse = Invoke-WebRequest -Uri "$env:TERRAFORGE_API_BASE_URL/api/v1/TestRun/Launch" `
-              -Method Post -Headers $authHeaders -Body $launchPayload -ErrorAction Stop
-          $launchContent = $launchResponse.Content | ConvertFrom-Json -ErrorAction Stop
-
-          $machineId = $launchContent.data.machineIds[0]
-          $agentName = "$machineId" + "_Lite (CM2509 Github)-Agent"
-          $machineUrl = "https://terraforge.southeastasia.cloudapp.azure.com/machines/$machineId"
-
-          Write-Host "Launched agent machine: $agentName"
-          Write-Host "Machine URL: $machineUrl"
-          # Output runner label for next job
-          "runner-label=$agentName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Invoke-TFLaunchAgent -ConfigName "Lite (CM2509 Github)-Agent"
 
   run-additional-tests:
     name: Run Additional Tests
@@ -79,6 +40,12 @@ jobs:
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     strategy:
       fail-fast: false
+    env:
+      INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+      TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+      TERRAFORGE_CONFIG_NAME: "Lite (CM2509 Github)-Agent"
     steps:
     - name: Check out repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
@@ -87,56 +54,19 @@ jobs:
         GIT_CONFIG_KEY_0: core.autocrlf
         GIT_CONFIG_VALUE_0: 'false'
 
-    - name: Check runner environment
+    - name: Set Test Run Start
+      id: set-test-run-start
       shell: pwsh
+      env:
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_ACTOR: ${{ github.actor }}
       run: |
-        Write-Host "========== Runner Info =========="
-        Write-Host "Hostname:       $env:COMPUTERNAME"
-        Write-Host "Runner Name:    $env:RUNNER_NAME"
-        Write-Host "Runner OS:      $env:RUNNER_OS"
-        Write-Host "Runner Arch:    $env:RUNNER_ARCH"
-        Write-Host "Workspace:      $env:GITHUB_WORKSPACE"
+        # Load shared TerraForge helper functions
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
 
-        Write-Host "`n========== OS =========="
-        [System.Environment]::OSVersion
-        (Get-CimInstance Win32_OperatingSystem).Caption
-
-        Write-Host "`n========== PowerShell =========="
-        $PSVersionTable
-
-        Write-Host "`n========== .NET SDK =========="
-        $dotnet = Get-Command dotnet -ErrorAction Ignore
-        if ($dotnet) {
-          Write-Host "dotnet path:    $($dotnet.Source)"
-          & dotnet --version
-          & dotnet --list-sdks
-        } else {
-          Write-Warning ".NET SDK not found!"
-        }
-
-        Write-Host "`n========== Git =========="
-        $git = Get-Command git -ErrorAction Ignore
-        if ($git) {
-          Write-Host "git path:       $($git.Source)"
-          & git --version
-        } else {
-          Write-Warning "git not found!"
-        }
-
-        Write-Host "`n========== Node.js =========="
-        $node = Get-Command node -ErrorAction Ignore
-        if ($node) {
-          Write-Host "node path:      $($node.Source)"
-          & node --version
-        } else {
-          Write-Warning "Node.js not found!"
-        }
-
-        Write-Host "`n========== Disk Space =========="
-        Get-PSDrive C | Select-Object Name, @{N='Used(GB)';E={[math]::Round($_.Used/1GB,1)}}, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,1)}}
-
-        Write-Host "`n========== Environment Variables =========="
-        Get-ChildItem Env: | Where-Object { $_.Name -match 'GITHUB|RUNNER|DOTNET|NUGET|PATH' } | Sort-Object Name | Format-Table Name, Value -AutoSize
+        # Start the test run and write test-run-id to GitHub output
+        Invoke-TFStartTestRun `
+            -Title "PSADT CM Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
 
     - name: Install Node.js (required for GitHub Actions on self-hosted runner)
       shell: pwsh
@@ -192,11 +122,11 @@ jobs:
         }
 
     - name: Display the path
-      shell: powershell
+      shell: pwsh
       run: echo ${env:PATH}
 
     - name: Version Display
-      shell: powershell
+      shell: pwsh
       run: $PSVersionTable
 
     - name: Install .NET 10 SDK (required for net10.0 build target)
@@ -221,7 +151,7 @@ jobs:
 
     - name: Install PowerShell modules
       if: steps.psmodule-cache.outputs.cache-hit != 'true'
-      shell: powershell
+      shell: pwsh
       run: |
         # Upgrade PowerShellGet and PackageManagement first (required on older self-hosted runners)
         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
@@ -242,7 +172,7 @@ jobs:
         dotnet nuget list source
 
     - name: Build (minimal - Prerequisites, Clean, Dependencies, DotNet, Build)
-      shell: powershell
+      shell: pwsh
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
             Invoke-ADTModuleBuild -Steps 'Prerequisites', 'Clean', 'Dependencies', 'DotNet', 'Build'
@@ -250,22 +180,50 @@ jobs:
 
     - name: Generate artifact templates
       id: exports
-      shell: powershell
+      shell: pwsh
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
 
-    # - name: Test and Build
-    #   shell: cmd
-    #   run: |
-    #     dotnet --version
-    #     dotnet --list-sdks
-    #     dotnet nuget list source
-    #     dotnet workload list
-    #     powershell.exe -ExecutionPolicy Bypass -File build.ps1
+    - name: Prepare PSADT templates for deployment test
+      id: template-prep
+      shell: pwsh
+      run: |
+        $v3Src = '.\src\Artifacts\Template_v3'
+        $v4Src = '.\src\Artifacts\Template_v4'
+
+        Write-Host "V3 source: $(Resolve-Path $v3Src -ErrorAction SilentlyContinue)"
+        Write-Host "V4 source: $(Resolve-Path $v4Src -ErrorAction SilentlyContinue)"
+
+        if (-not (Test-Path $v3Src)) {
+          Write-Warning "Template_v3 directory not found: '$v3Src' - skipping template prep"
+          exit 0
+        }
+        if (-not (Test-Path $v4Src)) {
+          Write-Warning "Template_v4 directory not found: '$v4Src' - skipping template prep"
+          exit 0
+        }
+
+        $v3Dest = (New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestTemplates\v3').FullName
+        $v4Dest = (New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestTemplates\v4').FullName
+
+        Copy-Item -Path "$v3Src\*" -Destination $v3Dest -Recurse -Force
+        Copy-Item -Path "$v4Src\*" -Destination $v4Dest -Recurse -Force
+
+        Write-Host "V3 template ready at: $v3Dest"
+        Write-Host "V4 template ready at: $v4Dest"
+        Write-Host "V3 contents: $((Get-ChildItem $v3Dest | Select-Object -ExpandProperty Name) -join ', ')"
+        Write-Host "V4 contents: $((Get-ChildItem $v4Dest | Select-Object -ExpandProperty Name) -join ', ')"
+
+        "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
     # Add your new test cases below this line
     - name: Run Additional Tests
-      shell: powershell
+      shell: pwsh
+      env:
+        PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
+        PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
         $config = New-PesterConfiguration
@@ -284,3 +242,28 @@ jobs:
         path: .\src\Artifacts\TestOutput\AdditionalTests.xml
         if-no-files-found: error
         overwrite: true
+  # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
+    - name: Complete Test Run
+      if: always()
+      shell: pwsh
+      env:
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
+      run: |
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        Invoke-TFCompleteTestRun
+
+    - name: Upload Test Results to Azure Blob Storage
+      if: always()
+      shell: pwsh
+      env:
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
+      run: |
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml'
+
+    - name: Reset Azure Session VM
+      if: always()
+      shell: pwsh
+      run: |
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        Invoke-TFResetSessionVM
