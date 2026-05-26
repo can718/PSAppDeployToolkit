@@ -1,22 +1,27 @@
 ﻿#pragma warning disable PSPlaceOpenBrace
 
 # ---------------------------------------------------------------------------
+# Dot-source TerraForge helper at script scope so its functions are available
+# in all Pester scopes (BeforeAll / BeforeEach / AfterEach / It).
+# ---------------------------------------------------------------------------
+$_tfHelperPath = Join-Path $PSScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'
+if (Test-Path $_tfHelperPath) { . $_tfHelperPath }
+
+# ---------------------------------------------------------------------------
 # TerraForge test run reporting helper
 # Loaded once per session; silently skipped if env vars are not set
 # ---------------------------------------------------------------------------
 BeforeAll {
     Write-Information "[Pester] Version: $((Get-Module Pester).Version)" -InformationAction Continue
-    $script:TFReportingEnabled = $true
+    $script:TFReportingEnabled = $false
     $script:TFAccessToken = $null
     $script:TFTestRunId = $env:TEST_RUN_ID
     $script:TFApiBaseUrl = $env:TERRAFORGE_API_BASE_URL
 
     if ($script:TFTestRunId -and $script:TFApiBaseUrl)
     {
-        $helperPath = Join-Path $PSScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'
-        if (Test-Path $helperPath)
+        if (Get-Command 'Get-TerraForgeAuthToken' -ErrorAction SilentlyContinue)
         {
-            . $helperPath
             try
             {
                 $script:TFAccessToken = Get-TerraForgeAuthToken `
@@ -34,7 +39,7 @@ BeforeAll {
         }
         else
         {
-            Write-Warning "[TerraForge] Helper script not found at: $helperPath"
+            Write-Warning "[TerraForge] Helper script not found or failed to load — reporting disabled."
         }
     }
 

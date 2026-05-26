@@ -252,6 +252,8 @@ jobs:
     # Add your new Intune test cases below this line
     - name: Run Intune Tests
       shell: powershell
+      env:
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
         $config = New-PesterConfiguration
