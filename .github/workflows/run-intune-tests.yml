@@ -156,11 +156,11 @@ jobs:
         }
 
     - name: Display the path
-      shell: powershell
+      shell: pwsh
       run: echo ${env:PATH}
 
     - name: Version Display
-      shell: powershell
+      shell: pwsh
       run: $PSVersionTable
 
     - name: Install .NET 10 SDK (required for net10.0 build target)
@@ -185,7 +185,7 @@ jobs:
 
     - name: Install PowerShell modules
       if: steps.psmodule-cache.outputs.cache-hit != 'true'
-      shell: powershell
+      shell: pwsh
       run: |
         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
         Install-Module -Name PowerShellGet -MinimumVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
@@ -204,7 +204,7 @@ jobs:
         dotnet nuget list source
 
     - name: Build (minimal - Prerequisites, Clean, Dependencies, DotNet, Build)
-      shell: powershell
+      shell: pwsh
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
             Invoke-ADTModuleBuild -Steps 'Prerequisites', 'Clean', 'Dependencies', 'DotNet', 'Build'
@@ -212,7 +212,7 @@ jobs:
 
     - name: Generate artifact templates
       id: exports
-      shell: powershell
+      shell: pwsh
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
 
@@ -251,7 +251,7 @@ jobs:
 
     # Add your new Intune test cases below this line
     - name: Run Intune Tests
-      shell: powershell
+      shell: pwsh
       env:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
