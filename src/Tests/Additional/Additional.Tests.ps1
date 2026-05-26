@@ -3,8 +3,12 @@
 # in all Pester scopes (BeforeAll / BeforeEach / AfterEach / It).
 # ---------------------------------------------------------------------------
 $_tfScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
-$_tfHelperPath = [System.IO.Path]::GetFullPath((Join-Path $_tfScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
-if (Test-Path $_tfHelperPath) { . $_tfHelperPath }
+$script:_tfHelperPath = [System.IO.Path]::GetFullPath((Join-Path $_tfScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
+if (Test-Path $script:_tfHelperPath)
+{
+    try { . $script:_tfHelperPath }
+    catch { Write-Warning "[TerraForge] Failed to load helper script: $($_.Exception.Message)" }
+}
 
 # ---------------------------------------------------------------------------
 # TerraForge test run reporting helper
@@ -38,7 +42,7 @@ BeforeAll {
         }
         else
         {
-            Write-Warning "[TerraForge] Helper script not found or failed to load (path: $_tfHelperPath) -- reporting disabled."
+            Write-Warning "[TerraForge] Helper script not found or failed to load (path: $($script:_tfHelperPath)) -- reporting disabled."
         }
     }
 
