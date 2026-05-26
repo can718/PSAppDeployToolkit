@@ -2,7 +2,8 @@
 # Dot-source TerraForge helper at script scope so its functions are available
 # in all Pester scopes (BeforeAll / BeforeEach / AfterEach / It).
 # ---------------------------------------------------------------------------
-$_tfHelperPath = Join-Path $PSScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'
+$_tfScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
+$_tfHelperPath = [System.IO.Path]::GetFullPath((Join-Path $_tfScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
 if (Test-Path $_tfHelperPath) { . $_tfHelperPath }
 
 # ---------------------------------------------------------------------------
@@ -37,7 +38,7 @@ BeforeAll {
         }
         else
         {
-            Write-Warning "[TerraForge] Helper script not found or failed to load — reporting disabled."
+            Write-Warning "[TerraForge] Helper script not found or failed to load (path: $_tfHelperPath) -- reporting disabled."
         }
     }
 
