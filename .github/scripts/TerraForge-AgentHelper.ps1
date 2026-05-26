@@ -1065,6 +1065,12 @@ function Invoke-TFLaunchAgent
         [string]$ConfigName = $env:TERRAFORGE_CONFIG_NAME,
 
         [Parameter()]
+        [int]$MaxRetries = 30,
+
+        [Parameter()]
+        [int]$RetryDelaySeconds = 20,
+
+        [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
 
         [Parameter()]
@@ -1074,19 +1080,45 @@ function Invoke-TFLaunchAgent
         [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
     )
 
-    $accessToken = Get-TerraForgeAuthToken `
-        -ApiBaseUrl              $ApiBaseUrl `
-        -ManagedIdentityClientId $ManagedIdentityClientId `
-        -KeyVaultName            $KeyVaultName `
-        -ApiKeySecretName        $ApiKeySecretName
+    $attempt = 0
+    while ($true)
+    {
+        $attempt++
+        Write-Host "==> Launch agent attempt $attempt / $MaxRetries (Config: $ConfigName) ..."
 
-    $agent = Invoke-TerraForgeLaunchAgent `
-        -ApiBaseUrl  $ApiBaseUrl `
-        -AccessToken $accessToken `
-        -ConfigName  $ConfigName
+        try
+        {
+            # Re-authenticate on every attempt — the access token may expire during long waits
+            $accessToken = Get-TerraForgeAuthToken `
+                -ApiBaseUrl              $ApiBaseUrl `
+                -ManagedIdentityClientId $ManagedIdentityClientId `
+                -KeyVaultName            $KeyVaultName `
+                -ApiKeySecretName        $ApiKeySecretName
 
-    Set-GitHubOutput -Name 'runner-label' -Value $agent.AgentName
-    return $agent
+            $agent = Invoke-TerraForgeLaunchAgent `
+                -ApiBaseUrl  $ApiBaseUrl `
+                -AccessToken $accessToken `
+                -ConfigName  $ConfigName
+
+            # Success — expose the runner label and return
+            Set-GitHubOutput -Name 'runner-label' -Value $agent.AgentName
+            return $agent
+        }
+        catch
+        {
+            $errMsg = $_.Exception.Message
+
+            if ($attempt -ge $MaxRetries)
+            {
+                throw "Failed to launch agent after $MaxRetries attempts. Last error: $errMsg"
+            }
+
+            # Treat any failure as a transient "busy / unavailable" condition and retry
+            Write-Warning "Attempt $attempt failed: $errMsg"
+            Write-Host "All machines may be busy. Waiting $RetryDelaySeconds seconds before retry..."
+            Start-Sleep -Seconds $RetryDelaySeconds
+        }
+    }
 }
 
 function Invoke-TFStartTestRun
@@ -1194,7 +1226,7 @@ function Invoke-TFUploadTestResults
         [string]$TestRunId = $env:TEST_RUN_ID,
 
         [Parameter()]
-        [string]$TestResultXmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml",
+        [string[]]$TestResultXmlPath = @("$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"),
 
         [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
@@ -1217,7 +1249,7 @@ function Invoke-TFUploadTestResults
         -ApiBaseUrl  $ApiBaseUrl `
         -AccessToken $accessToken `
         -TestRunId   $TestRunId `
-        -Files       @($TestResultXmlPath)
+        -Files       $TestResultXmlPath
     Write-Host "Test results copied to Azure Blob Storage."
 }
 
@@ -1230,7 +1262,7 @@ function Invoke-TFResetSessionVM
         [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
 
         [Parameter()]
-        [string]$TestResultXmlPath = "$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml",
+        [string[]]$TestResultXmlPath = @("$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"),
 
         [Parameter()]
         [string]$MachineId = (Get-MachineID),
@@ -1252,27 +1284,46 @@ function Invoke-TFResetSessionVM
         -ApiKeySecretName        $ApiKeySecretName
 
     $vmStatus = 4   # default: Failed
-    if (Test-Path $TestResultXmlPath)
+
+    # Check all XML result files — if any file reports failures/errors/ignored, mark VM as Failed
+    $anyXmlFound = $false
+    $overallPassed = $true
+
+    foreach ($xmlPath in $TestResultXmlPath)
     {
-        [xml]$xml = Get-Content $TestResultXmlPath
+        if (-not (Test-Path $xmlPath))
+        {
+            Write-Warning "Test result file not found: $xmlPath — treating as failed."
+            $overallPassed = $false
+            continue
+        }
+
+        $anyXmlFound = $true
+        [xml]$xml = Get-Content $xmlPath
         $total    = [int]$xml.'test-results'.total
         $failures = [int]$xml.'test-results'.failures
         $errors   = [int]$xml.'test-results'.errors
         $ignored  = [int]$xml.'test-results'.ignored
 
+        Write-Host "Results for '$xmlPath': Total=$total, Failures=$failures, Errors=$errors, Ignored=$ignored"
+
         if ($failures -gt 0 -or $errors -gt 0 -or $ignored -gt 0)
         {
-            $vmStatus = 4   # Failed
-            Write-Host "Some test cases did not pass. Total: $total, Failures: $failures, Errors: $errors, Ignored: $ignored"
+            $overallPassed = $false
         }
-        else
-        {
-            $vmStatus = 3   # Passed
-        }
+    }
+
+    if (-not $anyXmlFound)
+    {
+        Write-Warning "No test result files found — resetting VM with status Failed."
+    }
+    elseif ($overallPassed)
+    {
+        $vmStatus = 3   # Passed
     }
     else
     {
-        Write-Warning "Test result file not found: $TestResultXmlPath — resetting VM with status Failed."
+        Write-Host "One or more test result files reported failures, errors, or ignored tests."
     }
 
     Write-Host "==> Resetting Azure session VM '$MachineId' with status $vmStatus ..."

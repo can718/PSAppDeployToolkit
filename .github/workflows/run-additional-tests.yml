@@ -259,7 +259,7 @@ jobs:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
-        Invoke-TFUploadTestResults
+        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml'
 
     - name: Reset Azure Session VM
       if: always()

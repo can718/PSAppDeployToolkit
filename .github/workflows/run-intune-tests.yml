@@ -280,6 +280,15 @@ jobs:
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
         Invoke-TFCompleteTestRun
 
+    - name: Upload Test Results to Azure Blob Storage
+      if: always()
+      shell: pwsh
+      env:
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
+      run: |
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml'
+
     - name: Reset Azure Session VM
       if: always()
       shell: pwsh

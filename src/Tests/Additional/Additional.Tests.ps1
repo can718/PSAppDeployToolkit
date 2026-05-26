@@ -100,7 +100,7 @@ BeforeAll {
             # ErrorRecord accumulates test body errors before AfterEach runs.
             $resultCode = if ($TestResult.Skipped)
             {
-                4   # Skipped
+                $null   # Skipped
             }
             elseif ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0)
             {
