@@ -71,6 +71,16 @@ jobs:
         Invoke-TFStartTestRun `
             -Title "PSADT Intune Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
 
+    - name: Download Test Results from Azure Blob Storage and enroll envronment for next test run
+      if: always()
+      shell: pwsh
+      run: |
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+
+        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
+
+        Invoke-TFDownloadTestAssets -LocalDestinationDir "C:\Tools\PSADT\AutoEnroll"
+
     - name: Check runner environment
       shell: pwsh
       run: |
@@ -292,20 +302,8 @@ jobs:
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml'
 
-    - name: Download Test Results from Azure Blob Storage
-      if: always()
-      shell: pwsh
-      env:
-        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
-      run: |
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
-
-        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
-
-        Invoke-TFDownloadTestAssets -LocalDestinationDir "C:\Tools\PSADT\AutoEnroll"
-
     - name: Reset Azure Session VM
-      if: always()
+      if: false #always()
       shell: pwsh
       run: |
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"

@@ -1438,33 +1438,6 @@ function Invoke-TFUploadTestResults
 
 function Invoke-TFDownloadTestAssets
 {
-    <#
-    .SYNOPSIS
-        Downloads a certificate from Azure Key Vault and a blob folder from Azure Blob Storage
-        to prepare the test environment.
-    .PARAMETER ApiBaseUrl
-        The TerraForge API base URL. Defaults to TERRAFORGE_API_BASE_URL env var.
-    .PARAMETER BlobFolderPath
-        The blob folder prefix to download (e.g. 'testruns/2372').
-    .PARAMETER LocalDestinationDir
-        The local directory where blob contents will be saved.
-    .PARAMETER KeyVaultName
-        The Azure Key Vault name containing the certificate. Defaults to INFRA_KEYVAULT env var.
-    .PARAMETER CertificateName
-        The certificate name in the Key Vault.
-    .PARAMETER CertificateOutputPath
-        The local file path where the downloaded PFX certificate will be saved.
-    .PARAMETER ManagedIdentityClientId
-        The Managed Identity Client ID. Defaults to INFRA_MI_CLIENT_ID env var.
-    .PARAMETER KeyVaultApiKeySecretName
-        The Key Vault secret name for the TerraForge API key. Defaults to TERRAFORGE_API_KEY_SECRET env var.
-    .EXAMPLE
-        Invoke-TFDownloadTestAssets `
-            -BlobFolderPath      'testruns/2372' `
-            -LocalDestinationDir 'C:\TestAssets' `
-            -CertificateName     'PSADTIntune' `
-            -CertificateOutputPath 'C:\Certs\PSADTIntune.pfx'
-    #>
     [CmdletBinding()]
     param
     (
@@ -1537,9 +1510,35 @@ function Invoke-TFDownloadTestAssets
     }
 
     $EnrollFile = Join-Path $LocalDestinationDir "EnrollAutomation.exe"
-    # execute EnrollAutomation.exe
-    Write-Host "==> Executing EnrollAutomation.exe..."
-    & $EnrollFile
+    # Execute EnrollAutomation.exe with its own directory as working directory
+    # and redirect stdout/stderr so output is captured into PowerShell's stream,
+    # ensuring correct ordering and visibility in GitHub Actions logs.
+    Write-Host "==> Executing EnrollAutomation.exe (WorkingDirectory: $LocalDestinationDir)..."
+    $stdoutFile = [System.IO.Path]::GetTempFileName()
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    try
+    {
+        $process = Start-Process -FilePath $EnrollFile `
+            -WorkingDirectory        $LocalDestinationDir `
+            -RedirectStandardOutput  $stdoutFile `
+            -RedirectStandardError   $stderrFile `
+            -Wait -PassThru -NoNewWindow
+
+        $stdout = Get-Content $stdoutFile -Raw -ErrorAction SilentlyContinue
+        $stderr = Get-Content $stderrFile -Raw -ErrorAction SilentlyContinue
+
+        if ($stdout) { Write-Host $stdout }
+        if ($stderr) { Write-Warning $stderr }
+
+        if ($process.ExitCode -ne 0)
+        {
+            throw "EnrollAutomation.exe exited with code $($process.ExitCode)."
+        }
+    }
+    finally
+    {
+        Remove-Item $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
+    }
     Write-Host "==> Executing EnrollAutomation.exe completed."
 
 }
