@@ -1248,10 +1248,10 @@ function Invoke-TFLaunchAgent
         [string]$ConfigName = $env:TERRAFORGE_CONFIG_NAME,
 
         [Parameter()]
-        [int]$MaxRetries = 30,
+        [int]$MaxRetries = 12,
 
         [Parameter()]
-        [int]$RetryDelaySeconds = 20,
+        [int]$RetryDelaySeconds = 5,
 
         [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
@@ -1510,39 +1510,55 @@ function Invoke-TFDownloadTestAssets
     }
 
     $EnrollFile = Join-Path $LocalDestinationDir "EnrollAutomation.exe"
-    # Execute EnrollAutomation.exe via powershell.exe (Windows PowerShell 5) as the working host,
-    # because the exe relies on .NET Framework certificate APIs that behave incorrectly when
-    # launched directly from pwsh (PowerShell 7 / .NET Core host).
-    # Using powershell.exe ensures the same runtime environment as a manual/interactive run.
-    Write-Host "==> Executing EnrollAutomation.exe via powershell.exe as the working host (WorkingDirectory: $LocalDestinationDir)..."
-    $stdoutFile = [System.IO.Path]::GetTempFileName()
-    $stderrFile = [System.IO.Path]::GetTempFileName()
-    try
+
+    # Pre-import the PFX certificate into the CurrentUser\My store before running the exe.
+    # The exe internally calls Import-PfxCertificate in a child process which may fail in
+    # Session 0 / non-interactive runner environments. By importing first here (in the same
+    # user context that owns the runner process), the certificate is guaranteed to be present
+    # when the exe proceeds to the enrollment steps.
+    if (Test-Path $CertificateOutputPath)
     {
-        # Wrap with powershell.exe so the child process runs under .NET Framework,
-        # matching the environment in which the exe was validated to work correctly.
-        $psArgs = "-NonInteractive -NoProfile -Command `"Set-Location '$LocalDestinationDir'; & '$EnrollFile'`""
-        $process = Start-Process -FilePath 'powershell.exe' `
-            -ArgumentList            $psArgs `
-            -WorkingDirectory        $LocalDestinationDir `
-            -RedirectStandardOutput  $stdoutFile `
-            -RedirectStandardError   $stderrFile `
-            -Wait -PassThru -NoNewWindow
-
-        $stdout = Get-Content $stdoutFile -Raw -ErrorAction SilentlyContinue
-        $stderr = Get-Content $stderrFile -Raw -ErrorAction SilentlyContinue
-
-        if ($stdout) { Write-Host $stdout }
-        if ($stderr) { Write-Warning $stderr }
-
-        if ($process.ExitCode -ne 0)
+        Write-Host "==> Pre-importing certificate '$CertificateOutputPath' into CurrentUser\My store..."
+        try
         {
-            throw "EnrollAutomation.exe exited with code $($process.ExitCode)."
+            $importedCert = Import-PfxCertificate `
+                -FilePath         $CertificateOutputPath `
+                -CertStoreLocation 'Cert:\CurrentUser\My' `
+                -Exportable `
+                -ErrorAction Stop
+            Write-Host "Certificate pre-imported successfully. Thumbprint: $($importedCert.Thumbprint)"
+        }
+        catch
+        {
+            Write-Warning "Pre-import of certificate failed: $($_.Exception.Message). The exe will attempt its own import."
         }
     }
-    finally
+    else
     {
-        Remove-Item $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
+        Write-Warning "Certificate file not found at '$CertificateOutputPath', skipping pre-import."
+    }
+
+    # Execute EnrollAutomation.exe directly WITHOUT stdio redirection.
+    #
+    # EnrollAutomation.exe internally calls ExecutePowershellCommand which spawns
+    # a grandchild powershell.exe (not pwsh) to run import-pfxcertificate.
+    # pwsh is intentionally avoided by the exe because .NET Core's certificate APIs
+    # behave differently. If we redirect stdout/stderr on the parent process,
+    # the grandchild powershell.exe inherits those redirected handles (stdin=null),
+    # causing Import-PfxCertificate to fail when it tries to read a password or
+    # interact with the certificate store.
+    #
+    # Solution: do NOT redirect stdio. Let the grandchild inherit the real console
+    # handles so import-pfxcertificate can run successfully.
+    # The certificate is also pre-imported above as a belt-and-suspenders measure.
+    Write-Host "==> Executing EnrollAutomation.exe (WorkingDirectory: $LocalDestinationDir)..."
+    $process = Start-Process -FilePath $EnrollFile `
+        -WorkingDirectory $LocalDestinationDir `
+        -Wait -PassThru -NoNewWindow
+
+    if ($process.ExitCode -ne 0)
+    {
+        throw "EnrollAutomation.exe exited with code $($process.ExitCode)."
     }
     Write-Host "==> Executing EnrollAutomation.exe completed."
 
