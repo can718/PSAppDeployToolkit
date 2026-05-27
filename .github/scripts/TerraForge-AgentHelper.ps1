@@ -1514,7 +1514,7 @@ function Invoke-TFDownloadTestAssets
     # because the exe relies on .NET Framework certificate APIs that behave incorrectly when
     # launched directly from pwsh (PowerShell 7 / .NET Core host).
     # Using powershell.exe ensures the same runtime environment as a manual/interactive run.
-    Write-Host "==> Executing EnrollAutomation.exe via powershell.exe (WorkingDirectory: $LocalDestinationDir)..."
+    Write-Host "==> Executing EnrollAutomation.exe via powershell.exe as the working host (WorkingDirectory: $LocalDestinationDir)..."
     $stdoutFile = [System.IO.Path]::GetTempFileName()
     $stderrFile = [System.IO.Path]::GetTempFileName()
     try
