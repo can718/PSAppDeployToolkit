@@ -1510,15 +1510,20 @@ function Invoke-TFDownloadTestAssets
     }
 
     $EnrollFile = Join-Path $LocalDestinationDir "EnrollAutomation.exe"
-    # Execute EnrollAutomation.exe with its own directory as working directory
-    # and redirect stdout/stderr so output is captured into PowerShell's stream,
-    # ensuring correct ordering and visibility in GitHub Actions logs.
-    Write-Host "==> Executing EnrollAutomation.exe (WorkingDirectory: $LocalDestinationDir)..."
+    # Execute EnrollAutomation.exe via powershell.exe (Windows PowerShell 5) as the working host,
+    # because the exe relies on .NET Framework certificate APIs that behave incorrectly when
+    # launched directly from pwsh (PowerShell 7 / .NET Core host).
+    # Using powershell.exe ensures the same runtime environment as a manual/interactive run.
+    Write-Host "==> Executing EnrollAutomation.exe via powershell.exe (WorkingDirectory: $LocalDestinationDir)..."
     $stdoutFile = [System.IO.Path]::GetTempFileName()
     $stderrFile = [System.IO.Path]::GetTempFileName()
     try
     {
-        $process = Start-Process -FilePath $EnrollFile `
+        # Wrap with powershell.exe so the child process runs under .NET Framework,
+        # matching the environment in which the exe was validated to work correctly.
+        $psArgs = "-NonInteractive -NoProfile -Command `"Set-Location '$LocalDestinationDir'; & '$EnrollFile'`""
+        $process = Start-Process -FilePath 'powershell.exe' `
+            -ArgumentList            $psArgs `
             -WorkingDirectory        $LocalDestinationDir `
             -RedirectStandardOutput  $stdoutFile `
             -RedirectStandardError   $stderrFile `
