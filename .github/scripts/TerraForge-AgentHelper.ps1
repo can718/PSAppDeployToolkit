@@ -1538,17 +1538,7 @@ function Invoke-TFDownloadTestAssets
         Write-Warning "Certificate file not found at '$CertificateOutputPath', skipping pre-import."
     }
 
-    # Fix PSModulePath before launching EnrollAutomation.exe.
-    #
-    # pwsh (PowerShell 7) rewrites $env:PSModulePath and removes the Windows PowerShell
-    # module directory. EnrollAutomation.exe (.NET Framework 4.7.2) uses PowerShell.Create()
-    # internally, which inherits PSModulePath from the process environment. Without the
-    # Windows PowerShell path, PowerShell.Create() cannot find Microsoft.PowerShell.Security,
-    # the Cert: PSProvider is never registered, and Get-ChildItem Cert:\CurrentUser\My
-    # returns empty — causing the exe to skip certificate auth and fail.
-    #
-    # Fix: prepend the Windows PowerShell Modules path to PSModulePath so the child
-    # PowerShell.Create() Runspace can load Microsoft.PowerShell.Security correctly.
+
     $winPSModulesPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"
     if ($env:PSModulePath -notlike "*$winPSModulesPath*")
     {

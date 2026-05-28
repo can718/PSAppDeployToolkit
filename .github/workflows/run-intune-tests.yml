@@ -303,7 +303,7 @@ jobs:
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml'
 
     - name: Reset Azure Session VM
-      if: false #always()
+      if: always()
       shell: pwsh
       run: |
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
