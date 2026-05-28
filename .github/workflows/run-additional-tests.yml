@@ -262,7 +262,7 @@ jobs:
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml'
 
     - name: Reset Azure Session VM
-      if: always()
+      if: false #always()
       shell: pwsh
       run: |
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
