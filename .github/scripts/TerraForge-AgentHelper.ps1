@@ -409,24 +409,6 @@ function Get-SessionAdministratorCredential
 
 function Get-AzureKeyVaultCertificate
 {
-    <#
-    .SYNOPSIS
-        Downloads a PFX certificate from Azure Key Vault using a User-Assigned Managed Identity.
-    .PARAMETER KeyVaultName
-        The name of the Azure Key Vault containing the certificate.
-    .PARAMETER CertificateName
-        The name of the certificate in the Key Vault.
-    .PARAMETER ManagedIdentityClientId
-        The Client ID of the User-Assigned Managed Identity used to authenticate.
-    .PARAMETER OutputPath
-        The local file path where the downloaded PFX certificate will be saved.
-    .EXAMPLE
-        Get-AzureKeyVaultCertificate `
-            -KeyVaultName           'kv-tfp-infra-management' `
-            -CertificateName        'PSADTIntune' `
-            -ManagedIdentityClientId '2d7fbe0d-b3d6-4905-9584-9dc45065865c' `
-            -OutputPath             'C:\Temp\certificate.pfx'
-    #>
     [CmdletBinding()]
     param
     (
@@ -760,18 +742,6 @@ function Start-AzCopy
 
 function Copy-ResultsToAzureBlobStorage
 {
-    <#
-    .SYNOPSIS
-        Uploads one or more files to TFPFS Azure Blob Storage under the specified test run path.
-    .PARAMETER ApiBaseUrl
-        The TerraForge API base URL (used to retrieve the storage account access key).
-    .PARAMETER AccessToken
-        The bearer access token (used to retrieve the storage account access key).
-    .PARAMETER TestRunId
-        The test run ID, used to build the blob destination path (testruns/{TestRunId}/<filename>).
-    .PARAMETER Files
-        One or more local file paths to upload. Each file is uploaded as testruns/{TestRunId}/<filename>.
-    #>
     [CmdletBinding()]
     param
     (
@@ -853,18 +823,6 @@ function Copy-ResultsToAzureBlobStorage
 
 function Get-AzureBlobStorageFolderToLocal
 {
-    <#
-    .SYNOPSIS
-        Downloads all blobs under a given folder path from TFPFS Azure Blob Storage to a local destination directory.
-    .PARAMETER ApiBaseUrl
-        The TerraForge API base URL (used to retrieve the storage account access key).
-    .PARAMETER AccessToken
-        The bearer access token (used to retrieve the storage account access key).
-    .PARAMETER BlobFolderPath
-        The blob folder prefix to download (e.g. 'testruns/2372/results').
-    .PARAMETER LocalDestinationDir
-        The local directory path where downloaded files will be saved.
-    #>
     [CmdletBinding()]
     param
     (
