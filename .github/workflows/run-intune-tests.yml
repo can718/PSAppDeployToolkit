@@ -47,6 +47,9 @@ jobs:
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       TERRAFORGE_CONFIG_NAME: "Intune (Github)-Agent"
+      TEST_TENANTID: ${{ vars.TEST_TENANTID }}
+      TEST_CLIENTID: ${{ vars.TEST_CLIENTID }}
+      TEST_CLIENTSECRET: ${{ secrets.TEST_CLIENTSECRET }}
     steps:
     - name: Check out repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
