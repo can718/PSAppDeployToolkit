@@ -360,7 +360,7 @@ Describe 'Intune Tests' {
             Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
 
             # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
-            $exampleScript = Join-Path $PSScriptRoot '..\..\examples\VLC\Invoke-AppDeployToolkit.ps1'
+            $exampleScript = Join-Path $PSScriptRoot '..\..\..\examples\VLC\Invoke-AppDeployToolkit.ps1'
             $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
             Copy-Item -Path $exampleScript -Destination $targetScript -Force
 
@@ -417,7 +417,7 @@ Describe 'Intune Tests' {
             Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
 
             # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
-            $exampleScript = Join-Path $PSScriptRoot '..\..\examples\WinSCP\Invoke-AppDeployToolkit.ps1'
+            $exampleScript = Join-Path $PSScriptRoot '..\..\..\examples\WinSCP\Invoke-AppDeployToolkit.ps1'
             $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
             Copy-Item -Path $exampleScript -Destination $targetScript -Force
 
