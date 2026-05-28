@@ -2,7 +2,8 @@
 $script:ClientID = $env:TEST_CLIENTID
 $script:ClientSecret = $env:TEST_CLIENTSECRET
 
-if ($(Test-AccessToken) -eq $false) {
+if ($(Test-AccessToken) -eq $false)
+{
     Write-Host "First use Connect-MSIntuneGraph to access Microsoft Graph." -ForegroundColor Yellow
 
     # Authenticate to Microsoft Graph
@@ -16,7 +17,8 @@ $PackageFile = Get-ChildItem -Path "$FileDir\Files" -File |
 Where-Object { $_.Extension -in '.msi', '.exe' } |
 Select-Object -First 1
 
-if (-not $PackageFile) {
+if (-not $PackageFile)
+{
     Write-Host "Can't find msi/exe files in the source folder."
     return
 }
@@ -25,16 +27,20 @@ $DisplayName = $PackageFile.BaseName
 # Rename .intunewin file name to match display name
 $NewFileName = $PackageFile.BaseName + ".intunewin"
 $NewIntuneWinFile = Join-Path -Path $FileDir -ChildPath $NewFileName
-if (Test-Path $IntuneWinFile) {
+if (Test-Path $IntuneWinFile)
+{
     Rename-Item -Path $IntuneWinFile -NewName $NewFileName -Force
     Write-Host "Renamed to $NewIntuneWinFile" -ForegroundColor Green
 }
-else {
+else
+{
     Write-Host "Original intunewin file does not exist." -ForegroundColor Blue
 }
 
-if ($PackageFile.Extension -eq '.msi') {
-    try {
+if ($PackageFile.Extension -eq '.msi')
+{
+    try
+    {
         $comObj = New-Object -ComObject WindowsInstaller.Installer
         $db = $comObj.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $comObj, @($PackageFile.FullName, 0))
         $view = $db.GetType().InvokeMember("OpenView", "InvokeMethod", $null, $db, @("SELECT Value FROM Property WHERE Property='ProductCode'"))
@@ -45,11 +51,13 @@ if ($PackageFile.Extension -eq '.msi') {
         # Create MSI detection rule
         $DetectionRule = New-IntuneWin32AppDetectionRuleMSI -ProductCode $ProductCode
     }
-    catch {
+    catch
+    {
         Write-Error "Read ProductCode failed: $_"
     }
 }
-else {
+else
+{
     # Create PowerShell script detection rule for EXE installer.
     $DetectionScriptFile = "D:\PSADTtest\DetectionRule.ps1"
     $DetectionRule1 = New-IntuneWin32AppDetectionRuleScript -ScriptFile $DetectionScriptFile -EnforceSignatureCheck $false -RunAs32Bit $false
