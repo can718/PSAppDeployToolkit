@@ -134,6 +134,12 @@ BeforeAll {
             Write-Warning "[TerraForge] Failed to update result Id=$($script:TFCurrentResultId): $($_.Exception.Message)"
         }
     }
+
+    if (-not (Get-Module -Name 'IntuneWin32App' -ListAvailable))
+    {
+        Install-Module -Name 'IntuneWin32App' -AcceptLicense -Force -Scope CurrentUser
+    }
+    Import-Module -Name 'IntuneWin32App' -ErrorAction Stop
 }
 
 # ---------------------------------------------------------------------------
@@ -145,6 +151,15 @@ Describe 'Intune Tests' {
             $script:CurrentTestClass = 'Intune Tests / Sanity checks'
             $script:CurrentTestMethod = $testInfo.Name
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+
+            if ($(Test-AccessToken) -eq $false)
+            {
+                Write-Host "First use Connect-MSIntuneGraph to access Microsoft Graph." -ForegroundColor Yellow
+
+                # Authenticate to Microsoft Graph
+                $ClientSecret = $script:ClientSecret
+                Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $ClientSecret
+            }
         }
 
         AfterEach {
@@ -266,6 +281,200 @@ Describe 'Intune Tests' {
             {
                 $moduleManifest | Should -Not -BeNullOrEmpty
             }
+        }
+    }
+
+    Context 'Win32 App Wrap and Upload' {
+        BeforeAll {
+            # Generate PSADT template to C:\PSADT
+            $templateDest = 'C:\PSADT'
+            if (Test-Path $templateDest)
+            {
+                Remove-Item -Path $templateDest -Recurse -Force
+            }
+            Import-Module -Name '.\src\PSAppDeployToolkit\PSAppDeployToolkit.psd1' -Force
+            New-ADTTemplate -Destination $templateDest -Force
+
+            # Ensure output folder for .intunewin files
+            $win32OutputDir = Join-Path $templateDest 'WIN32APP'
+            if (-not (Test-Path $win32OutputDir))
+            {
+                New-Item -Path $win32OutputDir -ItemType Directory -Force | Out-Null
+            }
+
+            # Authenticate to Intune Graph
+            $script:TenantID = $env:TEST_TENANTID
+            $script:ClientID = $env:TEST_CLIENTID
+            $script:ClientSecret = $env:TEST_CLIENTSECRET
+
+            if ($(Test-AccessToken) -eq $false)
+            {
+                Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $script:ClientSecret
+            }
+
+            # IntuneWinAppUtil.exe path
+            $script:IntuneWinAppUtil = 'C:\Tools\Intune\IntuneWinAppUtil.exe'
+
+            # Group ID for assignment
+            $script:GroupID = '70f69bb0-c68f-458b-a71a-fab85bd4ac98'
+        }
+
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass = 'Intune Tests / Win32 App Wrap and Upload'
+            $script:CurrentTestMethod = $testInfo.Name
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+
+            if ($(Test-AccessToken) -eq $false)
+            {
+                Write-Host "First use Connect-MSIntuneGraph to access Microsoft Graph." -ForegroundColor Yellow
+
+                # Authenticate to Microsoft Graph
+                $ClientSecret = $script:ClientSecret
+                Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $ClientSecret
+            }
+        }
+
+        AfterEach {
+            Invoke-TFUpdateTestCase -TestResult $____Pester.CurrentTest
+        }
+
+        It 'VLC - wrap and upload to Intune' {
+            # TODO: Set your VLC download URL here
+            $appDownloadUrl = 'https://get.videolan.org/vlc/3.0.23/win64/vlc-3.0.23-win64.exe'
+            $appName = 'VLC'
+            $workDir = Join-Path 'C:\PSADT' $appName
+
+            # Copy template to app working directory
+            $templateFolder = Get-ChildItem -Path 'C:\PSADT' -Directory | Where-Object { $_.Name -like 'PSAppDeployToolkit*' } | Select-Object -First 1
+            if (-not $templateFolder)
+            {
+                throw 'PSADT template folder not found under C:\PSADT'
+            }
+            Copy-Item -Path $templateFolder.FullName -Destination $workDir -Recurse -Force
+
+            # Download the app installer to Files folder
+            $filesDir = Join-Path $workDir 'Files'
+            if (-not (Test-Path $filesDir)) { New-Item -Path $filesDir -ItemType Directory -Force | Out-Null }
+            $installerFile = Join-Path $filesDir (Split-Path $appDownloadUrl -Leaf)
+            Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
+
+            # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
+            $exampleScript = Join-Path $PSScriptRoot '..\..\examples\VLC\Invoke-AppDeployToolkit.ps1'
+            $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
+            Copy-Item -Path $exampleScript -Destination $targetScript -Force
+
+            # Wrap with IntuneWinAppUtil
+            $setupFile = 'Invoke-AppDeployToolkit.exe'
+            & $script:IntuneWinAppUtil -c $workDir -s $setupFile -o $workDir -q
+            $intunewinFile = Join-Path $workDir 'Invoke-AppDeployToolkit.intunewin'
+            Test-Path $intunewinFile | Should -BeTrue
+
+            # Rename .intunewin and move to WIN32APP folder
+            $newName = "$appName.intunewin"
+            $finalPath = Join-Path 'C:\PSADT\WIN32APP' $newName
+            Move-Item -Path $intunewinFile -Destination $finalPath -Force
+            Test-Path $finalPath | Should -BeTrue
+
+            # Upload to Intune
+            $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture 'x64x86' -MinimumSupportedWindowsRelease 'W10_1607'
+            $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
+                -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
+                -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '3.0.23'
+            $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+            $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+
+            Add-IntuneWin32App -FilePath $finalPath -DisplayName $appName -Description "PSADT $appName deployment" `
+                -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
+                -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
+                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd -Verbose
+
+            $win32App = Get-IntuneWin32App -DisplayName $appName -Verbose
+            $win32App | Should -Not -BeNullOrEmpty
+
+            # Assign to group
+            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
+        }
+
+        It 'WinSCP - wrap and upload to Intune' {
+            # TODO: Set your WinSCP download URL here
+            $appDownloadUrl = 'https://winscp.net/download/WinSCP-6.5.6.msi/download'  # <-- Fill in WinSCP download URL
+            $appName = 'WinSCP'
+            $workDir = Join-Path 'C:\PSADT' $appName
+
+            # Copy template to app working directory
+            $templateFolder = Get-ChildItem -Path 'C:\PSADT' -Directory | Where-Object { $_.Name -like 'PSAppDeployToolkit*' } | Select-Object -First 1
+            if (-not $templateFolder)
+            {
+                throw 'PSADT template folder not found under C:\PSADT'
+            }
+            Copy-Item -Path $templateFolder.FullName -Destination $workDir -Recurse -Force
+
+            # Download the app installer to Files folder
+            $filesDir = Join-Path $workDir 'Files'
+            if (-not (Test-Path $filesDir)) { New-Item -Path $filesDir -ItemType Directory -Force | Out-Null }
+            $installerFile = Join-Path $filesDir (Split-Path $appDownloadUrl -Leaf)
+            Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
+
+            # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
+            $exampleScript = Join-Path $PSScriptRoot '..\..\examples\WinSCP\Invoke-AppDeployToolkit.ps1'
+            $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
+            Copy-Item -Path $exampleScript -Destination $targetScript -Force
+
+            # Wrap with IntuneWinAppUtil
+            $setupFile = 'Invoke-AppDeployToolkit.exe'
+            & $script:IntuneWinAppUtil -c $workDir -s $setupFile -o $workDir -q
+            $intunewinFile = Join-Path $workDir 'Invoke-AppDeployToolkit.intunewin'
+            Test-Path $intunewinFile | Should -BeTrue
+
+            # Rename .intunewin and move to WIN32APP folder
+            $newName = "$appName.intunewin"
+            $finalPath = Join-Path 'C:\PSADT\WIN32APP' $newName
+            Move-Item -Path $intunewinFile -Destination $finalPath -Force
+            Test-Path $finalPath | Should -BeTrue
+
+            # Upload to Intune
+            $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture 'x64x86' -MinimumSupportedWindowsRelease 'W10_1607'
+
+            # Detect by MSI ProductCode or registry - adjust as needed for WinSCP
+            $DetectionScriptFile = Join-Path $PSScriptRoot 'DetectionRule.ps1'
+            if (Test-Path $DetectionScriptFile)
+            {
+                $DetectionRule = New-IntuneWin32AppDetectionRuleScript -ScriptFile $DetectionScriptFile -EnforceSignatureCheck $false -RunAs32Bit $false
+            }
+            else
+            {
+                # Fallback: detect via Files folder MSI ProductCode
+                $msiFile = Get-ChildItem -Path $filesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($msiFile)
+                {
+                    $comObj = New-Object -ComObject WindowsInstaller.Installer
+                    $db = $comObj.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $comObj, @($msiFile.FullName, 0))
+                    $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @("SELECT Value FROM Property WHERE Property='ProductCode'"))
+                    $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+                    $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+                    $ProductCode = $record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1)
+                    $DetectionRule = New-IntuneWin32AppDetectionRuleMSI -ProductCode $ProductCode
+                }
+                else
+                {
+                    throw 'No detection rule available for WinSCP - provide DetectionRule.ps1 or an MSI file'
+                }
+            }
+
+            $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+            $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+
+            Add-IntuneWin32App -FilePath $finalPath -DisplayName $appName -Description "PSADT $appName deployment" `
+                -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
+                -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
+                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd -Verbose
+
+            $win32App = Get-IntuneWin32App -DisplayName $appName -Verbose
+            $win32App | Should -Not -BeNullOrEmpty
+
+            # Assign to group
+            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
         }
     }
 }

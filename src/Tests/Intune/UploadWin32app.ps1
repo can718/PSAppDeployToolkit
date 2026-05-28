@@ -1,9 +1,13 @@
+$script:TenantID = $env:TEST_TENANTID
+$script:ClientID = $env:TEST_CLIENTID
+$script:ClientSecret = $env:TEST_CLIENTSECRET
+
 if ($(Test-AccessToken) -eq $false) {
     Write-Host "First use Connect-MSIntuneGraph to access Microsoft Graph." -ForegroundColor Yellow
 
     # Authenticate to Microsoft Graph
-    $ClientSecret = ""
-    Connect-MSIntuneGraph -TenantID "00efcb7c-8f43-4e7a-8f7b-d11abe7e15ae" -ClientID "bf1db931-5d4f-447e-a9df-a462ff1b5f31" -ClientSecret $ClientSecret
+    $ClientSecret = $script:ClientSecret
+    Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $ClientSecret
 }
 
 $IntuneWinFile = "D:\PSADTtest\Winscp\Invoke-AppDeployToolkit.intunewin"
