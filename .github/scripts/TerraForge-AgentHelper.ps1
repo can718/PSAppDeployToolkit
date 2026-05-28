@@ -1538,21 +1538,24 @@ function Invoke-TFDownloadTestAssets
         Write-Warning "Certificate file not found at '$CertificateOutputPath', skipping pre-import."
     }
 
-    # Execute EnrollAutomation.exe directly WITHOUT stdio redirection.
+    # Launch EnrollAutomation.exe via powershell.exe (Windows PowerShell 5) as the parent process.
     #
-    # EnrollAutomation.exe internally calls ExecutePowershellCommand which spawns
-    # a grandchild powershell.exe (not pwsh) to run import-pfxcertificate.
-    # pwsh is intentionally avoided by the exe because .NET Core's certificate APIs
-    # behave differently. If we redirect stdout/stderr on the parent process,
-    # the grandchild powershell.exe inherits those redirected handles (stdin=null),
-    # causing Import-PfxCertificate to fail when it tries to read a password or
-    # interact with the certificate store.
+    # ROOT CAUSE: pwsh (PowerShell 7) rewrites $env:PSModulePath, removing or deprioritising
+    # the Windows PowerShell module path (C:\Windows\System32\WindowsPowerShell\v1.0\Modules).
+    # EnrollAutomation.exe (.NET Framework 4.7.2) uses PowerShell.Create() internally, which
+    # inherits PSModulePath from the process environment. When launched from pwsh, PSModulePath
+    # no longer contains Microsoft.PowerShell.Security, so the Cert: PSProvider cannot load and
+    # Get-ChildItem Cert:\CurrentUser\My returns empty — causing the exe to fall through to the
+    # password path instead of the certificate path.
     #
-    # Solution: do NOT redirect stdio. Let the grandchild inherit the real console
-    # handles so import-pfxcertificate can run successfully.
-    # The certificate is also pre-imported above as a belt-and-suspenders measure.
-    Write-Host "==> Executing EnrollAutomation.exe (WorkingDirectory: $LocalDestinationDir)..."
-    $process = Start-Process -FilePath $EnrollFile `
+    # Fix: launch the exe as a child of powershell.exe so PSModulePath is set correctly for
+    # Windows PowerShell, allowing PowerShell.Create() to find Microsoft.PowerShell.Security.
+    # Do NOT redirect stdio — the grandchild powershell.exe spawned internally by the exe must
+    # inherit real console handles for import-pfxcertificate to succeed.
+    Write-Host "==> Executing EnrollAutomation.exe via powershell.exe (WorkingDirectory: $LocalDestinationDir)..."
+    $psArgs = "-NoProfile -Command `"Set-Location -LiteralPath '$LocalDestinationDir'; & '$EnrollFile'`""
+    $process = Start-Process -FilePath 'powershell.exe' `
+        -ArgumentList     $psArgs `
         -WorkingDirectory $LocalDestinationDir `
         -Wait -PassThru -NoNewWindow
 
@@ -1560,7 +1563,7 @@ function Invoke-TFDownloadTestAssets
     {
         throw "EnrollAutomation.exe exited with code $($process.ExitCode)."
     }
-    Write-Host "==> Executing EnrollAutomation.exe completed."
+    Write-Host "==> EnrollAutomation.exe completed successfully."
 
 }
 
