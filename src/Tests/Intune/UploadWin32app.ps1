@@ -1,4 +1,4 @@
-$script:TenantID = $env:TEST_TENANTID
+﻿$script:TenantID = $env:TEST_TENANTID
 $script:ClientID = $env:TEST_CLIENTID
 $script:ClientSecret = $env:TEST_CLIENTSECRET
 
