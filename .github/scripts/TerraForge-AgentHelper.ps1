@@ -1538,24 +1538,27 @@ function Invoke-TFDownloadTestAssets
         Write-Warning "Certificate file not found at '$CertificateOutputPath', skipping pre-import."
     }
 
-    # Launch EnrollAutomation.exe via powershell.exe (Windows PowerShell 5) as the parent process.
+    # Fix PSModulePath before launching EnrollAutomation.exe.
     #
-    # ROOT CAUSE: pwsh (PowerShell 7) rewrites $env:PSModulePath, removing or deprioritising
-    # the Windows PowerShell module path (C:\Windows\System32\WindowsPowerShell\v1.0\Modules).
-    # EnrollAutomation.exe (.NET Framework 4.7.2) uses PowerShell.Create() internally, which
-    # inherits PSModulePath from the process environment. When launched from pwsh, PSModulePath
-    # no longer contains Microsoft.PowerShell.Security, so the Cert: PSProvider cannot load and
-    # Get-ChildItem Cert:\CurrentUser\My returns empty — causing the exe to fall through to the
-    # password path instead of the certificate path.
+    # pwsh (PowerShell 7) rewrites $env:PSModulePath and removes the Windows PowerShell
+    # module directory. EnrollAutomation.exe (.NET Framework 4.7.2) uses PowerShell.Create()
+    # internally, which inherits PSModulePath from the process environment. Without the
+    # Windows PowerShell path, PowerShell.Create() cannot find Microsoft.PowerShell.Security,
+    # the Cert: PSProvider is never registered, and Get-ChildItem Cert:\CurrentUser\My
+    # returns empty — causing the exe to skip certificate auth and fail.
     #
-    # Fix: launch the exe as a child of powershell.exe so PSModulePath is set correctly for
-    # Windows PowerShell, allowing PowerShell.Create() to find Microsoft.PowerShell.Security.
-    # Do NOT redirect stdio — the grandchild powershell.exe spawned internally by the exe must
-    # inherit real console handles for import-pfxcertificate to succeed.
-    Write-Host "==> Executing EnrollAutomation.exe via powershell.exe (WorkingDirectory: $LocalDestinationDir)..."
-    $psArgs = "-NoProfile -Command `"Set-Location -LiteralPath '$LocalDestinationDir'; & '$EnrollFile'`""
-    $process = Start-Process -FilePath 'powershell.exe' `
-        -ArgumentList     $psArgs `
+    # Fix: prepend the Windows PowerShell Modules path to PSModulePath so the child
+    # PowerShell.Create() Runspace can load Microsoft.PowerShell.Security correctly.
+    $winPSModulesPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"
+    if ($env:PSModulePath -notlike "*$winPSModulesPath*")
+    {
+        Write-Host "==> Prepending Windows PowerShell module path to PSModulePath..."
+        $env:PSModulePath = "$winPSModulesPath;$env:PSModulePath"
+    }
+    Write-Host "PSModulePath: $env:PSModulePath"
+
+    Write-Host "==> Executing EnrollAutomation.exe (WorkingDirectory: $LocalDestinationDir)..."
+    $process = Start-Process -FilePath $EnrollFile `
         -WorkingDirectory $LocalDestinationDir `
         -Wait -PassThru -NoNewWindow
 
