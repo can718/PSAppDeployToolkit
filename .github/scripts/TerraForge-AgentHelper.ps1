@@ -407,6 +407,56 @@ function Get-SessionAdministratorCredential
     return [System.Management.Automation.PSCredential]::new($Username, $securePassword)
 }
 
+function Get-AzureKeyVaultCertificate
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string]$KeyVaultName,
+
+        [Parameter(Mandatory)]
+        [string]$CertificateName,
+
+        [Parameter(Mandatory)]
+        [string]$ManagedIdentityClientId,
+
+        [Parameter(Mandatory)]
+        [string]$OutputPath
+    )
+
+    # Disable progress bar to improve download speed
+    $ProgressPreference = 'SilentlyContinue'
+
+    # Ensure the output directory exists
+    $outputDir = [System.IO.Path]::GetDirectoryName($OutputPath)
+    if (-not (Test-Path $outputDir))
+    {
+        New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
+        Write-Host "Created output directory: $outputDir"
+    }
+
+    # Authenticate using User-Assigned Managed Identity
+    Write-Host "Connecting to Azure with Managed Identity (ClientId: $ManagedIdentityClientId)..."
+    Connect-AzAccount -Identity -AccountId $ManagedIdentityClientId | Out-Null
+    Write-Host "Connected to Azure successfully."
+
+    # Retrieve certificate secret (base64-encoded PFX) from Key Vault
+    Write-Host "Downloading certificate '$CertificateName' from Key Vault '$KeyVaultName'..."
+    $secretBase64 = Get-AzKeyVaultSecret -VaultName $KeyVaultName -Name $CertificateName -AsPlainText
+
+    if ([string]::IsNullOrEmpty($secretBase64))
+    {
+        throw "Retrieved empty secret for certificate '$CertificateName' from Key Vault '$KeyVaultName'. Verify the certificate name and access permissions."
+    }
+
+    # Decode base64 and write PFX bytes to disk
+    $certBytes = [Convert]::FromBase64String($secretBase64)
+    [System.IO.File]::WriteAllBytes($OutputPath, $certBytes)
+
+    Write-Host "Certificate downloaded successfully: $OutputPath"
+}
+
 #endregion
 
 #region TerraForge VM Lifecycle
@@ -692,18 +742,6 @@ function Start-AzCopy
 
 function Copy-ResultsToAzureBlobStorage
 {
-    <#
-    .SYNOPSIS
-        Uploads one or more files to TFPFS Azure Blob Storage under the specified test run path.
-    .PARAMETER ApiBaseUrl
-        The TerraForge API base URL (used to retrieve the storage account access key).
-    .PARAMETER AccessToken
-        The bearer access token (used to retrieve the storage account access key).
-    .PARAMETER TestRunId
-        The test run ID, used to build the blob destination path (testruns/{TestRunId}/<filename>).
-    .PARAMETER Files
-        One or more local file paths to upload. Each file is uploaded as testruns/{TestRunId}/<filename>.
-    #>
     [CmdletBinding()]
     param
     (
@@ -780,6 +818,110 @@ function Copy-ResultsToAzureBlobStorage
     else
     {
         Write-Host "No files specified, skipping upload."
+    }
+}
+
+function Get-AzureBlobStorageFolderToLocal
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string]$ApiBaseUrl,
+
+        [Parameter(Mandatory)]
+        [string]$AccessToken,
+
+        [Parameter(Mandatory)]
+        [string]$BlobFolderPath,
+
+        [Parameter(Mandatory)]
+        [string]$LocalDestinationDir
+    )
+
+    # Retrieve storage account access key via TerraForge API
+    $TFPFSStorageAccountAccessKey = Get-TFPFSStorageAccountAccessKey -ApiBaseUrl $ApiBaseUrl -AccessToken $AccessToken
+
+    # Ensure Az.Storage module is available
+    if (-not (Get-Module -ListAvailable Az.Storage))
+    {
+        Write-Host "Az.Storage module not found. Installing..."
+        Install-Module -Name Az.Storage -Scope AllUsers -Force -Confirm:$false
+        Import-Module -Name Az.Storage
+        if (Get-Module -Name Az.Storage)
+        {
+            Write-Host "Az.Storage module imported successfully."
+        }
+        else
+        {
+            throw "Az.Storage module import failed."
+        }
+    }
+    else
+    {
+        Write-Host "Az.Storage module already available."
+        Import-Module -Name Az.Storage
+        if (Get-Module -Name Az.Storage)
+        {
+            Write-Host "Az.Storage module imported successfully."
+        }
+        else
+        {
+            throw "Az.Storage module import failed."
+        }
+    }
+
+    # Ensure local destination directory exists
+    if (-not (Test-Path $LocalDestinationDir))
+    {
+        New-Item -ItemType Directory -Force -Path $LocalDestinationDir | Out-Null
+        Write-Host "Created local destination directory: $LocalDestinationDir"
+    }
+
+    $ctx = New-AzStorageContext -StorageAccountName 'tfpfsstorage' -StorageAccountKey $TFPFSStorageAccountAccessKey
+
+    # List all blobs under the specified folder prefix
+    $blobs = Get-AzStorageBlob -Container 'tfp-shares' -Prefix $BlobFolderPath -Context $ctx
+
+    if (-not $blobs -or $blobs.Count -eq 0)
+    {
+        Write-Host "No blobs found under '$BlobFolderPath', skipping download."
+        return
+    }
+
+    # Normalise the prefix so we can strip it to get the relative path
+    $folderPrefix = $BlobFolderPath.TrimEnd('/')
+
+    foreach ($blob in $blobs)
+    {
+        $blobName = $blob.Name
+
+        # Compute relative path by stripping the folder prefix, then convert '/' to '\'
+        $relativePath  = $blobName.Substring($folderPrefix.Length).TrimStart('/').Replace('/', '\')
+        $localFilePath = Join-Path $LocalDestinationDir $relativePath
+
+        # Ensure the sub-directory exists before downloading
+        $localFileDir = Split-Path $localFilePath -Parent
+        if (-not (Test-Path $localFileDir))
+        {
+            New-Item -ItemType Directory -Force -Path $localFileDir | Out-Null
+        }
+
+        Write-Host "Downloading blob '$blobName' to '$localFilePath'..."
+        try
+        {
+            $null = Get-AzStorageBlobContent `
+                -Container   'tfp-shares' `
+                -Blob        $blobName `
+                -Destination $localFilePath `
+                -Context     $ctx `
+                -Force
+            Write-Host "Downloaded successfully: $localFilePath"
+        }
+        catch
+        {
+            Write-Warning "Failed to download '$blobName': $($_.Exception.Message)"
+        }
     }
 }
 
@@ -1064,10 +1206,10 @@ function Invoke-TFLaunchAgent
         [string]$ConfigName = $env:TERRAFORGE_CONFIG_NAME,
 
         [Parameter()]
-        [int]$MaxRetries = 30,
+        [int]$MaxRetries = 12,
 
         [Parameter()]
-        [int]$RetryDelaySeconds = 20,
+        [int]$RetryDelaySeconds = 5,
 
         [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
@@ -1250,6 +1392,130 @@ function Invoke-TFUploadTestResults
         -TestRunId   $TestRunId `
         -Files       $TestResultXmlPath
     Write-Host "Test results copied to Azure Blob Storage."
+}
+
+function Invoke-TFDownloadTestAssets
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
+
+        [Parameter()]
+        [string]$BlobFolderPath = "tools/Intune/AutoEnroll",
+
+        [Parameter()]
+        [string]$LocalDestinationDir = "C:\Tools\PSADT\AutoEnroll",
+
+        [Parameter()]
+        [string]$KeyVaultName = $env:INFRA_KEYVAULT,
+
+        [Parameter()]
+        [string]$CertificateName = "PSADTIntune",
+
+        [Parameter()]
+        [string]$CertificateOutputPath = "C:\Tools\PSADT\AutoEnroll\AccountJSONs\pmpc5.pfx",
+
+        [Parameter()]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter()]
+        [string]$KeyVaultApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET,
+
+        [Parameter()]
+        [string]$AADUserCode = $env:AAD_USER_CODE
+    )
+
+    # Step 1 - Download certificate from Key Vault
+    Write-Host "==> Downloading certificate '$CertificateName' from Key Vault '$KeyVaultName' ..."
+    Get-AzureKeyVaultCertificate `
+        -KeyVaultName            $KeyVaultName `
+        -CertificateName         $CertificateName `
+        -ManagedIdentityClientId $ManagedIdentityClientId `
+        -OutputPath              $CertificateOutputPath
+    Write-Host "Certificate downloaded to: $CertificateOutputPath"
+
+    # Step 2 - Obtain TerraForge access token
+    Write-Host "==> Obtaining TerraForge access token ..."
+    $accessToken = Get-TerraForgeAuthToken `
+        -ApiBaseUrl              $ApiBaseUrl `
+        -ManagedIdentityClientId $ManagedIdentityClientId `
+        -KeyVaultName            $KeyVaultName `
+        -ApiKeySecretName        $KeyVaultApiKeySecretName
+
+    # Step 3 - Download blob folder to local destination
+    Write-Host "==> Downloading blob folder '$BlobFolderPath' to '$LocalDestinationDir' ..."
+    Get-AzureBlobStorageFolderToLocal `
+        -ApiBaseUrl          $ApiBaseUrl `
+        -AccessToken         $accessToken `
+        -BlobFolderPath      $BlobFolderPath `
+        -LocalDestinationDir $LocalDestinationDir
+    Write-Host "Blob folder downloaded to: $LocalDestinationDir"
+    # update file content with replaced AAD user code if placeholder exists
+    #get directory of $CertificateOutputPath
+    $TestAccountDir = [System.IO.Path]::GetDirectoryName($CertificateOutputPath)
+    $TestAccountFile = Join-Path $TestAccountDir "TestAccounts.txt"
+    if ($AADUserCode -and (Test-Path $TestAccountFile))
+    {
+        Write-Host "Updating test account file with AAD user code..."
+        (Get-Content $TestAccountFile) -replace '{{AADUserCode}}', $AADUserCode | Set-Content $TestAccountFile
+        Write-Host "Test account file updated: $TestAccountFile"
+    }
+    else
+    {
+        Write-Warning "AADUserCode not provided or test account file $TestAccountFile not found. Skipping test account update."
+    }
+
+    $EnrollFile = Join-Path $LocalDestinationDir "EnrollAutomation.exe"
+
+    # Pre-import the PFX certificate into the CurrentUser\My store before running the exe.
+    # The exe internally calls Import-PfxCertificate in a child process which may fail in
+    # Session 0 / non-interactive runner environments. By importing first here (in the same
+    # user context that owns the runner process), the certificate is guaranteed to be present
+    # when the exe proceeds to the enrollment steps.
+    if (Test-Path $CertificateOutputPath)
+    {
+        Write-Host "==> Pre-importing certificate '$CertificateOutputPath' into CurrentUser\My store..."
+        try
+        {
+            $importedCert = Import-PfxCertificate `
+                -FilePath         $CertificateOutputPath `
+                -CertStoreLocation 'Cert:\CurrentUser\My' `
+                -Exportable `
+                -ErrorAction Stop
+            Write-Host "Certificate pre-imported successfully. Thumbprint: $($importedCert.Thumbprint)"
+        }
+        catch
+        {
+            Write-Warning "Pre-import of certificate failed: $($_.Exception.Message). The exe will attempt its own import."
+        }
+    }
+    else
+    {
+        Write-Warning "Certificate file not found at '$CertificateOutputPath', skipping pre-import."
+    }
+
+
+    $winPSModulesPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"
+    if ($env:PSModulePath -notlike "*$winPSModulesPath*")
+    {
+        Write-Host "==> Prepending Windows PowerShell module path to PSModulePath..."
+        $env:PSModulePath = "$winPSModulesPath;$env:PSModulePath"
+    }
+    Write-Host "PSModulePath: $env:PSModulePath"
+
+    Write-Host "==> Executing EnrollAutomation.exe (WorkingDirectory: $LocalDestinationDir)..."
+    $process = Start-Process -FilePath $EnrollFile `
+        -WorkingDirectory $LocalDestinationDir `
+        -Wait -PassThru -NoNewWindow
+
+    if ($process.ExitCode -ne 0)
+    {
+        throw "EnrollAutomation.exe exited with code $($process.ExitCode)."
+    }
+    Write-Host "==> EnrollAutomation.exe completed successfully."
+
 }
 
 function Invoke-TFResetSessionVM
