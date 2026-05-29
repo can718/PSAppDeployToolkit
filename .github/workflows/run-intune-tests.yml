@@ -47,6 +47,7 @@ jobs:
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       TERRAFORGE_CONFIG_NAME: "Intune (Github)-Agent"
+      AAD_USER_CODE: ${{ secrets.AAD_USER_CODE }}
       TEST_TENANTID: ${{ vars.TEST_TENANTID }}
       TEST_CLIENTID: ${{ vars.TEST_CLIENTID }}
       TEST_CLIENTSECRET: ${{ secrets.TEST_CLIENTSECRET }}
@@ -72,6 +73,16 @@ jobs:
         # All connection parameters (API URL, credentials, config) are resolved from job-level env vars.
         Invoke-TFStartTestRun `
             -Title "PSADT Intune Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
+
+    - name: Download Test Results from Azure Blob Storage and enroll envronment for next test run
+      if: always()
+      shell: pwsh
+      run: |
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+
+        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
+
+        Invoke-TFDownloadTestAssets -LocalDestinationDir "C:\Tools\PSADT\AutoEnroll"
 
     - name: Check runner environment
       shell: pwsh
