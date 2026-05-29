@@ -14,8 +14,8 @@ if ($(Test-AccessToken) -eq $false)
 $IntuneWinFile = "D:\PSADTtest\Winscp\Invoke-AppDeployToolkit.intunewin"
 $FileDir = Split-Path $IntuneWinFile -Parent
 $PackageFile = Get-ChildItem -Path "$FileDir\Files" -File |
-Where-Object { $_.Extension -in '.msi', '.exe' } |
-Select-Object -First 1
+    Where-Object { $_.Extension -in '.msi', '.exe' } |
+    Select-Object -First 1
 
 if (-not $PackageFile)
 {
