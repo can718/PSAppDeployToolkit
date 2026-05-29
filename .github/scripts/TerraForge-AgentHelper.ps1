@@ -127,8 +127,8 @@ function Invoke-TerraForgeLaunchAgent
         -Method Post -Headers $authHeaders -Body $launchPayload -ErrorAction Stop
     $launchContent = $launchResponse.Content | ConvertFrom-Json -ErrorAction Stop
 
-    $machineId  = $launchContent.data.machineIds[0]
-    $agentName  = "${machineId}_${ConfigName}"
+    $machineId = $launchContent.data.machineIds[0]
+    $agentName = "${machineId}_${ConfigName}"
     $machineUrl = "https://terraforge.southeastasia.cloudapp.azure.com/machines/$machineId"
 
     Write-Host "Launched agent machine: $agentName"
@@ -457,7 +457,7 @@ function Start-AzureSessionVM
     {
         Write-Host "Starting Azure session VM (config: $ConfigName)..."
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
-        $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
+        $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
         if (-not $content -or -not $content.data -or -not $content.data.machineId -or -not $content.data.sessionId)
         {
@@ -512,7 +512,7 @@ function Reset-AzureSessionVM
             @{
                 machineId    = $MachineId
                 status       = $TestStatus
-                isForceReset = $true
+                isForceReset = $false
             }
         )
     } | ConvertTo-Json
@@ -521,7 +521,7 @@ function Reset-AzureSessionVM
     {
         Write-Host "Resetting Azure session VM (MachineId: $MachineId)..."
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
-        $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
+        $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
         if (-not $content -or -not $content.data -or -not $content.success)
         {
@@ -575,7 +575,7 @@ function Get-AzureVMStatus
     {
         Write-Host "Getting power status for VM '$MachineId'..."
         $response = Invoke-WebRequest -Uri $uri -Method Get -Headers $headers -ErrorAction Stop
-        $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
+        $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
         if (-not $content -or -not $content.data -or -not $content.success)
         {
@@ -629,7 +629,7 @@ function Get-TFPFSStorageAccountAccessKey
     {
         Write-Host "Retrieving TFPFS storage account access key..."
         $response = Invoke-WebRequest -Uri $uri -Method Get -Headers $headers -ErrorAction Stop
-        $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
+        $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
         if (-not $content -or -not $content.data -or -not $content.success)
         {
@@ -669,8 +669,8 @@ function Start-AzCopy
         [string]$ManagedIdentityClientId
     )
 
-    $env:AZCOPY_AUTO_LOGIN_TYPE  = 'MSI'
-    $env:AZCOPY_MSI_CLIENT_ID    = $ManagedIdentityClientId
+    $env:AZCOPY_AUTO_LOGIN_TYPE = 'MSI'
+    $env:AZCOPY_MSI_CLIENT_ID = $ManagedIdentityClientId
 
     try
     {
@@ -843,7 +843,8 @@ function Set-TestRun
     if ($Action -eq 'Start')
     {
         # if sessionID is not provided, set it to current sessionID
-        if (-not $SessionId) {
+        if (-not $SessionId)
+        {
             $SessionId = Get-SessionID
         }
         $uri = "$($ApiBaseUrl.TrimEnd('/'))/api/v1/TestRun/Start"
@@ -874,7 +875,7 @@ function Set-TestRun
         Write-Host "URI    : $uri"
         # Write-Host "Payload: $payload"
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
-        $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
+        $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
         if (-not $content -or -not $content.data -or -not $content.success)
         {
@@ -953,11 +954,13 @@ function New-TestRunResults
         'X-Client-Type' = 'Automated'
     }
     # if sessionID is not provided, set it to current sessionID
-    if (-not $SessionId) {
+    if (-not $SessionId)
+    {
         $SessionId = Get-SessionID
     }
     # if machineID is not provided, set it to current machineID
-    if (-not $MachineId) {
+    if (-not $MachineId)
+    {
         $MachineId = $env:COMPUTERNAME
     }
 
@@ -979,7 +982,7 @@ function New-TestRunResults
     {
         Write-Host "Creating test run result (TestRunId: $TestRunId, MachineId: $MachineId)..."
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
-        $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
+        $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
         if (-not $content -or -not $content.data -or -not $content.success)
         {
@@ -1033,7 +1036,7 @@ function Update-TestRunResults
     {
         Write-Host "Updating test run result '$TestRunResultId' with result code $Result..."
         $response = Invoke-WebRequest -Uri $uri -Method Patch -Headers $headers -Body $payload -ErrorAction Stop
-        $content  = $response.Content | ConvertFrom-Json -ErrorAction Stop
+        $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
 
         if (-not $content -or -not $content.data -or -not $content.success)
         {
@@ -1299,10 +1302,10 @@ function Invoke-TFResetSessionVM
 
         $anyXmlFound = $true
         [xml]$xml = Get-Content $xmlPath
-        $total    = [int]$xml.'test-results'.total
+        $total = [int]$xml.'test-results'.total
         $failures = [int]$xml.'test-results'.failures
-        $errors   = [int]$xml.'test-results'.errors
-        $ignored  = [int]$xml.'test-results'.ignored
+        $errors = [int]$xml.'test-results'.errors
+        $ignored = [int]$xml.'test-results'.ignored
 
         Write-Host "Results for '$xmlPath': Total=$total, Failures=$failures, Errors=$errors, Ignored=$ignored"
 
