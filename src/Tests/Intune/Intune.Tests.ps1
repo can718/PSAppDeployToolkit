@@ -20,6 +20,10 @@ BeforeAll {
     $script:TFAccessToken = $null
     $script:TFTestRunId = $env:TEST_RUN_ID
     $script:TFApiBaseUrl = $env:TERRAFORGE_API_BASE_URL
+    # Authenticate to Intune Graph
+    $script:TenantID = $env:TEST_TENANTID
+    $script:ClientID = $env:TEST_CLIENTID
+    $script:ClientSecret = $env:TEST_CLIENTSECRET
 
     if ($script:TFTestRunId -and $script:TFApiBaseUrl)
     {
@@ -301,11 +305,6 @@ Describe 'Intune Tests' {
             {
                 New-Item -Path $win32OutputDir -ItemType Directory -Force | Out-Null
             }
-
-            # Authenticate to Intune Graph
-            $script:TenantID = $env:TEST_TENANTID
-            $script:ClientID = $env:TEST_CLIENTID
-            $script:ClientSecret = $env:TEST_CLIENTSECRET
 
             if ($(Test-AccessToken) -eq $false)
             {
