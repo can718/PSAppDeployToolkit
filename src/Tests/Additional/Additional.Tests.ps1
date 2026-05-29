@@ -307,18 +307,18 @@ Describe 'Deploy-WithPSADT-ToSCCM' {
     }
 }
 
-Describe 'WCP Package Preparation and SCCM Import' {
-    Context 'Build WCP package from V4 template and import into SCCM' {
+Describe 'winSCP Package Preparation and SCCM Import' {
+    Context 'Build winSCP package from V4 template and import into SCCM' {
 
         BeforeAll {
             $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
-            $script:wcpSourceScript = Join-Path $PSScriptRoot 'WCP\Invoke-AppDeployToolkit.ps1'
-            $script:wcpPackageDir = 'C:\PSADT\WCP'
-            $script:wcpAppName = 'WinSCP (PSADT v4 WCP)'
-            $script:wcpAppVendor = 'Martin Prikryl'
-            $script:wcpAppVersion = '6.5.6'
-            $script:wcpDTName = "WinSCP $script:wcpAppVersion (v4 WCP)"
-            $script:wcpContentUNC = "\\$env:COMPUTERNAME\PSADT_Content$\WCP"
+            $script:winscpSourceScript = Join-Path $PSScriptRoot 'winSCP\Invoke-AppDeployToolkit.ps1'
+            $script:winscpPackageDir = 'C:\PSADT\winSCP'
+            $script:winscpAppName = 'WinSCP (PSADT v4 winSCP)'
+            $script:winscpAppVendor = 'Martin Prikryl'
+            $script:winscpAppVersion = '6.5.6'
+            $script:winscpDTName = "WinSCP $script:winscpAppVersion (v4 winSCP)"
+            $script:winscpContentUNC = "\\$env:COMPUTERNAME\PSADT_Content$\winSCP"
 
             $script:siteCode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Operations Management' -Name 'Site Code' -ErrorAction SilentlyContinue).'Site Code'
             $script:siteServer = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Setup' -Name 'Provider Location' -ErrorAction SilentlyContinue).'Provider Location'
@@ -338,16 +338,16 @@ Describe 'WCP Package Preparation and SCCM Import' {
         }
 
         AfterAll {
-            if (Test-Path $script:wcpPackageDir)
-            {
-                Remove-Item $script:wcpPackageDir -Recurse -Force -ErrorAction SilentlyContinue
-                Write-Verbose "  [teardown] Removed WCP package directory: $($script:wcpPackageDir)"
-            }
+            # if (Test-Path $script:winscpPackageDir)
+            # {
+            #     Remove-Item $script:winscpPackageDir -Recurse -Force -ErrorAction SilentlyContinue
+            #     Write-Verbose "  [teardown] Removed winSCP package directory: $($script:winscpPackageDir)"
+            # }
         }
 
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'WCP Package Preparation and SCCM Import / Build WCP package from V4 template and import into SCCM'
+            $script:CurrentTestClass = 'winSCP Package Preparation and SCCM Import / Build winSCP package from V4 template and import into SCCM'
             $script:CurrentTestMethod = $testInfo.Name
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
@@ -357,7 +357,7 @@ Describe 'WCP Package Preparation and SCCM Import' {
             Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
-        It 'Builds WCP package and imports into SCCM' {
+        It 'Builds winSCP package and imports into SCCM' {
             # ----------------------------------------------------------------
             # Step 1 - Verify prerequisites
             # ----------------------------------------------------------------
@@ -367,42 +367,42 @@ Describe 'WCP Package Preparation and SCCM Import' {
                 return
             }
             Test-Path $script:v4Dir | Should -BeTrue -Because 'V4 template directory must exist'
-            Test-Path $script:wcpSourceScript | Should -BeTrue -Because 'WCP\Invoke-AppDeployToolkit.ps1 must exist'
+            Test-Path $script:winscpSourceScript | Should -BeTrue -Because 'winSCP\Invoke-AppDeployToolkit.ps1 must exist'
 
             # ----------------------------------------------------------------
-            # Step 2 - Copy V4 template to WCP package directory
+            # Step 2 - Copy V4 template to winSCP package directory
             # ----------------------------------------------------------------
-            Write-Verbose '[WCP] Step 2: Copying V4 template to WCP package directory...'
-            if (Test-Path $script:wcpPackageDir)
+            Write-Verbose '[winSCP] Step 2: Copying V4 template to winSCP package directory...'
+            if (Test-Path $script:winscpPackageDir)
             {
-                Remove-Item $script:wcpPackageDir -Recurse -Force
+                Remove-Item $script:winscpPackageDir -Recurse -Force
             }
-            Copy-Item -Path $script:v4Dir -Destination $script:wcpPackageDir -Recurse -Force
-            Test-Path $script:wcpPackageDir | Should -BeTrue
+            Copy-Item -Path $script:v4Dir -Destination $script:winscpPackageDir -Recurse -Force
+            Test-Path $script:winscpPackageDir | Should -BeTrue
 
             # ----------------------------------------------------------------
-            # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with WCP version
+            # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with winSCP version
             # ----------------------------------------------------------------
-            Write-Verbose '[WCP] Step 3: Replacing Invoke-AppDeployToolkit.ps1 with WCP version...'
-            $destScript = Get-ChildItem -Path $script:wcpPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File |
+            Write-Verbose '[winSCP] Step 3: Replacing Invoke-AppDeployToolkit.ps1 with winSCP version...'
+            $destScript = Get-ChildItem -Path $script:winscpPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File |
             Select-Object -First 1
             $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
-            Copy-Item -Path $script:wcpSourceScript -Destination $destScript.FullName -Force
+            Copy-Item -Path $script:winscpSourceScript -Destination $destScript.FullName -Force
             $content = Get-Content -Path $destScript.FullName -Raw
             $content | Should -Match 'WinSCP'
 
             # ----------------------------------------------------------------
             # Step 4 - Copy WinSCP MSI into Files folder
             # ----------------------------------------------------------------
-            Write-Verbose '[WCP] Step 4: Copying WinSCP MSI into Files folder...'
+            Write-Verbose '[winSCP] Step 4: Copying WinSCP MSI into Files folder...'
             $msiSource = 'C:\Tools\Intune\WinSCP\WinSCP-6.5.6.msi'
             if (-not (Test-Path $msiSource))
             {
-                Write-Warning "[WCP] MSI not found at '$msiSource', skipping MSI copy step."
+                Write-Warning "[winSCP] MSI not found at '$msiSource', skipping MSI copy step."
             }
             else
             {
-                $filesDir = Join-Path $script:wcpPackageDir 'Files'
+                $filesDir = Join-Path $script:winscpPackageDir 'Files'
                 if (-not (Test-Path $filesDir))
                 {
                     New-Item -ItemType Directory -Path $filesDir -Force | Out-Null
@@ -414,7 +414,7 @@ Describe 'WCP Package Preparation and SCCM Import' {
             # ----------------------------------------------------------------
             # Step 5 - Create SMB content share
             # ----------------------------------------------------------------
-            Write-Verbose '[WCP] Step 5: Ensuring SMB content share exists...'
+            Write-Verbose '[winSCP] Step 5: Ensuring SMB content share exists...'
             if (-not $script:cmModulePath)
             {
                 Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
@@ -425,12 +425,18 @@ Describe 'WCP Package Preparation and SCCM Import' {
             {
                 New-SmbShare -Name $shareName -Path 'C:\PSADT' -FullAccess 'Everyone' -Description 'PSADT SCCM Content Source' | Out-Null
             }
-            Test-Path $script:wcpContentUNC | Should -BeTrue
+            # Ensure the winSCP subdirectory exists under the share root (C:\PSADT\winSCP)
+            if (-not (Test-Path $script:winscpPackageDir))
+            {
+                New-Item -ItemType Directory -Path $script:winscpPackageDir -Force | Out-Null
+                Write-Verbose "[winSCP] Created missing package directory: $($script:winscpPackageDir)"
+            }
+            Test-Path $script:winscpContentUNC | Should -BeTrue
 
             # ----------------------------------------------------------------
             # Step 6 - Import application into SCCM
             # ----------------------------------------------------------------
-            Write-Verbose '[WCP] Step 6: Importing WCP application into SCCM...'
+            Write-Verbose '[winSCP] Step 6: Importing winSCP application into SCCM...'
             Import-Module $script:cmModulePath -ErrorAction Stop
 
             $origLoc = Get-Location
@@ -443,25 +449,25 @@ Describe 'WCP Package Preparation and SCCM Import' {
                 Set-Location "$($script:siteCode):\"
 
                 # Remove existing application
-                if (Get-CMApplication -Name $script:wcpAppName -ErrorAction SilentlyContinue)
+                if (Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue)
                 {
-                    $existingDeps = Get-CMApplicationDeployment -Name $script:wcpAppName -ErrorAction SilentlyContinue
+                    $existingDeps = Get-CMApplicationDeployment -Name $script:winscpAppName -ErrorAction SilentlyContinue
                     foreach ($dep in $existingDeps)
                     {
-                        Remove-CMApplicationDeployment -Name $script:wcpAppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
+                        Remove-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
                     }
-                    Remove-CMApplication -Name $script:wcpAppName -Force
+                    Remove-CMApplication -Name $script:winscpAppName -Force
                     Start-Sleep -Seconds 2
                 }
 
                 New-CMApplication `
-                    -Name            $script:wcpAppName `
-                    -Publisher       $script:wcpAppVendor `
-                    -SoftwareVersion $script:wcpAppVersion `
-                    -LocalizedName   $script:wcpAppName `
-                    -Description     "PSADT v4 WCP template - WinSCP $script:wcpAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')" | Out-Null
+                    -Name            $script:winscpAppName `
+                    -Publisher       $script:winscpAppVendor `
+                    -SoftwareVersion $script:winscpAppVersion `
+                    -LocalizedName   $script:winscpAppName `
+                    -Description     "PSADT v4 winSCP template - WinSCP $script:winscpAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')" | Out-Null
 
-                $installCmd = if (Test-Path (Join-Path $script:wcpPackageDir 'Invoke-AppDeployToolkit.exe'))
+                $installCmd = if (Test-Path (Join-Path $script:winscpPackageDir 'Invoke-AppDeployToolkit.exe'))
                 {
                     'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
                 }
@@ -469,7 +475,7 @@ Describe 'WCP Package Preparation and SCCM Import' {
                 {
                     'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Install'
                 }
-                $uninstallCmd = if (Test-Path (Join-Path $script:wcpPackageDir 'Invoke-AppDeployToolkit.exe'))
+                $uninstallCmd = if (Test-Path (Join-Path $script:winscpPackageDir 'Invoke-AppDeployToolkit.exe'))
                 {
                     'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
                 }
@@ -496,9 +502,9 @@ if ($app) { exit 0 } else { exit 1 }
 '@
 
                 Add-CMScriptDeploymentType `
-                    -ApplicationName           $script:wcpAppName `
-                    -DeploymentTypeName        $script:wcpDTName `
-                    -ContentLocation           $script:wcpContentUNC `
+                    -ApplicationName           $script:winscpAppName `
+                    -DeploymentTypeName        $script:winscpDTName `
+                    -ContentLocation           $script:winscpContentUNC `
                     -InstallCommand            $installCmd `
                     -UninstallCommand          $uninstallCmd `
                     -ScriptLanguage            PowerShell `
@@ -510,17 +516,17 @@ if ($app) { exit 0 } else { exit 1 }
                     -MaximumRuntimeMins        30 `
                     -EstimatedRuntimeMins      5 | Out-Null
 
-                $dt = Get-CMDeploymentType -ApplicationName $script:wcpAppName -DeploymentTypeName $script:wcpDTName
+                $dt = Get-CMDeploymentType -ApplicationName $script:winscpAppName -DeploymentTypeName $script:winscpDTName
                 Add-CMDeploymentTypeReturnCode -InputObject $dt -ReturnCode 3010 -CodeType SoftReboot -Name 'Reboot Required' | Out-Null
                 Add-CMDeploymentTypeReturnCode -InputObject $dt -ReturnCode 1641 -CodeType HardReboot -Name 'Reboot Initiated' | Out-Null
 
-                $created = Get-CMApplication -Name $script:wcpAppName -ErrorAction SilentlyContinue
+                $created = Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue
                 $created | Should -Not -BeNullOrEmpty
 
                 # ----------------------------------------------------------------
                 # Step 7 - Distribute content
                 # ----------------------------------------------------------------
-                Write-Verbose '[WCP] Step 7: Triggering content distribution...'
+                Write-Verbose '[winSCP] Step 7: Triggering content distribution...'
                 $dpGroups = Get-CMDistributionPointGroup -ErrorAction SilentlyContinue
                 $dpList = Get-CMDistributionPoint -ErrorAction SilentlyContinue
 
@@ -528,7 +534,7 @@ if ($app) { exit 0 } else { exit 1 }
                 {
                     foreach ($grp in $dpGroups)
                     {
-                        Start-CMContentDistribution -ApplicationName $script:wcpAppName `
+                        Start-CMContentDistribution -ApplicationName $script:winscpAppName `
                             -DistributionPointGroupName $grp.Name -ErrorAction SilentlyContinue | Out-Null
                     }
                 }
@@ -536,14 +542,134 @@ if ($app) { exit 0 } else { exit 1 }
                 {
                     foreach ($dp in $dpList)
                     {
-                        Start-CMContentDistribution -ApplicationName $script:wcpAppName `
+                        Start-CMContentDistribution -ApplicationName $script:winscpAppName `
                             -DistributionPointName $dp.NetworkOSPath.TrimStart('\') -ErrorAction SilentlyContinue | Out-Null
                     }
                 }
                 else
                 {
-                    Write-Warning '[WCP] No distribution points or DP groups found - content distribution skipped.'
+                    Write-Warning '[winSCP] No distribution points or DP groups found - content distribution skipped.'
                 }
+                # Check content distribution status via Get-CMDistributionStatus
+                # Poll every 60 seconds for up to 10 minutes until all DPs report success
+                $packageId = (Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue).PackageID
+                if ($packageId)
+                {
+                    $maxWaitSeconds = 600
+                    $pollIntervalSeconds = 60
+                    $elapsed = 0
+                    $distributionStatus = $null
+
+                    do
+                    {
+                        $distributionStatus = Get-CMDistributionStatus -Id $packageId -ErrorAction SilentlyContinue
+                        if ($distributionStatus)
+                        {
+                            Write-Verbose "[winSCP] Distribution status (elapsed ${elapsed}s): Targeted=$($distributionStatus.Targeted) Success=$($distributionStatus.NumberSuccess) InProgress=$($distributionStatus.NumberInProgress) Errors=$($distributionStatus.NumberErrors)"
+                            if ($distributionStatus.NumberSuccess -ge $distributionStatus.Targeted -and $distributionStatus.Targeted -gt 0)
+                            {
+                                break
+                            }
+                        }
+
+                        if ($elapsed -lt $maxWaitSeconds)
+                        {
+                            Write-Verbose "[winSCP] Distribution not yet complete - waiting ${pollIntervalSeconds}s before next check..."
+                            Start-Sleep -Seconds $pollIntervalSeconds
+                            $elapsed += $pollIntervalSeconds
+                        }
+                        else
+                        {
+                            break
+                        }
+                    }
+                    while ($elapsed -le $maxWaitSeconds)
+
+                    $distributionStatus | Should -Not -BeNullOrEmpty -Because 'Content distribution status must exist'
+                    $distributionStatus.NumberSuccess | Should -Be $distributionStatus.Targeted -Because "All $($distributionStatus.Targeted) targeted distribution points must have received the content successfully (waited up to ${maxWaitSeconds}s)"
+                }
+                else
+                {
+                    Write-Warning '[winSCP] Could not retrieve PackageID for distribution status check.'
+                }
+
+                # ----------------------------------------------------------------
+                # Step 8 - Poll application deployment status
+                # ----------------------------------------------------------------
+                Write-Verbose '[winSCP] Step 8: Polling application deployment status...'
+                $maxWaitSecondsDeployment = 1200   # 20 minutes
+                $pollIntervalDeployment = 180       # 3 minutes
+                $elapsedDeployment = 0
+                $deploymentSummary = $null
+
+                do
+                {
+                    $winscpApp = Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue
+                    if ($winscpApp)
+                    {
+                        $deploymentSummary = $winscpApp | Get-CMApplicationDeploymentStatus -ErrorAction SilentlyContinue
+                        if ($deploymentSummary)
+                        {
+                            Write-Verbose "[winSCP] Deployment status (elapsed ${elapsedDeployment}s): Success=$($deploymentSummary.NumberSuccess) InProgress=$($deploymentSummary.NumberInProgress) Error=$($deploymentSummary.NumberErrors) Targeted=$($deploymentSummary.NumberTargeted)"
+                            if ($deploymentSummary.NumberSuccess -gt 0)
+                            {
+                                break
+                            }
+                        }
+                    }
+
+                    if ($elapsedDeployment -lt $maxWaitSecondsDeployment)
+                    {
+                        Write-Verbose "[winSCP] Deployment not yet successful - waiting ${pollIntervalDeployment}s before next check..."
+                        $busy = $false
+                        try
+                        {
+                            $apps = Get-CimInstance -Namespace root\ccm\ClientSDK -ClassName CCM_Application -ErrorAction Stop
+                            foreach ($app in $apps)
+                            {
+                                # EvaluationState=1 (evaluationing) or InstallState=2 (installing)
+                                if ($app.EvaluationState -eq 1 -or $app.InstallState -eq 2)
+                                {
+                                    $busy = $true
+                                    Write-Host "Application [$($app.Name)] is deploying, skipping this check" -ForegroundColor Yellow
+                                    break
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            Write-Warning "Failed to query CCM_Application: $_"
+                        }
+
+                        # 2. Trigger policy/application/update evaluation if system is idle
+                        if (-not $busy)
+                        {
+                            Write-Host "System is idle, triggering policy/application/update evaluation" -ForegroundColor Green
+
+                            # Computer policy
+                            $trigger = "{00000000-0000-0000-0000-000000000021}"
+                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+
+                            # Application evaluation
+                            $trigger = "{00000000-0000-0000-0000-000000000121}"
+                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+
+                            # Software update
+                            $trigger = "{00000000-0000-0000-0000-000000000108}"
+                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+                        }
+                        Start-Sleep -Seconds $pollIntervalDeployment
+                        $elapsedDeployment += $pollIntervalDeployment
+                    }
+                    else
+                    {
+                        break
+                    }
+                }
+                while ($elapsedDeployment -le $maxWaitSecondsDeployment)
+
+                $deploymentSummary | Should -Not -BeNullOrEmpty -Because 'Application deployment status must exist'
+                $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully deployed the application (waited up to ${maxWaitSecondsDeployment}s)"
             }
             finally
             {
