@@ -407,7 +407,17 @@ Describe 'Intune Tests' {
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
                 -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd -Verbose
 
-            $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
+            # Intune Graph API has eventual consistency; retry until the app is visible
+            $win32App = $null
+            $retryCount = 0
+            $maxRetries = 12
+            while (-not $win32App -and $retryCount -lt $maxRetries)
+            {
+                Start-Sleep -Seconds 10
+                $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
+                $retryCount++
+            }
+            $win32App
             $win32App | Should -Not -BeNullOrEmpty
 
             # Assign to group
@@ -482,13 +492,23 @@ Describe 'Intune Tests' {
 
             $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
             $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+            $DisplayName = $appName
 
             Add-IntuneWin32App -FilePath $finalPath -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
                 -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd -Verbose
 
-            $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
+            # Intune Graph API has eventual consistency; retry until the app is visible
+            $win32App = $null
+            $retryCount = 0
+            $maxRetries = 12
+            while (-not $win32App -and $retryCount -lt $maxRetries)
+            {
+                Start-Sleep -Seconds 10
+                $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
+                $retryCount++
+            }
             $win32App | Should -Not -BeNullOrEmpty
 
             # Assign to group
