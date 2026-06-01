@@ -319,6 +319,7 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             $script:winscpAppVersion = '6.5.6'
             $script:winscpDTName = "WinSCP $script:winscpAppVersion (v4 winSCP)"
             $script:winscpContentUNC = "\\$env:COMPUTERNAME\PSADT_Content$\winSCP"
+            $script:targetCollection = if ($env:SCCM_TARGET_COLLECTION) { $env:SCCM_TARGET_COLLECTION } else { 'All Systems' }
 
             $script:siteCode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Operations Management' -Name 'Site Code' -ErrorAction SilentlyContinue).'Site Code'
             $script:siteServer = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Setup' -Name 'Provider Location' -ErrorAction SilentlyContinue).'Provider Location'
@@ -384,8 +385,8 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with winSCP version
             # ----------------------------------------------------------------
             Write-Verbose '[winSCP] Step 3: Replacing Invoke-AppDeployToolkit.ps1 with winSCP version...'
-            $destScript = Get-ChildItem -Path $script:winscpPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File |
-            Select-Object -First 1
+            $allDestScripts = Get-ChildItem -Path $script:winscpPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File -ErrorAction SilentlyContinue
+            $destScript = $allDestScripts | Select-Object -First 1
             $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
             Copy-Item -Path $script:winscpSourceScript -Destination $destScript.FullName -Force
             $content = Get-Content -Path $destScript.FullName -Raw
@@ -398,7 +399,7 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             $msiSource = 'C:\Tools\Intune\WinSCP\WinSCP-6.5.6.msi'
             if (-not (Test-Path $msiSource))
             {
-                Write-Warning "[winSCP] MSI not found at '$msiSource', skipping MSI copy step."
+                Write-Host "::warning::[winSCP] MSI not found at '$msiSource', skipping MSI copy step."
             }
             else
             {
@@ -498,7 +499,7 @@ $app = foreach ($root in $uninstallRoots)
             Where-Object { $_.DisplayName -like '*WinSCP*' -and $_.DisplayVersion -eq '6.5.6' }
     }
 }
-if ($app) { exit 0 } else { exit 1 }
+if ($app) { Write-Host "Installed" }
 '@
 
                 Add-CMScriptDeploymentType `
@@ -548,7 +549,7 @@ if ($app) { exit 0 } else { exit 1 }
                 }
                 else
                 {
-                    Write-Warning '[winSCP] No distribution points or DP groups found - content distribution skipped.'
+                    Write-Host '::warning::[winSCP] No distribution points or DP groups found - content distribution skipped.'
                 }
                 # Check content distribution status via Get-CMDistributionStatus
                 # Poll every 60 seconds for up to 10 minutes until all DPs report success
@@ -590,8 +591,43 @@ if ($app) { exit 0 } else { exit 1 }
                 }
                 else
                 {
-                    Write-Warning '[winSCP] Could not retrieve PackageID for distribution status check.'
+                    Write-Host '::warning::[winSCP] Could not retrieve PackageID for distribution status check.'
                 }
+
+                # ----------------------------------------------------------------
+                # Step 7b - Deploy application to collection
+                # ----------------------------------------------------------------
+                Write-Verbose "[winSCP] Step 7b: Deploying application to collection '$($script:targetCollection)'..."
+
+                # Validate collection exists if not using default
+                if ($script:targetCollection -ne 'All Systems')
+                {
+                    $col = Get-CMDeviceCollection -Name $script:targetCollection -ErrorAction SilentlyContinue
+                    $col | Should -Not -BeNullOrEmpty -Because "Collection '$($script:targetCollection)' must exist in SCCM"
+                    Write-Verbose "[winSCP] Collection validated: $($script:targetCollection) ($($col.MemberCount) device(s))"
+                }
+
+                # Remove existing deployment before recreating
+                $existDeploy = Get-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
+                if ($existDeploy)
+                {
+                    Remove-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -Force -ErrorAction SilentlyContinue
+                    Write-Verbose "[winSCP] Removed existing deployment: $($script:winscpAppName) -> $($script:targetCollection)"
+                }
+
+                New-CMApplicationDeployment `
+                    -Name                       $script:winscpAppName `
+                    -CollectionName             $script:targetCollection `
+                    -DeployAction               Install `
+                    -DeployPurpose              Required `
+                    -UserNotification           HideAll `
+                    -TimeBaseOn                 LocalTime `
+                    -OverrideServiceWindow      $false `
+                    -RebootOutsideServiceWindow $false | Out-Null
+
+                $createdDeploy = Get-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
+                $createdDeploy | Should -Not -BeNullOrEmpty -Because "Deployment of '$($script:winscpAppName)' to '$($script:targetCollection)' must be created successfully"
+                Write-Verbose "[winSCP] Deployment created: $($script:winscpAppName) -> $($script:targetCollection) (Required)"
 
                 # ----------------------------------------------------------------
                 # Step 8 - Poll application deployment status
@@ -638,7 +674,7 @@ if ($app) { exit 0 } else { exit 1 }
                         }
                         catch
                         {
-                            Write-Warning "Failed to query CCM_Application: $_"
+                            Write-Host "::warning::[winSCP] Failed to query CCM_Application: $_"
                         }
 
                         # 2. Trigger policy/application/update evaluation if system is idle
