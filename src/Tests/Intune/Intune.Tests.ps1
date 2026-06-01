@@ -299,16 +299,20 @@ Describe 'Intune Tests' {
             }
 
             # Create a test group in Azure AD and set $script:GroupID to its ObjectId for assignment tests
-                $graphModule = Get-Module -Name 'Microsoft.Graph*' -ListAvailable
-                # If not installed, this test will be skipped gracefully
-                if (-not $graphModule)
-                {
-                    Import-Module -Name $graphModule.Name -Force
-                    Connect-MgGraph -TenantId $script:TenantID -ClientId $script:ClientID -ClientSecret $script:ClientSecret -Scopes 'Group.ReadWrite.All'
-                    $group = New-MgGroup -DisplayName 'PSADT Test Group' -SecurityEnabled $true -MailEnabled $false
-                    $script:GroupID = $group.Id
-                    Write-Information "Created test group with ObjectId: $($script:GroupID)" -InformationAction Continue
-                }
+            $graphModule = Get-Module -Name 'Microsoft.Graph*' -ListAvailable
+            # If not installed, this test will be skipped gracefully
+            if (-not $graphModule)
+            {
+                Import-Module -Name $graphModule.Name -Force
+                Connect-MgGraph -TenantId $script:TenantID -ClientId $script:ClientID -ClientSecret $script:ClientSecret -Scopes 'Group.ReadWrite.All", "Device.Read.All'
+                $group = New-MgGroup -DisplayName 'PSADT Test Group' -SecurityEnabled $true -MailEnabled $false
+                $script:GroupID = $group.Id
+                Write-Information "Created test group with ObjectId: $($script:GroupID)" -InformationAction Continue
+            }
+            # Add test client to the group to verify group membership in assignment tests
+            $deviceName = $env:COMPUTERNAME
+            $device = Get-MgDevice -Filter "displayName eq '$deviceName'"
+            New-MgGroupMember -GroupId $script:GroupID -DirectoryObjectId $device.Id
         }
 
         BeforeEach {
