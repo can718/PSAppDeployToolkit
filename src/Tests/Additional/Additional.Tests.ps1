@@ -399,7 +399,7 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             $msiSource = 'C:\Tools\Intune\WinSCP\WinSCP-6.5.6.msi'
             if (-not (Test-Path $msiSource))
             {
-                Write-Host "::warning::[winSCP] MSI not found at '$msiSource', skipping MSI copy step."
+                Write-Information "::warning::[winSCP] MSI not found at '$msiSource', skipping MSI copy step." -InformationAction Continue
             }
             else
             {
@@ -549,7 +549,7 @@ if ($app) { Write-Host "Installed" }
                 }
                 else
                 {
-                    Write-Host '::warning::[winSCP] No distribution points or DP groups found - content distribution skipped.'
+                    Write-Information '::warning::[winSCP] No distribution points or DP groups found - content distribution skipped.' -InformationAction Continue
                 }
                 # Check content distribution status via Get-CMDistributionStatus
                 # Poll every 60 seconds for up to 10 minutes until all DPs report success
@@ -591,7 +591,7 @@ if ($app) { Write-Host "Installed" }
                 }
                 else
                 {
-                    Write-Host '::warning::[winSCP] Could not retrieve PackageID for distribution status check.'
+                    Write-Information '::warning::[winSCP] Could not retrieve PackageID for distribution status check.' -InformationAction Continue
                 }
 
                 # ----------------------------------------------------------------
@@ -640,17 +640,16 @@ if ($app) { Write-Host "Installed" }
 
                 do
                 {
-                    $winscpApp = Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue
-                    if ($winscpApp)
+                    $cimNamespace = "root\SMS\Site_$($script:siteCode)"
+                    $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
+                    Where-Object { $_.ApplicationName -eq $script:winscpAppName } |
+                    Select-Object -First 1
+                    if ($deploymentSummary)
                     {
-                        $deploymentSummary = $winscpApp | Get-CMApplicationDeploymentStatus -ErrorAction SilentlyContinue
-                        if ($deploymentSummary)
+                        Write-Verbose "[winSCP] Deployment status (elapsed ${elapsedDeployment}s): Success=$($deploymentSummary.NumberSuccess) InProgress=$($deploymentSummary.NumberInProgress) Error=$($deploymentSummary.NumberErrors) Targeted=$($deploymentSummary.NumberTargeted)"
+                        if ($deploymentSummary.NumberSuccess -gt 0)
                         {
-                            Write-Verbose "[winSCP] Deployment status (elapsed ${elapsedDeployment}s): Success=$($deploymentSummary.NumberSuccess) InProgress=$($deploymentSummary.NumberInProgress) Error=$($deploymentSummary.NumberErrors) Targeted=$($deploymentSummary.NumberTargeted)"
-                            if ($deploymentSummary.NumberSuccess -gt 0)
-                            {
-                                break
-                            }
+                            break
                         }
                     }
 
@@ -667,20 +666,20 @@ if ($app) { Write-Host "Installed" }
                                 if ($app.EvaluationState -eq 1 -or $app.InstallState -eq 2)
                                 {
                                     $busy = $true
-                                    Write-Host "Application [$($app.Name)] is deploying, skipping this check" -ForegroundColor Yellow
+                                    Write-Information "Application [$($app.Name)] is deploying, skipping this check" -InformationAction Continue
                                     break
                                 }
                             }
                         }
                         catch
                         {
-                            Write-Host "::warning::[winSCP] Failed to query CCM_Application: $_"
+                            Write-Information "::warning::[winSCP] Failed to query CCM_Application: $_" -InformationAction Continue
                         }
 
                         # 2. Trigger policy/application/update evaluation if system is idle
                         if (-not $busy)
                         {
-                            Write-Host "System is idle, triggering policy/application/update evaluation" -ForegroundColor Green
+                            Write-Information "System is idle, triggering policy/application/update evaluation" -InformationAction Continue
 
                             # Computer policy
                             $trigger = "{00000000-0000-0000-0000-000000000021}"

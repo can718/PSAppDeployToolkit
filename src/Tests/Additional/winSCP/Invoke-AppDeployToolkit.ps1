@@ -26,6 +26,7 @@ Disables logging to file for the script.
 Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent
 #>
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '')]
 [CmdletBinding()]
 param
 (
@@ -51,36 +52,36 @@ param
 
 ## MARK: Variables
 $adtSession = @{
-    AppVendor = 'Martin Prikryl'
-    AppName = 'WinSCP'
-    AppVersion = '6.5.6'
-    AppArch = 'x64'
-    AppLang = 'EN'
-    AppRevision = '01'
-    AppSuccessExitCodes = @(0)
-    AppRebootExitCodes = @(1641, 3010)
-    AppProcessesToClose = @(@{ Name = 'WinSCP'; Description = 'WinSCP' })
-    RequireAdmin = $true
+    AppVendor                   = 'Martin Prikryl'
+    AppName                     = 'WinSCP'
+    AppVersion                  = '6.5.6'
+    AppArch                     = 'x64'
+    AppLang                     = 'EN'
+    AppRevision                 = '01'
+    AppSuccessExitCodes         = @(0)
+    AppRebootExitCodes          = @(1641, 3010)
+    AppProcessesToClose         = @(@{ Name = 'WinSCP'; Description = 'WinSCP' })
+    RequireAdmin                = $true
 
-    AppScriptVersion = '1.0.0'
-    AppScriptDate = '2026-04-01'
-    AppScriptAuthor = 'PSAppDeployToolkit'
+    AppScriptVersion            = '1.0.0'
+    AppScriptDate               = '2026-04-01'
+    AppScriptAuthor             = 'PSAppDeployToolkit'
 
     # Install Titles (Only set here to override defaults set by the toolkit).
-    InstallName = ''
-    InstallTitle = ''
+    InstallName                 = ''
+    InstallTitle                = ''
 
     DeployAppScriptFriendlyName = $MyInvocation.MyCommand.Name
-    DeployAppScriptParameters = $PSBoundParameters
-    DeployAppScriptVersion = '4.2.0'
+    DeployAppScriptParameters   = $PSBoundParameters
+    DeployAppScriptVersion      = '4.2.0'
 }
 
 ## MARK: Pre-Install
 $PreInstall = {
     $saiwParams = @{
         AllowDeferCloseProcesses = $true
-        DeferTimes = 3
-        PersistPrompt = $true
+        DeferTimes               = 3
+        PersistPrompt            = $true
     }
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
