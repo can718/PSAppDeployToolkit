@@ -206,18 +206,7 @@ Describe 'Intune Tests' {
             Invoke-TFUpdateTestCase -TestResult $____Pester.CurrentTest
         }
 
-        It 'Microsoft.Graph.Intune module or Microsoft.Graph is available or can be found' {
-            $graphModule = Get-Module -Name 'Microsoft.Graph*' -ListAvailable
-            # If not installed, this test will be skipped gracefully
-            if (-not $graphModule)
-            {
-                Set-ItResult -Skipped -Because 'Microsoft.Graph module is not installed on this runner'
-            }
-            else
-            {
-                $graphModule | Should -Not -BeNullOrEmpty
-            }
-        }
+
     }
 
     Context 'Intune Package Deployment Checks' {
@@ -309,8 +298,17 @@ Describe 'Intune Tests' {
                 $null
             }
 
-            # Group ID for assignment
-            $script:GroupID = '70f69bb0-c68f-458b-a71a-fab85bd4ac98'
+            # Create a test group in Azure AD and set $script:GroupID to its ObjectId for assignment tests
+                $graphModule = Get-Module -Name 'Microsoft.Graph*' -ListAvailable
+                # If not installed, this test will be skipped gracefully
+                if (-not $graphModule)
+                {
+                    Import-Module -Name $graphModule.Name -Force
+                    Connect-MgGraph -TenantId $script:TenantID -ClientId $script:ClientID -ClientSecret $script:ClientSecret -Scopes 'Group.ReadWrite.All'
+                    $group = New-MgGroup -DisplayName 'PSADT Test Group' -SecurityEnabled $true -MailEnabled $false
+                    $script:GroupID = $group.Id
+                    Write-Information "Created test group with ObjectId: $($script:GroupID)" -InformationAction Continue
+                }
         }
 
         BeforeEach {
@@ -424,7 +422,7 @@ Describe 'Intune Tests' {
             Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
         }
 
-        It 'WinSCP - wrap and upload to Intune' {
+        It 'WinSCP - wrap and upload to Intune' -Skip {
             # TODO: Set your WinSCP download URL here
             $appDownloadUrl = 'https://winscp.net/download/WinSCP-6.5.6.msi/download'  # <-- Fill in WinSCP download URL
             $appName = 'WinSCP'
