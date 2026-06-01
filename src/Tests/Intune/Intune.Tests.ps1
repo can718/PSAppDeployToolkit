@@ -139,6 +139,17 @@ BeforeAll {
         }
     }
 
+    function script:Get-IntuneWinAppUtilPath
+    {
+        $toolPath = 'C:\Tools\Intune\IntuneWinAppUtil.exe'
+        if (Test-Path $toolPath)
+        {
+            return $toolPath
+        }
+
+        return $null
+    }
+
     if (-not (Get-Module -Name 'IntuneWin32App' -ListAvailable))
     {
         Install-Module -Name 'IntuneWin32App' -AcceptLicense -Force -Scope CurrentUser
@@ -263,18 +274,6 @@ Describe 'Intune Tests' {
             Invoke-TFUpdateTestCase -TestResult $____Pester.CurrentTest
         }
 
-        It 'IntuneWinAppUtil.exe is accessible or PSADT packaging scripts exist' {
-            $intuneUtil = Get-Command 'IntuneWinAppUtil.exe' -ErrorAction SilentlyContinue
-            if (-not $intuneUtil)
-            {
-                Set-ItResult -Skipped -Because 'IntuneWinAppUtil.exe not found on PATH - Intune packaging tool not installed'
-            }
-            else
-            {
-                $intuneUtil | Should -Not -BeNullOrEmpty
-            }
-        }
-
         It 'PSAppDeployToolkit module can be found in src output' {
             $moduleManifest = Get-ChildItem -Path '.\src\Artifacts' -Filter 'PSAppDeployToolkit.psd1' -Recurse -ErrorAction SilentlyContinue
             if (-not $moduleManifest)
@@ -299,20 +298,16 @@ Describe 'Intune Tests' {
             Import-Module -Name '.\src\PSAppDeployToolkit\PSAppDeployToolkit.psd1' -Force
             New-ADTTemplate -Destination $templateDest -Force
 
-            # Ensure output folder for .intunewin files
-            $win32OutputDir = Join-Path $templateDest 'WIN32APP'
-            if (-not (Test-Path $win32OutputDir))
+            # Resolve IntuneWinAppUtil.exe from the default local install path.
+            $script:IntuneWinAppUtil = Get-IntuneWinAppUtilPath
+            $script:Win32WrapAndUploadSkipReason = if (-not $script:IntuneWinAppUtil)
             {
-                New-Item -Path $win32OutputDir -ItemType Directory -Force | Out-Null
+                'IntuneWinAppUtil.exe not found at C:\Tools\Intune\IntuneWinAppUtil.exe'
             }
-
-            if ($(Test-AccessToken) -eq $false)
+            else
             {
-                Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $script:ClientSecret
+                $null
             }
-
-            # IntuneWinAppUtil.exe path
-            $script:IntuneWinAppUtil = 'C:\Tools\Intune\IntuneWinAppUtil.exe'
 
             # Group ID for assignment
             $script:GroupID = '70f69bb0-c68f-458b-a71a-fab85bd4ac98'
@@ -332,6 +327,11 @@ Describe 'Intune Tests' {
                 $ClientSecret = $script:ClientSecret
                 Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $ClientSecret
             }
+
+            if ($script:Win32WrapAndUploadSkipReason)
+            {
+                Set-ItResult -Skipped -Because $script:Win32WrapAndUploadSkipReason
+            }
         }
 
         AfterEach {
@@ -339,12 +339,11 @@ Describe 'Intune Tests' {
         }
 
         It 'VLC - wrap and upload to Intune' {
-            # TODO: Set your VLC download URL here
             $appDownloadUrl = 'https://get.videolan.org/vlc/3.0.23/win64/vlc-3.0.23-win64.exe'
             $appName = 'VLC'
             $workDir = Join-Path 'C:\PSADT' $appName
 
-            # Copy template to app working directory
+            # Copy template to app working directory: like C:\PSADT\VLC\*
             $templateFolder = Get-ChildItem -Path 'C:\PSADT' -Directory | Where-Object { $_.Name -like 'PSAppDeployToolkit*' } | Select-Object -First 1
             if (-not $templateFolder)
             {
@@ -359,9 +358,9 @@ Describe 'Intune Tests' {
             Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
 
             # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
-            $exampleScript = Join-Path $PSScriptRoot '..\..\..\examples\VLC\Invoke-AppDeployToolkit.ps1'
+            $runnerScript = Join-Path $PSScriptRoot '.\VLC\Invoke-AppDeployToolkit.ps1'
             $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
-            Copy-Item -Path $exampleScript -Destination $targetScript -Force
+            Copy-Item -Path $runnerScript -Destination $targetScript -Force
 
             # Wrap with IntuneWinAppUtil
             $setupFile = 'Invoke-AppDeployToolkit.exe'
@@ -370,10 +369,30 @@ Describe 'Intune Tests' {
             Test-Path $intunewinFile | Should -BeTrue
 
             # Rename .intunewin and move to WIN32APP folder
-            $newName = "$appName.intunewin"
-            $finalPath = Join-Path 'C:\PSADT\WIN32APP' $newName
-            Move-Item -Path $intunewinFile -Destination $finalPath -Force
-            Test-Path $finalPath | Should -BeTrue
+            $FileDir = Split-Path $intunewinFile -Parent
+            $PackageFile = Get-ChildItem -Path "$FileDir\Files" -File |
+            Where-Object { $_.Extension -in '.msi', '.exe' } |
+            Select-Object -First 1
+
+            if (-not $PackageFile)
+            {
+                Write-Host "Can't find msi/exe files in the source folder."
+                return
+            }
+            $DisplayName = $PackageFile.BaseName
+
+            $NewFileName = "$DisplayName.intunewin"
+            $NewIntuneWinFile = Join-Path -Path $FileDir -ChildPath $NewFileName
+            if (Test-Path $intunewinFile)
+            {
+                Rename-Item -Path $intunewinFile -NewName $NewFileName -Force
+                Write-Host "Renamed to $NewIntuneWinFile" -ForegroundColor Green
+            }
+            else
+            {
+                Write-Host "Original intunewin file does not exist." -ForegroundColor Blue
+            }
+            Test-Path $NewIntuneWinFile | Should -BeTrue
 
             # Upload to Intune
             $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture 'x64x86' -MinimumSupportedWindowsRelease 'W10_1607'
@@ -383,12 +402,12 @@ Describe 'Intune Tests' {
             $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
             $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
 
-            Add-IntuneWin32App -FilePath $finalPath -DisplayName $appName -Description "PSADT $appName deployment" `
+            Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $appName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
                 -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd -Verbose
 
-            $win32App = Get-IntuneWin32App -DisplayName $appName -Verbose
+            $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
             $win32App | Should -Not -BeNullOrEmpty
 
             # Assign to group
@@ -416,9 +435,9 @@ Describe 'Intune Tests' {
             Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
 
             # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
-            $exampleScript = Join-Path $PSScriptRoot '..\..\..\examples\WinSCP\Invoke-AppDeployToolkit.ps1'
+            $runnerScript = Join-Path $PSScriptRoot '..\..\..\examples\WinSCP\Invoke-AppDeployToolkit.ps1'
             $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
-            Copy-Item -Path $exampleScript -Destination $targetScript -Force
+            Copy-Item -Path $runnerScript -Destination $targetScript -Force
 
             # Wrap with IntuneWinAppUtil
             $setupFile = 'Invoke-AppDeployToolkit.exe'
