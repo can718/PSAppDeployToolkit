@@ -402,7 +402,7 @@ Describe 'Intune Tests' {
             $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
             $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
 
-            Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $appName -Description "PSADT $appName deployment" `
+            Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
                 -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd -Verbose
@@ -483,12 +483,12 @@ Describe 'Intune Tests' {
             $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
             $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
 
-            Add-IntuneWin32App -FilePath $finalPath -DisplayName $appName -Description "PSADT $appName deployment" `
+            Add-IntuneWin32App -FilePath $finalPath -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
                 -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd -Verbose
 
-            $win32App = Get-IntuneWin32App -DisplayName $appName -Verbose
+            $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
             $win32App | Should -Not -BeNullOrEmpty
 
             # Assign to group
