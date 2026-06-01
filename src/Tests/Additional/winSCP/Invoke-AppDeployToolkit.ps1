@@ -87,8 +87,8 @@ $PreInstall = {
     {
         $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
     }
-    Show-ADTInstallationWelcome @saiwParams
-    Show-ADTInstallationProgress
+    # Show-ADTInstallationWelcome @saiwParams
+    # Show-ADTInstallationProgress
 }
 
 ## MARK: Install
@@ -105,16 +105,16 @@ $PostInstall = {
         Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'BetaVersions' -Value 1 -Type DWord -SID $_.SID
         Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'ShowOnStartup' -Value 0 -Type DWord -SID $_.SID
     }
-    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
+    # Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Pre-Uninstall
 $PreUninstall = {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
+        # Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
-    Show-ADTInstallationProgress
+    # Show-ADTInstallationProgress
 }
 
 ## MARK: Uninstall
@@ -130,9 +130,9 @@ $PostUninstall = {
 $PreRepair = {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
+        # Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
-    Show-ADTInstallationProgress
+    # Show-ADTInstallationProgress
 }
 
 ## MARK: Repair
@@ -149,7 +149,7 @@ $PostRepair = {
         Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'BetaVersions' -Value 1 -Type DWord -SID $_.SID
         Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'ShowOnStartup' -Value 0 -Type DWord -SID $_.SID
     }
-    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
+    # Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Initialization

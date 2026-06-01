@@ -620,7 +620,7 @@ if ($app) { Write-Host "Installed" }
                     -CollectionName             $script:targetCollection `
                     -DeployAction               Install `
                     -DeployPurpose              Required `
-                    -UserNotification           HideAll `
+                    -UserNotification           DisplaySoftwareCenterOnly `
                     -TimeBaseOn                 LocalTime `
                     -OverrideServiceWindow      $false `
                     -RebootOutsideServiceWindow $false | Out-Null
@@ -660,14 +660,32 @@ if ($app) { Write-Host "Installed" }
                         try
                         {
                             $apps = Get-CimInstance -Namespace root\ccm\ClientSDK -ClassName CCM_Application -ErrorAction Stop
-                            foreach ($app in $apps)
+
+                            if ($null -eq $apps)
                             {
-                                # EvaluationState=1 (evaluationing) or InstallState=2 (installing)
-                                if ($app.EvaluationState -eq 1 -or $app.InstallState -eq 2)
+                                Write-Information "No applications found on client, no deployment in progress." -InformationAction Continue
+                                $busy = $false
+                            }
+                            else
+                            {
+                                foreach ($app in $apps)
                                 {
-                                    $busy = $true
-                                    Write-Information "Application [$($app.Name)] is deploying, skipping this check" -InformationAction Continue
-                                    break
+                                    if ($null -eq $app) { continue }
+
+                                    if ($app.Name -eq $script:winscpAppName)
+                                    {
+                                        # check status：evaluation / downloading / installing = deploying
+                                        $isEvaluating = ($app.EvaluationState -eq 1)
+                                        $isDownloading = ($app.InstallState -eq 1)
+                                        $isInstalling = ($app.InstallState -eq 2)
+
+                                        if ($isEvaluating -or $isDownloading -or $isInstalling)
+                                        {
+                                            $busy = $true
+                                            Write-Information "Target application [$($app.Name)] is deploying... Skip check." -InformationAction Continue
+                                            break
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -702,7 +720,9 @@ if ($app) { Write-Host "Installed" }
                     }
                 }
                 while ($elapsedDeployment -le $maxWaitSecondsDeployment)
-
+                $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
+                Where-Object { $_.ApplicationName -eq $script:winscpAppName } |
+                Select-Object -First 1
                 $deploymentSummary | Should -Not -BeNullOrEmpty -Because 'Application deployment status must exist'
                 $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully deployed the application (waited up to ${maxWaitSecondsDeployment}s)"
             }
