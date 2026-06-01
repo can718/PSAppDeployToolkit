@@ -93,7 +93,7 @@ $PreInstall = {
 
 ## MARK: Install
 $Install = {
-    Start-ADTMsiProcess -Action Install -FilePath "WinSCP-$($adtSession.AppVersion).msi"
+    Start-ADTMsiProcess -Action Install -FilePath "WinSCP-$($adtSession.AppVersion).msi" -SkipDesktopRefresh
 }
 
 ## MARK: Post-Install

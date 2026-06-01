@@ -641,8 +641,7 @@ if ($app) { Write-Host "Installed" }
                 do
                 {
                     $cimNamespace = "root\SMS\Site_$($script:siteCode)"
-                    $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
-                    Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                    $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
                     if ($deploymentSummary)
                     {
                         Write-Verbose "[winSCP] Deployment status (elapsed ${elapsedDeployment}s): Success=$($deploymentSummary.NumberSuccess) InProgress=$($deploymentSummary.NumberInProgress) Error=$($deploymentSummary.NumberErrors) Targeted=$($deploymentSummary.NumberTargeted)"
@@ -673,12 +672,9 @@ if ($app) { Write-Host "Installed" }
 
                                     if ($app.Name -eq $script:winscpAppName)
                                     {
-                                        # check status：evaluation / downloading / installing = deploying
-                                        $isEvaluating = ($app.EvaluationState -eq 1)
-                                        $isDownloading = ($app.InstallState -eq 1)
-                                        $isInstalling = ($app.InstallState -eq 2)
-
-                                        if ($isEvaluating -or $isDownloading -or $isInstalling)
+                                        # check status：evaluation = deploying
+                                        $isEvaluating = ($app.EvaluationState -in 1, 3, 5)   # Evaluating, WaitingForContent, Downloading, Installing, PostInstall
+                                        if ($isEvaluating)
                                         {
                                             $busy = $true
                                             Write-Information "Target application [$($app.Name)] is deploying... Skip check." -InformationAction Continue
@@ -719,8 +715,7 @@ if ($app) { Write-Host "Installed" }
                     }
                 }
                 while ($elapsedDeployment -le $maxWaitSecondsDeployment)
-                $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
-                Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
                 $deploymentSummary | Should -Not -BeNullOrEmpty -Because 'Application deployment status must exist'
                 $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully deployed the application (waited up to ${maxWaitSecondsDeployment}s)"
             }
