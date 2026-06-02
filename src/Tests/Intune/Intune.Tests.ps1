@@ -299,34 +299,25 @@ Describe 'Intune Tests' {
             }
 
             # Create a test group in Azure AD and set $script:GroupID to its ObjectId for assignment tests
-            $graphModule = Get-Module -Name 'Microsoft.Graph*' -ListAvailable
-            if (-not $graphModule)
+            if (-not (Get-Module -Name 'Microsoft.Graph*' -ListAvailable))
             {
-                # Microsoft.Graph module is not installed; skip all Win32 wrap/upload tests gracefully
-                $script:Win32WrapAndUploadSkipReason = if ($script:Win32WrapAndUploadSkipReason)
-                {
-                    "$script:Win32WrapAndUploadSkipReason; Microsoft.Graph PowerShell module is not installed"
-                }
-                else
-                {
-                    'Microsoft.Graph PowerShell module is not installed'
-                }
+                Install-Module -Name 'Microsoft.Graph' -AcceptLicense -Force -Scope CurrentUser
+            }
+            Import-Module Microsoft.Graph -Force
+            Connect-MgGraph -TenantId $script:TenantID -ClientId $script:ClientID -ClientSecret $script:ClientSecret -Scopes @('Group.ReadWrite.All', 'Device.Read.All')
+            $group = New-MgGroup -DisplayName 'PSADT Test Group' -SecurityEnabled $true -MailEnabled $false -MailNickname ([System.Guid]::NewGuid().Guid)
+            $script:GroupID = $group.Id
+            Write-Information "Created test group with ObjectId: $($script:GroupID)" -InformationAction Continue
+
+            # Add test client to the group to verify group membership in assignment tests
+            $deviceName = $env:COMPUTERNAME
+            $device = Get-MgDevice -Filter "displayName eq '$deviceName'" | Select-Object -First 1
+            if (-not $device)
+            {
+                Write-Information "Unable to find a Microsoft Graph device with displayName '$deviceName'."
             }
             else
             {
-                Import-Module Microsoft.Graph -Force
-                Connect-MgGraph -TenantId $script:TenantID -ClientId $script:ClientID -ClientSecret $script:ClientSecret -Scopes @('Group.ReadWrite.All', 'Device.Read.All')
-                $group = New-MgGroup -DisplayName 'PSADT Test Group' -SecurityEnabled $true -MailEnabled $false -MailNickname ([System.Guid]::NewGuid().Guid)
-                $script:GroupID = $group.Id
-                Write-Information "Created test group with ObjectId: $($script:GroupID)" -InformationAction Continue
-
-                # Add test client to the group to verify group membership in assignment tests
-                $deviceName = $env:COMPUTERNAME
-                $device = Get-MgDevice -Filter "displayName eq '$deviceName'" | Select-Object -First 1
-                if (-not $device)
-                {
-                    throw "Unable to find a Microsoft Graph device with displayName '$deviceName'."
-                }
                 New-MgGroupMember -GroupId $script:GroupID -DirectoryObjectId $device.Id
             }
         }
