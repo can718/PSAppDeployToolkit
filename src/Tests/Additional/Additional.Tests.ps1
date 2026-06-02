@@ -640,7 +640,8 @@ if ($app) { Write-Host "Installed" }
 
                 do
                 {
-                    Invoke-CMClientOperationSummarization -ErrorAction SilentlyContinue | Out-Null
+                    $deployments = Get-CMDeployment -SoftwareName "$script:winscpAppName" -ErrorAction SilentlyContinue
+                    $deployments | ForEach-Object { Invoke-CMDeploymentSummarization -DeploymentId $_.DeploymentId }
                     $cimNamespace = "root\SMS\Site_$($script:siteCode)"
                     $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
                     if ($deploymentSummary)
