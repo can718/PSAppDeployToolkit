@@ -308,11 +308,13 @@ Describe 'Intune Tests' {
                 Install-Module -Name $missingGraphModules -Force -Scope CurrentUser
             }
             Import-Module Microsoft.Graph.Authentication, Microsoft.Graph.Groups, Microsoft.Graph.Identity.DirectoryManagement
+            # Required application permissions on the app registration (admin-consented):
+            #   Group.ReadWrite.All, GroupMember.ReadWrite.All, Device.Read.All
             $secureSecret = ConvertTo-SecureString $script:ClientSecret -AsPlainText -Force
             $clientSecretCredential = New-Object System.Management.Automation.PSCredential ($script:ClientID, $secureSecret)
-            Connect-MgGraph -TenantId $script:TenantID -ClientSecretCredential $clientSecretCredential
             try
             {
+                Connect-MgGraph -TenantId $script:TenantID -ClientSecretCredential $clientSecretCredential -NoWelcome -ErrorAction Stop
                 $group = New-MgGroup -BodyParameter @{
                     displayName = 'PSADT Test Group'
                     securityEnabled = $true
