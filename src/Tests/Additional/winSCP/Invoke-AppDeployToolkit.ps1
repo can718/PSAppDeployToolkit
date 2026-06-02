@@ -101,7 +101,7 @@ $PreInstall = {
 
 ## MARK: Install
 $Install = {
-    Start-ADTMsiProcess -Action Install -FilePath "WinSCP-$($adtSession.AppVersion).msi"
+    Start-ADTMsiProcess -Action Install -FilePath "WinSCP-$($adtSession.AppVersion).msi" -NoDesktopRefresh
 }
 
 ## MARK: Post-Install
@@ -127,7 +127,7 @@ $PreUninstall = {
 
 ## MARK: Uninstall
 $Uninstall = {
-    Start-ADTMsiProcess -Action Uninstall -FilePath "WinSCP-$($adtSession.AppVersion).msi"
+    Start-ADTMsiProcess -Action Uninstall -FilePath "WinSCP-$($adtSession.AppVersion).msi" -NoDesktopRefresh
 }
 
 ## MARK: Post-Uninstall
@@ -145,7 +145,7 @@ $PreRepair = {
 
 ## MARK: Repair
 $Repair = {
-    Start-ADTMsiProcess -Action Repair -FilePath "WinSCP-$($adtSession.AppVersion).msi" -RepairFromSource
+    Start-ADTMsiProcess -Action Repair -FilePath "WinSCP-$($adtSession.AppVersion).msi" -RepairFromSource -NoDesktopRefresh
 }
 
 ## MARK: Post-Repair
