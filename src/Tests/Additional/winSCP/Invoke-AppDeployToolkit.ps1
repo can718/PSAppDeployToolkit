@@ -50,6 +50,14 @@ param
     [System.Management.Automation.SwitchParameter]$DisableLogging
 )
 
+# ---------------------------------------------------------------------------
+# PSADT v3 and earlier desktop refreshes can cause issues in test environments, so we disable them globally for the test session.
+$global:SkipDesktopRefresh = $true
+$global:SkipStartMenuRefresh = $true
+# PSADT v4 introduced new functions for these refreshes, so we override them with no-op implementations to prevent any accidental calls from causing issues.
+function Update-ADTDesktopRefresh { }
+function Update-ADTStartMenuRefresh { }
+
 ## MARK: Variables
 $adtSession = @{
     AppVendor                   = 'Martin Prikryl'
@@ -93,7 +101,7 @@ $PreInstall = {
 
 ## MARK: Install
 $Install = {
-    Start-ADTMsiProcess -Action Install -FilePath "WinSCP-$($adtSession.AppVersion).msi" -SkipDesktopRefresh
+    Start-ADTMsiProcess -Action Install -FilePath "WinSCP-$($adtSession.AppVersion).msi"
 }
 
 ## MARK: Post-Install
