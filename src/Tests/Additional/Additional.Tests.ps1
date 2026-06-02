@@ -632,8 +632,8 @@ if ($app) { Write-Host "Installed" }
                 # ----------------------------------------------------------------
                 # Step 8 - Poll application deployment status
                 # ----------------------------------------------------------------
-                Write-Verbose '[winSCP] Step 8: Polling application deployment status...'
-                $maxWaitSecondsDeployment = 1200   # 20 minutes
+                Write-Information '[winSCP] Step 8: Polling application deployment status...' -InformationAction Continue
+                $maxWaitSecondsDeployment = 3600   # 60 minutes
                 $pollIntervalDeployment = 180       # 3 minutes
                 $elapsedDeployment = 0
                 $deploymentSummary = $null
@@ -644,7 +644,7 @@ if ($app) { Write-Host "Installed" }
                     $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
                     if ($deploymentSummary)
                     {
-                        Write-Verbose "[winSCP] Deployment status (elapsed ${elapsedDeployment}s): Success=$($deploymentSummary.NumberSuccess) InProgress=$($deploymentSummary.NumberInProgress) Error=$($deploymentSummary.NumberErrors) Targeted=$($deploymentSummary.NumberTargeted)"
+                        Write-Information "[winSCP] Deployment status (elapsed ${elapsedDeployment}s): Success=$($deploymentSummary.NumberSuccess) InProgress=$($deploymentSummary.NumberInProgress) Error=$($deploymentSummary.NumberErrors) Targeted=$($deploymentSummary.NumberTargeted)" -InformationAction Continue
                         if ($deploymentSummary.NumberSuccess -gt 0)
                         {
                             break
@@ -653,7 +653,7 @@ if ($app) { Write-Host "Installed" }
 
                     if ($elapsedDeployment -lt $maxWaitSecondsDeployment)
                     {
-                        Write-Verbose "[winSCP] Deployment not yet successful - waiting ${pollIntervalDeployment}s before next check..."
+                        Write-Information "[winSCP] Deployment not yet successful - waiting ${pollIntervalDeployment}s before next check..." -InformationAction Continue
                         $busy = $false
                         try
                         {
