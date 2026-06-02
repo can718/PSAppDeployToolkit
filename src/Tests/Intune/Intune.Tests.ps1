@@ -303,7 +303,7 @@ Describe 'Intune Tests' {
             # If not installed, this test will be skipped gracefully
             if (-not $graphModule)
             {
-                Import-Module -Name $graphModule.Name -Force
+                Import-Module Microsoft.Graph -Force
                 Connect-MgGraph -TenantId $script:TenantID -ClientId $script:ClientID -ClientSecret $script:ClientSecret -Scopes 'Group.ReadWrite.All", "Device.Read.All'
                 $group = New-MgGroup -DisplayName 'PSADT Test Group' -SecurityEnabled $true -MailEnabled $false
                 $script:GroupID = $group.Id
