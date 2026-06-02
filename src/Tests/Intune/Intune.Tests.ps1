@@ -299,17 +299,26 @@ Describe 'Intune Tests' {
             }
 
             # Create a test group in Azure AD and set $script:GroupID to its ObjectId for assignment tests
-            if (-not (Get-Module -Name 'Microsoft.Graph*' -ListAvailable))
+            # Install only the minimal required Graph sub-modules; wildcard check is intentionally avoided
+            # because it would match any unrelated Microsoft.Graph.* module that may already be present.
+            $requiredGraphModules = @('Microsoft.Graph.Authentication', 'Microsoft.Graph.Groups', 'Microsoft.Graph.Identity.DirectoryManagement')
+            $missingGraphModules = $requiredGraphModules | Where-Object { -not (Get-Module -Name $_ -ListAvailable) }
+            if ($missingGraphModules)
             {
-                Install-Module -Name 'Microsoft.Graph' -AcceptLicense -Force -Scope CurrentUser
+                Install-Module -Name $missingGraphModules -Force -Scope CurrentUser
             }
-            Import-Module Microsoft.Graph -Force
+            Import-Module Microsoft.Graph.Authentication, Microsoft.Graph.Groups, Microsoft.Graph.Identity.DirectoryManagement
             $secureSecret = ConvertTo-SecureString $script:ClientSecret -AsPlainText -Force
             $clientSecretCredential = New-Object System.Management.Automation.PSCredential ($script:ClientID, $secureSecret)
             Connect-MgGraph -TenantId $script:TenantID -ClientSecretCredential $clientSecretCredential
             try
             {
-                $group = New-MgGroup -DisplayName 'PSADT Test Group' -SecurityEnabled $true -MailEnabled $false -MailNickname ([System.Guid]::NewGuid().Guid) -ErrorAction Stop
+                $group = New-MgGroup -BodyParameter @{
+                    displayName = 'PSADT Test Group'
+                    securityEnabled = $true
+                    mailEnabled = $false
+                    mailNickname = [System.Guid]::NewGuid().Guid
+                } -ErrorAction Stop
                 $script:GroupID = $group.Id
                 Write-Information "Created test group with ObjectId: $($script:GroupID)" -InformationAction Continue
 
