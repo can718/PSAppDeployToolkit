@@ -304,21 +304,40 @@ Describe 'Intune Tests' {
                 Install-Module -Name 'Microsoft.Graph' -AcceptLicense -Force -Scope CurrentUser
             }
             Import-Module Microsoft.Graph -Force
-            Connect-MgGraph -TenantId $script:TenantID -ClientId $script:ClientID -ClientSecret $script:ClientSecret -Scopes @('Group.ReadWrite.All', 'Device.Read.All')
-            $group = New-MgGroup -DisplayName 'PSADT Test Group' -SecurityEnabled $true -MailEnabled $false -MailNickname ([System.Guid]::NewGuid().Guid)
-            $script:GroupID = $group.Id
-            Write-Information "Created test group with ObjectId: $($script:GroupID)" -InformationAction Continue
+            $secureSecret = ConvertTo-SecureString $script:ClientSecret -AsPlainText -Force
+            $clientSecretCredential = New-Object System.Management.Automation.PSCredential ($script:ClientID, $secureSecret)
+            Connect-MgGraph -TenantId $script:TenantID -ClientSecretCredential $clientSecretCredential
+            try
+            {
+                $group = New-MgGroup -DisplayName 'PSADT Test Group' -SecurityEnabled $true -MailEnabled $false -MailNickname ([System.Guid]::NewGuid().Guid) -ErrorAction Stop
+                $script:GroupID = $group.Id
+                Write-Information "Created test group with ObjectId: $($script:GroupID)" -InformationAction Continue
 
-            # Add test client to the group to verify group membership in assignment tests
-            $deviceName = $env:COMPUTERNAME
-            $device = Get-MgDevice -Filter "displayName eq '$deviceName'" | Select-Object -First 1
-            if (-not $device)
-            {
-                Write-Information "Unable to find a Microsoft Graph device with displayName '$deviceName'."
+                # Add test client to the group to verify group membership in assignment tests
+                $deviceName = $env:COMPUTERNAME
+                $device = Get-MgDevice -Filter "displayName eq '$deviceName'" | Select-Object -First 1
+                if (-not $device)
+                {
+                    Write-Information "Unable to find a Microsoft Graph device with displayName '$deviceName'." -InformationAction Continue
+                }
+                else
+                {
+                    New-MgGroupMember -GroupId $script:GroupID -DirectoryObjectId $device.Id -ErrorAction Stop
+                }
             }
-            else
+            catch
             {
-                New-MgGroupMember -GroupId $script:GroupID -DirectoryObjectId $device.Id
+                # Group creation or member assignment failed (e.g. missing Group.ReadWrite.All app permission).
+                # Mark group-assignment steps as skipped rather than failing the whole BeforeAll.
+                $script:Win32WrapAndUploadSkipReason = if ($script:Win32WrapAndUploadSkipReason)
+                {
+                    "$script:Win32WrapAndUploadSkipReason; Azure AD group setup failed: $($_.Exception.Message)"
+                }
+                else
+                {
+                    "Azure AD group setup failed: $($_.Exception.Message)"
+                }
+                Write-Warning "[Intune] Skipping group-assignment tests: $($_.Exception.Message)"
             }
         }
 
