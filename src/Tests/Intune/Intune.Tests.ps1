@@ -517,6 +517,61 @@ Describe 'Intune Tests' {
 
             # Assign to group
             Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
+
+            # ---------------------------------------------------------------
+            # Restart Intune sidecar agent services so the device picks up the
+            # new assignment without waiting for the default sync interval.
+            # ---------------------------------------------------------------
+            $intuneServices = @(
+                'IntuneManagementExtension'   # Intune Management Extension (IME) — main sidecar
+                'dmwappushservice'            # Device Management WAP Push service
+            )
+            foreach ($svc in $intuneServices)
+            {
+                $svcObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
+                if ($svcObj)
+                {
+                    Write-Information "Restarting service '$svc' (current state: $($svcObj.Status))..." -InformationAction Continue
+                    Restart-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                    $svcObj.Refresh()
+                    Write-Information "Service '$svc' state after restart: $($svcObj.Status)" -InformationAction Continue
+                }
+                else
+                {
+                    Write-Information "Service '$svc' not found on this machine — skipping." -InformationAction Continue
+                }
+            }
+
+            # ---------------------------------------------------------------
+            # Wait for Intune to push and install the Win32 app on this client.
+            # IME polls roughly every 60 s; allow up to 30 minutes total.
+            # ---------------------------------------------------------------
+            $installMaxWaitSeconds = 1800
+            $installPollInterval   = 60
+            $installWaited         = 0
+            $installVerified       = $false
+
+            # Detection: check the same registry key used by the detection rule above.
+            $detectionKeyPath  = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player'
+            $detectionValue    = 'DisplayVersion'
+            $detectionExpected = '3.0.23'
+
+            Write-Information "Polling for VLC installation (timeout: $($installMaxWaitSeconds / 60) min)..." -InformationAction Continue
+            while ($installWaited -lt $installMaxWaitSeconds)
+            {
+                $regVal = Get-ItemProperty -Path $detectionKeyPath -Name $detectionValue -ErrorAction SilentlyContinue
+                if ($regVal -and $regVal.$detectionValue -eq $detectionExpected)
+                {
+                    $installVerified = $true
+                    Write-Information "VLC $detectionExpected detected in registry after $installWaited s." -InformationAction Continue
+                    break
+                }
+                Write-Information "VLC not yet installed; waiting $installPollInterval s... ($installWaited / $installMaxWaitSeconds s elapsed)" -InformationAction Continue
+                Start-Sleep -Seconds $installPollInterval
+                $installWaited += $installPollInterval
+            }
+
+            $installVerified | Should -BeTrue -Because "VLC $detectionExpected should appear in the Uninstall registry key within the polling window"
         }
 
         It 'WinSCP - wrap and upload to Intune' -Skip {
