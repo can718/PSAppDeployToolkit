@@ -284,8 +284,11 @@ Describe 'Intune Tests' {
             {
                 Remove-Item -Path $templateDest -Recurse -Force
             }
-            Import-Module -Name '.\src\PSAppDeployToolkit\PSAppDeployToolkit.psd1' -Force
-            New-ADTTemplate -Destination $templateDest -Force
+            #Import-Module -Name '.\src\PSAppDeployToolkit\PSAppDeployToolkit.psd1' -Force
+            Install-Module -Name PSAppDeployToolkit -Scope CurrentUser
+            New-ADTTemplate -Destination $templateDest -Name "PSAppDeployToolkitv4"
+
+            #New-ADTTemplate -Destination $templateDest -Force
 
             # Resolve IntuneWinAppUtil.exe from the default local install path.
             $script:IntuneWinAppUtil = Get-IntuneWinAppUtilPath
@@ -546,7 +549,7 @@ Describe 'Intune Tests' {
             # Wait for Intune to push and install the Win32 app on this client.
             # IME polls roughly every 60 s; allow up to 30 minutes total.
             # ---------------------------------------------------------------
-            $installMaxWaitSeconds = 1800
+            $installMaxWaitSeconds = 900
             $installPollInterval   = 60
             $installWaited         = 0
             $installVerified       = $false
