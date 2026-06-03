@@ -320,6 +320,7 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             $script:winscpDTName = "WinSCP $script:winscpAppVersion (v4 winSCP)"
             $script:winscpContentUNC = "\\$env:COMPUTERNAME\PSADT_Content$\winSCP"
             $script:targetCollection = if ($env:SCCM_TARGET_COLLECTION) { $env:SCCM_TARGET_COLLECTION } else { 'All Systems' }
+            $script:winscpInstallDeploySucceeded = $false
 
             $script:siteCode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Operations Management' -Name 'Site Code' -ErrorAction SilentlyContinue).'Site Code'
             $script:siteServer = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Setup' -Name 'Provider Location' -ErrorAction SilentlyContinue).'Provider Location'
@@ -720,6 +721,152 @@ if ($app) { Write-Host "Installed" }
                 $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
                 $deploymentSummary | Should -Not -BeNullOrEmpty -Because 'Application deployment status must exist'
                 $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully deployed the application (waited up to ${maxWaitSecondsDeployment}s)"
+                $script:winscpInstallDeploySucceeded = $true
+            }
+            finally
+            {
+                Set-Location $origLoc
+            }
+        }
+
+        It 'Creates uninstall deployment after winSCP install deployment succeeds' {
+            if (-not $script:winscpInstallDeploySucceeded)
+            {
+                Set-ItResult -Skipped -Because "Prerequisite test 'Builds winSCP package and imports into SCCM' did not complete successfully"
+                return
+            }
+
+            if (-not $script:cmModulePath)
+            {
+                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
+                return
+            }
+
+            Import-Module $script:cmModulePath -ErrorAction Stop
+
+            $origLoc = Get-Location
+            try
+            {
+                if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
+                {
+                    New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
+                }
+                Set-Location "$($script:siteCode):\"
+
+                $app = Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue
+                $app | Should -Not -BeNullOrEmpty -Because 'winSCP application must exist before creating uninstall deployment'
+
+                $existingDeployments = Get-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
+                foreach ($dep in $existingDeployments)
+                {
+                    Remove-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
+                }
+                Start-Sleep -Seconds 2
+
+                New-CMApplicationDeployment `
+                    -Name                       $script:winscpAppName `
+                    -CollectionName             $script:targetCollection `
+                    -DeployAction               Uninstall `
+                    -DeployPurpose              Required `
+                    -UserNotification           DisplaySoftwareCenterOnly `
+                    -TimeBaseOn                 LocalTime `
+                    -OverrideServiceWindow      $false `
+                    -RebootOutsideServiceWindow $false | Out-Null
+
+                $uninstallDeploy = Get-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
+                $uninstallDeploy | Should -Not -BeNullOrEmpty -Because "Uninstall deployment of '$($script:winscpAppName)' to '$($script:targetCollection)' must be created successfully"
+                Write-Verbose "[winSCP] Uninstall deployment created: $($script:winscpAppName) -> $($script:targetCollection) (Required)"
+
+                # ----------------------------------------------------------------
+                # Step 9 - Poll uninstall deployment status
+                # ----------------------------------------------------------------
+                Write-Verbose '[winSCP] Step 9: Polling uninstall deployment status...'
+                $maxWaitSecondsUninstall = 1200   # 20 minutes
+                $pollIntervalUninstall = 180      # 3 minutes
+                $elapsedUninstall = 0
+                $uninstallSummary = $null
+
+                do
+                {
+                    $cimNamespace = "root\SMS\Site_$($script:siteCode)"
+                    $uninstallSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                    if ($uninstallSummary)
+                    {
+                        Write-Verbose "[winSCP] Uninstall deployment status (elapsed ${elapsedUninstall}s): Success=$($uninstallSummary.NumberSuccess) InProgress=$($uninstallSummary.NumberInProgress) Error=$($uninstallSummary.NumberErrors) Targeted=$($uninstallSummary.NumberTargeted)"
+                        if ($uninstallSummary.NumberSuccess -gt 0)
+                        {
+                            break
+                        }
+                    }
+
+                    if ($elapsedUninstall -lt $maxWaitSecondsUninstall)
+                    {
+                        Write-Verbose "[winSCP] Uninstall deployment not yet successful - waiting ${pollIntervalUninstall}s before next check..."
+                        $busy = $false
+                        try
+                        {
+                            $apps = Get-CimInstance -Namespace root\ccm\ClientSDK -ClassName CCM_Application -ErrorAction Stop
+
+                            if ($null -eq $apps)
+                            {
+                                Write-Information "No applications found on client, no deployment in progress." -InformationAction Continue
+                                $busy = $false
+                            }
+                            else
+                            {
+                                foreach ($app in $apps)
+                                {
+                                    if ($null -eq $app) { continue }
+
+                                    if ($app.Name -eq $script:winscpAppName)
+                                    {
+                                        # check status：evaluation = deploying/uninstalling
+                                        $isEvaluating = ($app.EvaluationState -in 1, 3, 5)   # Evaluating, WaitingForContent, Downloading, Uninstalling, PostUninstall
+                                        if ($isEvaluating)
+                                        {
+                                            $busy = $true
+                                            Write-Information "Target application [$($app.Name)] is uninstalling... Skip check." -InformationAction Continue
+                                            break
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            Write-Information "::warning::[winSCP] Failed to query CCM_Application: $_" -InformationAction Continue
+                        }
+
+                        # Trigger policy/application/update evaluation if system is idle
+                        if (-not $busy)
+                        {
+                            Write-Information "System is idle, triggering policy/application/update evaluation" -InformationAction Continue
+
+                            # Computer policy
+                            $trigger = "{00000000-0000-0000-0000-000000000021}"
+                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+
+                            # Application evaluation
+                            $trigger = "{00000000-0000-0000-0000-000000000121}"
+                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+
+                            # Software update
+                            $trigger = "{00000000-0000-0000-0000-000000000108}"
+                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+                        }
+                        Start-Sleep -Seconds $pollIntervalUninstall
+                        $elapsedUninstall += $pollIntervalUninstall
+                    }
+                    else
+                    {
+                        break
+                    }
+                }
+                while ($elapsedUninstall -le $maxWaitSecondsUninstall)
+
+                $uninstallSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                $uninstallSummary | Should -Not -BeNullOrEmpty -Because 'Uninstall deployment status must exist'
+                $uninstallSummary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully uninstalled the application (waited up to ${maxWaitSecondsUninstall}s)"
             }
             finally
             {
