@@ -330,13 +330,32 @@ Describe 'Intune Tests' {
 
                 # Create a fresh test group and store its ObjectId for assignment tests.
                 $group = New-MgGroup -BodyParameter @{
-                    displayName     = $testGroupName
+                    displayName = $testGroupName
                     securityEnabled = $true
-                    mailEnabled     = $false
-                    mailNickname    = [System.Guid]::NewGuid().Guid
+                    mailEnabled = $false
+                    mailNickname = [System.Guid]::NewGuid().Guid
                 } -ErrorAction Stop
                 $script:GroupID = $group.Id
                 Write-Information "Created test group '$testGroupName' with ObjectId: $($script:GroupID)" -InformationAction Continue
+
+                # Poll until the group is visible in the backend before adding members.
+                $maxWaitSeconds = 20
+                $waited = 0
+                while ($waited -lt $maxWaitSeconds)
+                {
+                    $confirmedGroup = Get-MgGroup -GroupId $script:GroupID -ErrorAction SilentlyContinue
+                    if ($confirmedGroup)
+                    {
+                        break
+                    }
+                    Write-Information "Waiting for group to propagate... ($waited s)" -InformationAction Continue
+                    Start-Sleep -Seconds 5
+                    $waited += 5
+                }
+                if ($waited -ge $maxWaitSeconds)
+                {
+                    throw "Group '$testGroupName' did not propagate within $maxWaitSeconds seconds."
+                }
 
                 # Add the current test client device to the group to enable assignment tests.
                 $deviceName = $env:COMPUTERNAME
