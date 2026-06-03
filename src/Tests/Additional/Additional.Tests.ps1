@@ -324,8 +324,6 @@ Describe 'winSCP Package Preparation and SCCM Import' {
 
             $script:siteCode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Operations Management' -Name 'Site Code' -ErrorAction SilentlyContinue).'Site Code'
             $script:siteServer = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Setup' -Name 'Provider Location' -ErrorAction SilentlyContinue).'Provider Location'
-            if (-not $script:siteCode) { $script:siteCode = 'SQT' }
-            if (-not $script:siteServer) { $script:siteServer = 'vm30028301.vm30028301dom.net' }
 
             $script:cmModulePath = @(
                 'C:\Program Files (x86)\Microsoft Configuration Manager\AdminConsole\bin\ConfigurationManager.psd1',
@@ -361,6 +359,14 @@ Describe 'winSCP Package Preparation and SCCM Import' {
 
         function script:Enter-WinSCPSccmSiteContext
         {
+            if ([string]::IsNullOrWhiteSpace($script:siteCode))
+            {
+                throw "siteCode cannot be null or empty"
+            }
+            if ([string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                throw "siteServer cannot be null or empty"
+            }
             Import-Module $script:cmModulePath -ErrorAction Stop
             $script:WinSCPSiteOriginalLocation = Get-Location
             if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
@@ -402,6 +408,11 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             if (-not $script:v4Dir)
             {
                 Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V4_DIR not set'
+                return
+            }
+            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
                 return
             }
             Test-Path $script:v4Dir | Should -BeTrue -Because 'V4 template directory must exist'
@@ -671,8 +682,15 @@ if ($app) { Write-Host "Installed" }
                 {
                     $deployments = Get-CMDeployment -SoftwareName "$script:winscpAppName" -ErrorAction SilentlyContinue
                     $deployments | ForEach-Object { Invoke-CMDeploymentSummarization -DeploymentId $_.DeploymentId }
-                    $cimNamespace = "root\SMS\Site_$($script:siteCode)"
-                    $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                    if (-not [string]::IsNullOrWhiteSpace($script:siteCode))
+                    {
+                        $cimNamespace = "root\SMS\Site_$($script:siteCode)"
+                        $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                    }
+                    else
+                    {
+                        $deploymentSummary = $null
+                    }
                     if ($deploymentSummary)
                     {
                         Write-Information "[winSCP] Deployment status (elapsed ${elapsedDeployment}s): Success=$($deploymentSummary.NumberSuccess) InProgress=$($deploymentSummary.NumberInProgress) Error=$($deploymentSummary.NumberErrors) Targeted=$($deploymentSummary.NumberTargeted)" -InformationAction Continue
@@ -720,6 +738,12 @@ if ($app) { Write-Host "Installed" }
                 return
             }
 
+            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
+                return
+            }
+
             Enter-WinSCPSccmSiteContext
             try
             {
@@ -759,8 +783,12 @@ if ($app) { Write-Host "Installed" }
 
                 do
                 {
-                    $cimNamespace = "root\SMS\Site_$($script:siteCode)"
-                    $uninstallSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                    $uninstallSummary = $null
+                    if (-not [string]::IsNullOrWhiteSpace($script:siteCode))
+                    {
+                        $cimNamespace = "root\SMS\Site_$($script:siteCode)"
+                        $uninstallSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                    }
                     if ($uninstallSummary)
                     {
                         Write-Information "[winSCP] Uninstall deployment status (elapsed ${elapsedUninstall}s): Success=$($uninstallSummary.NumberSuccess) InProgress=$($uninstallSummary.NumberInProgress) Error=$($uninstallSummary.NumberErrors) Targeted=$($uninstallSummary.NumberTargeted)" -InformationAction Continue
