@@ -675,8 +675,8 @@ if ($app) { Write-Host "Installed" }
 
                                     if ($app.Name -eq $script:winscpAppName)
                                     {
-                                        # check status：evaluation = deploying
-                                        $isEvaluating = ($app.EvaluationState -in 1, 3, 5)   # Evaluating, WaitingForContent, Downloading, Installing, PostInstall
+                                        # Treat active client processing states as busy (exclude 1=Available).
+                                        $isEvaluating = ($app.EvaluationState -in 3, 4, 5, 6, 7, 8, 9, 10, 11, 21)   # Submitting/Re-evaluating/Waiting/Downloading/Installing/Running/Soft reboot/Hard reboot/Waiting reboot/Pending retry
                                         if ($isEvaluating)
                                         {
                                             $busy = $true
@@ -760,6 +760,7 @@ if ($app) { Write-Host "Installed" }
                 foreach ($dep in $existingDeployments)
                 {
                     Remove-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
+                    write-information "Removed existing deployment for '$($script:winscpAppName)' to collection '$($dep.CollectionName)'" -InformationAction Continue
                 }
                 Start-Sleep -Seconds 2
 
@@ -775,12 +776,12 @@ if ($app) { Write-Host "Installed" }
 
                 $uninstallDeploy = Get-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
                 $uninstallDeploy | Should -Not -BeNullOrEmpty -Because "Uninstall deployment of '$($script:winscpAppName)' to '$($script:targetCollection)' must be created successfully"
-                Write-Verbose "[winSCP] Uninstall deployment created: $($script:winscpAppName) -> $($script:targetCollection) (Required)"
+                Write-Information "[winSCP] Uninstall deployment created: $($script:winscpAppName) -> $($script:targetCollection) (Required)" -InformationAction Continue
 
                 # ----------------------------------------------------------------
                 # Step 9 - Poll uninstall deployment status
                 # ----------------------------------------------------------------
-                Write-Verbose '[winSCP] Step 9: Polling uninstall deployment status...'
+                Write-Information '[winSCP] Step 9: Polling uninstall deployment status...' -InformationAction Continue
                 $maxWaitSecondsUninstall = 1200   # 20 minutes
                 $pollIntervalUninstall = 180      # 3 minutes
                 $elapsedUninstall = 0
@@ -792,7 +793,7 @@ if ($app) { Write-Host "Installed" }
                     $uninstallSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
                     if ($uninstallSummary)
                     {
-                        Write-Verbose "[winSCP] Uninstall deployment status (elapsed ${elapsedUninstall}s): Success=$($uninstallSummary.NumberSuccess) InProgress=$($uninstallSummary.NumberInProgress) Error=$($uninstallSummary.NumberErrors) Targeted=$($uninstallSummary.NumberTargeted)"
+                        Write-Information "[winSCP] Uninstall deployment status (elapsed ${elapsedUninstall}s): Success=$($uninstallSummary.NumberSuccess) InProgress=$($uninstallSummary.NumberInProgress) Error=$($uninstallSummary.NumberErrors) Targeted=$($uninstallSummary.NumberTargeted)" -InformationAction Continue
                         if ($uninstallSummary.NumberSuccess -gt 0)
                         {
                             break
@@ -801,7 +802,9 @@ if ($app) { Write-Host "Installed" }
 
                     if ($elapsedUninstall -lt $maxWaitSecondsUninstall)
                     {
-                        Write-Verbose "[winSCP] Uninstall deployment not yet successful - waiting ${pollIntervalUninstall}s before next check..."
+                        Write-Information "[winSCP] Uninstall deployment not yet successful - waiting ${pollIntervalUninstall}s before next check..." -InformationAction Continue
+                        Start-Sleep -Seconds $pollIntervalUninstall
+                        $elapsedUninstall += $pollIntervalUninstall
                         $busy = $false
                         try
                         {
@@ -820,8 +823,8 @@ if ($app) { Write-Host "Installed" }
 
                                     if ($app.Name -eq $script:winscpAppName)
                                     {
-                                        # check status：evaluation = deploying/uninstalling
-                                        $isEvaluating = ($app.EvaluationState -in 1, 3, 5)   # Evaluating, WaitingForContent, Downloading, Uninstalling, PostUninstall
+                                        # Treat active client processing states as busy (exclude 1=Available).
+                                        $isEvaluating = ($app.EvaluationState -in 3, 4, 5, 6, 7, 8, 9, 10, 11, 21)   # Submitting/Re-evaluating/Waiting/Downloading/Installing/Running/Soft reboot/Hard reboot/Waiting reboot/Pending retry
                                         if ($isEvaluating)
                                         {
                                             $busy = $true
