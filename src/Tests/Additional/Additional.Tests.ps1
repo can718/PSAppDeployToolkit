@@ -359,6 +359,42 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
+        function script:Enter-WinSCPSccmSiteContext
+        {
+            Import-Module $script:cmModulePath -ErrorAction Stop
+            $script:WinSCPSiteOriginalLocation = Get-Location
+            if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
+            {
+                New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
+            }
+            Set-Location "$($script:siteCode):\"
+        }
+
+        function script:Exit-WinSCPSccmSiteContext
+        {
+            if ($script:WinSCPSiteOriginalLocation)
+            {
+                Set-Location $script:WinSCPSiteOriginalLocation
+            }
+        }
+
+        function script:Invoke-WinSCPSccmClientEvaluation
+        {
+            Write-Information "Triggering policy/application/update evaluation" -InformationAction Continue
+
+            # Computer policy
+            $trigger = "{00000000-0000-0000-0000-000000000021}"
+            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+
+            # Application evaluation
+            $trigger = "{00000000-0000-0000-0000-000000000121}"
+            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+
+            # Software update
+            $trigger = "{00000000-0000-0000-0000-000000000108}"
+            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+        }
+
         It 'Builds winSCP package and imports into SCCM' {
             # ----------------------------------------------------------------
             # Step 1 - Verify prerequisites
@@ -439,17 +475,9 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             # Step 6 - Import application into SCCM
             # ----------------------------------------------------------------
             Write-Verbose '[winSCP] Step 6: Importing winSCP application into SCCM...'
-            Import-Module $script:cmModulePath -ErrorAction Stop
-
-            $origLoc = Get-Location
+            Enter-WinSCPSccmSiteContext
             try
             {
-                if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
-                {
-                    New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
-                }
-                Set-Location "$($script:siteCode):\"
-
                 # Remove existing application
                 if (Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue)
                 {
@@ -657,58 +685,8 @@ if ($app) { Write-Host "Installed" }
                     if ($elapsedDeployment -lt $maxWaitSecondsDeployment)
                     {
                         Write-Information "[winSCP] Deployment not yet successful - waiting ${pollIntervalDeployment}s before next check..." -InformationAction Continue
-                        $busy = $false
-                        try
-                        {
-                            $apps = Get-CimInstance -Namespace root\ccm\ClientSDK -ClassName CCM_Application -ErrorAction Stop
+                        Invoke-WinSCPSccmClientEvaluation
 
-                            if ($null -eq $apps)
-                            {
-                                Write-Information "No applications found on client, no deployment in progress." -InformationAction Continue
-                                $busy = $false
-                            }
-                            else
-                            {
-                                foreach ($app in $apps)
-                                {
-                                    if ($null -eq $app) { continue }
-
-                                    if ($app.Name -eq $script:winscpAppName)
-                                    {
-                                        # Treat active client processing states as busy (exclude 1=Available).
-                                        $isEvaluating = ($app.EvaluationState -in 3, 4, 5, 6, 7, 8, 9, 10, 11, 21)   # Submitting/Re-evaluating/Waiting/Downloading/Installing/Running/Soft reboot/Hard reboot/Waiting reboot/Pending retry
-                                        if ($isEvaluating)
-                                        {
-                                            $busy = $true
-                                            Write-Information "Target application [$($app.Name)] is deploying... Skip check." -InformationAction Continue
-                                            break
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        catch
-                        {
-                            Write-Information "::warning::[winSCP] Failed to query CCM_Application: $_" -InformationAction Continue
-                        }
-
-                        # 2. Trigger policy/application/update evaluation if system is idle
-                        if (-not $busy)
-                        {
-                            Write-Information "System is idle, triggering policy/application/update evaluation" -InformationAction Continue
-
-                            # Computer policy
-                            $trigger = "{00000000-0000-0000-0000-000000000021}"
-                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-
-                            # Application evaluation
-                            $trigger = "{00000000-0000-0000-0000-000000000121}"
-                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-
-                            # Software update
-                            $trigger = "{00000000-0000-0000-0000-000000000108}"
-                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-                        }
                         Start-Sleep -Seconds $pollIntervalDeployment
                         $elapsedDeployment += $pollIntervalDeployment
                     }
@@ -725,7 +703,7 @@ if ($app) { Write-Host "Installed" }
             }
             finally
             {
-                Set-Location $origLoc
+                Exit-WinSCPSccmSiteContext
             }
         }
 
@@ -742,17 +720,9 @@ if ($app) { Write-Host "Installed" }
                 return
             }
 
-            Import-Module $script:cmModulePath -ErrorAction Stop
-
-            $origLoc = Get-Location
+            Enter-WinSCPSccmSiteContext
             try
             {
-                if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
-                {
-                    New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
-                }
-                Set-Location "$($script:siteCode):\"
-
                 $app = Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue
                 $app | Should -Not -BeNullOrEmpty -Because 'winSCP application must exist before creating uninstall deployment'
 
@@ -760,7 +730,7 @@ if ($app) { Write-Host "Installed" }
                 foreach ($dep in $existingDeployments)
                 {
                     Remove-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
-                    write-information "Removed existing deployment for '$($script:winscpAppName)' to collection '$($dep.CollectionName)'" -InformationAction Continue
+                    Write-Information "Removed existing deployment for '$($script:winscpAppName)' to collection '$($dep.CollectionName)'" -InformationAction Continue
                 }
                 Start-Sleep -Seconds 2
 
@@ -803,60 +773,8 @@ if ($app) { Write-Host "Installed" }
                     if ($elapsedUninstall -lt $maxWaitSecondsUninstall)
                     {
                         Write-Information "[winSCP] Uninstall deployment not yet successful - waiting ${pollIntervalUninstall}s before next check..." -InformationAction Continue
-                        Start-Sleep -Seconds $pollIntervalUninstall
-                        $elapsedUninstall += $pollIntervalUninstall
-                        $busy = $false
-                        try
-                        {
-                            $apps = Get-CimInstance -Namespace root\ccm\ClientSDK -ClassName CCM_Application -ErrorAction Stop
+                        Invoke-WinSCPSccmClientEvaluation
 
-                            if ($null -eq $apps)
-                            {
-                                Write-Information "No applications found on client, no deployment in progress." -InformationAction Continue
-                                $busy = $false
-                            }
-                            else
-                            {
-                                foreach ($app in $apps)
-                                {
-                                    if ($null -eq $app) { continue }
-
-                                    if ($app.Name -eq $script:winscpAppName)
-                                    {
-                                        # Treat active client processing states as busy (exclude 1=Available).
-                                        $isEvaluating = ($app.EvaluationState -in 3, 4, 5, 6, 7, 8, 9, 10, 11, 21)   # Submitting/Re-evaluating/Waiting/Downloading/Installing/Running/Soft reboot/Hard reboot/Waiting reboot/Pending retry
-                                        if ($isEvaluating)
-                                        {
-                                            $busy = $true
-                                            Write-Information "Target application [$($app.Name)] is uninstalling... Skip check." -InformationAction Continue
-                                            break
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        catch
-                        {
-                            Write-Information "::warning::[winSCP] Failed to query CCM_Application: $_" -InformationAction Continue
-                        }
-
-                        # Trigger policy/application/update evaluation if system is idle
-                        if (-not $busy)
-                        {
-                            Write-Information "System is idle, triggering policy/application/update evaluation" -InformationAction Continue
-
-                            # Computer policy
-                            $trigger = "{00000000-0000-0000-0000-000000000021}"
-                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-
-                            # Application evaluation
-                            $trigger = "{00000000-0000-0000-0000-000000000121}"
-                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-
-                            # Software update
-                            $trigger = "{00000000-0000-0000-0000-000000000108}"
-                            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-                        }
                         Start-Sleep -Seconds $pollIntervalUninstall
                         $elapsedUninstall += $pollIntervalUninstall
                     }
@@ -873,7 +791,7 @@ if ($app) { Write-Host "Installed" }
             }
             finally
             {
-                Set-Location $origLoc
+                Exit-WinSCPSccmSiteContext
             }
         }
     }
