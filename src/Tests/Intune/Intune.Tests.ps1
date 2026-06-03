@@ -315,12 +315,13 @@ Describe 'Intune Tests' {
             #   Group.ReadWrite.All, GroupMember.ReadWrite.All, Device.Read.All
             $secureSecret = ConvertTo-SecureString $script:ClientSecret -AsPlainText -Force
             $clientSecretCredential = New-Object System.Management.Automation.PSCredential ($script:ClientID, $secureSecret)
+            $deviceName = $env:COMPUTERNAME
             try
             {
                 Connect-MgGraph -TenantId $script:TenantID -ClientSecretCredential $clientSecretCredential -NoWelcome -ErrorAction Stop
 
                 # If 'PSADT Test Group' already exists, delete it to start clean.
-                $testGroupName = 'PSADT Test Group'
+                $testGroupName = "PSADT Test Group $deviceName"
                 $existingGroups = Get-MgGroup -Filter "displayName eq '$testGroupName'" -ErrorAction Stop
                 foreach ($existingGroup in $existingGroups)
                 {
@@ -359,7 +360,6 @@ Describe 'Intune Tests' {
                 }
 
                 # Add the current test client device to the group to enable assignment tests.
-                $deviceName = $env:COMPUTERNAME
                 $device = Get-MgDevice -Filter "displayName eq '$deviceName'" -ErrorAction Stop | Select-Object -First 1
                 if (-not $device)
                 {
@@ -459,7 +459,7 @@ Describe 'Intune Tests' {
 
             # Wrap with IntuneWinAppUtil
             $setupFile = 'Invoke-AppDeployToolkit.exe'
-            & $script:IntuneWinAppUtil -c $workDir -s $setupFile -o $workDir -q
+            & $script:IntuneWinAppUtil -c $workDir -s $setupFile -o $workDir
             $intunewinFile = Join-Path $workDir 'Invoke-AppDeployToolkit.intunewin'
             Test-Path $intunewinFile | Should -BeTrue
 
@@ -516,7 +516,7 @@ Describe 'Intune Tests' {
             $win32App | Should -Not -BeNullOrEmpty
 
             # Assign to group
-            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
+            Add-IntuneWin32AppAssignmentGroup -Include -ID $($win32App.id) -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
 
             # ---------------------------------------------------------------
             # Restart Intune sidecar agent services so the device picks up the
@@ -538,7 +538,7 @@ Describe 'Intune Tests' {
                 }
                 else
                 {
-                    Write-Information "Service '$svc' not found on this machine — skipping." -InformationAction Continue
+                    Write-Information "Service '$svc' not found on this machine - skipping." -InformationAction Continue
                 }
             }
 

@@ -88,31 +88,32 @@ param
 # By setting the "AppName" property, Zero-Config MSI will be disabled.
 $adtSession = @{
     # App variables.
-    AppVendor                   = ''
-    AppName                     = 'vlc-3.0.23-win64'
-    AppVersion                  = ''
-    AppArch                     = ''
-    AppLang                     = ''
-    AppRevision                 = ''
-    AppSuccessExitCodes         = @(0)
-    AppRebootExitCodes          = @(1641, 3010)
-    AppProcessesToClose         = @()  # Example: @('excel', @{ Name = 'winword'; Description = 'Microsoft Word' })
-    AppScriptVersion            = '1.0.0'
-    AppScriptDate               = '2026-05-06'
-    AppScriptAuthor             = '<author name>'
-    RequireAdmin                = $true
+    AppVendor = ''
+    AppName = 'vlc-3.0.23-win64'
+    AppVersion = ''
+    AppArch = ''
+    AppLang = ''
+    AppRevision = ''
+    AppSuccessExitCodes = @(0)
+    AppRebootExitCodes = @(1641, 3010)
+    AppProcessesToClose = @()  # Example: @('excel', @{ Name = 'winword'; Description = 'Microsoft Word' })
+    AppScriptVersion = '1.0.0'
+    AppScriptDate = '2026-05-06'
+    AppScriptAuthor = '<author name>'
+    RequireAdmin = $true
 
     # Install Titles (Only set here to override defaults set by the toolkit).
-    InstallName                 = ''
-    InstallTitle                = ''
+    InstallName = ''
+    InstallTitle = ''
 
     # Script variables.
     DeployAppScriptFriendlyName = $MyInvocation.MyCommand.Name
-    DeployAppScriptParameters   = $PSBoundParameters
-    DeployAppScriptVersion      = '4.1.8'
+    DeployAppScriptParameters = $PSBoundParameters
+    DeployAppScriptVersion = '4.1.8'
 }
 
-function Install-ADTDeployment {
+function Install-ADTDeployment
+{
     [CmdletBinding()]
     param
     (
@@ -125,13 +126,14 @@ function Install-ADTDeployment {
 
     ## Show Welcome Message, close processes if specified, allow up to 3 deferrals, verify there is enough disk space to complete the install, and persist the prompt.
     $saiwParams = @{
-        AllowDefer     = $true
-        DeferTimes     = 2
+        AllowDefer = $true
+        DeferTimes = 2
         #PersistPrompt           = $true
         CheckDiskSpace = $true
         ForceCountdown = 8
     }
-    if ($adtSession.AppProcessesToClose.Count -gt 0) {
+    if ($adtSession.AppProcessesToClose.Count -gt 0)
+    {
         $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
     }
     Show-ADTInstallationWelcome @saiwParams
@@ -148,13 +150,16 @@ function Install-ADTDeployment {
     $adtSession.InstallPhase = $adtSession.DeploymentType
 
     ## Handle Zero-Config MSI installations.
-    if ($adtSession.UseDefaultMsi) {
+    if ($adtSession.UseDefaultMsi)
+    {
         $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
-        if ($adtSession.DefaultMstFile) {
+        if ($adtSession.DefaultMstFile)
+        {
             $ExecuteDefaultMSISplat.Add('Transforms', $adtSession.DefaultMstFile)
         }
         Start-ADTMsiProcess @ExecuteDefaultMSISplat
-        if ($adtSession.DefaultMspFiles) {
+        if ($adtSession.DefaultMspFiles)
+        {
             $adtSession.DefaultMspFiles | Start-ADTMsiProcess -Action Patch
         }
     }
@@ -171,12 +176,14 @@ function Install-ADTDeployment {
 
 
     ## Display a message at the end of the install.
-    if (!$adtSession.UseDefaultMsi) {
+    if (!$adtSession.UseDefaultMsi)
+    {
         Show-ADTInstallationPrompt -Message 'You can customize text to appear at the end of an install or remove it completely for unattended installations.' -ButtonRightText 'OK' -NoWait
     }
 }
 
-function Uninstall-ADTDeployment {
+function Uninstall-ADTDeployment
+{
     [CmdletBinding()]
     param
     (
@@ -188,7 +195,8 @@ function Uninstall-ADTDeployment {
     $adtSession.InstallPhase = "Pre-$($adtSession.DeploymentType)"
 
     ## If there are processes to close, show Welcome Message with a 60 second countdown before automatically closing.
-    if ($adtSession.AppProcessesToClose.Count -gt 0) {
+    if ($adtSession.AppProcessesToClose.Count -gt 0)
+    {
         Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
 
@@ -204,9 +212,11 @@ function Uninstall-ADTDeployment {
     $adtSession.InstallPhase = $adtSession.DeploymentType
 
     ## Handle Zero-Config MSI uninstallations.
-    if ($adtSession.UseDefaultMsi) {
+    if ($adtSession.UseDefaultMsi)
+    {
         $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
-        if ($adtSession.DefaultMstFile) {
+        if ($adtSession.DefaultMstFile)
+        {
             $ExecuteDefaultMSISplat.Add('Transforms', $adtSession.DefaultMstFile)
         }
         Start-ADTMsiProcess @ExecuteDefaultMSISplat
@@ -223,7 +233,8 @@ function Uninstall-ADTDeployment {
     ## <Perform Post-Uninstallation tasks here>
 }
 
-function Repair-ADTDeployment {
+function Repair-ADTDeployment
+{
     [CmdletBinding()]
     param
     (
@@ -235,7 +246,8 @@ function Repair-ADTDeployment {
     $adtSession.InstallPhase = "Pre-$($adtSession.DeploymentType)"
 
     ## If there are processes to close, show Welcome Message with a 60 second countdown before automatically closing.
-    if ($adtSession.AppProcessesToClose.Count -gt 0) {
+    if ($adtSession.AppProcessesToClose.Count -gt 0)
+    {
         Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
 
@@ -251,9 +263,11 @@ function Repair-ADTDeployment {
     $adtSession.InstallPhase = $adtSession.DeploymentType
 
     ## Handle Zero-Config MSI repairs.
-    if ($adtSession.UseDefaultMsi) {
+    if ($adtSession.UseDefaultMsi)
+    {
         $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
-        if ($adtSession.DefaultMstFile) {
+        if ($adtSession.DefaultMstFile)
+        {
             $ExecuteDefaultMSISplat.Add('Transforms', $adtSession.DefaultMstFile)
         }
         Start-ADTMsiProcess @ExecuteDefaultMSISplat
@@ -281,13 +295,16 @@ $ProgressPreference = [System.Management.Automation.ActionPreference]::SilentlyC
 Set-StrictMode -Version 1
 
 # Import the module and instantiate a new session.
-try {
+try
+{
     # Import the module locally if available, otherwise try to find it from PSModulePath.
-    if (Test-Path -LiteralPath "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1" -PathType Leaf) {
+    if (Test-Path -LiteralPath "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1" -PathType Leaf)
+    {
         Get-ChildItem -LiteralPath "$PSScriptRoot\PSAppDeployToolkit" -Recurse -File | Unblock-File -ErrorAction Ignore
         Import-Module -FullyQualifiedName @{ ModuleName = "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1"; Guid = '8c3c366b-8606-4576-9f2d-4051144f7ca2'; ModuleVersion = '4.1.8' } -Force
     }
-    else {
+    else
+    {
         Import-Module -FullyQualifiedName @{ ModuleName = 'PSAppDeployToolkit'; Guid = '8c3c366b-8606-4576-9f2d-4051144f7ca2'; ModuleVersion = '4.1.8' } -Force
     }
 
@@ -296,7 +313,8 @@ try {
     $adtSession = Remove-ADTHashtableNullOrEmptyValues -Hashtable $adtSession
     $adtSession = Open-ADTSession @adtSession @iadtParams -PassThru
 }
-catch {
+catch
+{
     $Host.UI.WriteErrorLine((Out-String -InputObject $_ -Width ([System.Int32]::MaxValue)))
     exit 60008
 }
@@ -307,11 +325,14 @@ catch {
 ##================================================
 
 # Commence the actual deployment operation.
-try {
+try
+{
     # Import any found extensions before proceeding with the deployment.
     Get-ChildItem -LiteralPath $PSScriptRoot -Directory | & {
-        process {
-            if ($_.Name -match 'PSAppDeployToolkit\..+$') {
+        process
+        {
+            if ($_.Name -match 'PSAppDeployToolkit\..+$')
+            {
                 Get-ChildItem -LiteralPath $_.FullName -Recurse -File | Unblock-File -ErrorAction Ignore
                 Import-Module -Name $_.FullName -Force
             }
@@ -322,7 +343,8 @@ try {
     & "$($adtSession.DeploymentType)-ADTDeployment"
     Close-ADTSession
 }
-catch {
+catch
+{
     # An unhandled error has been caught.
     $mainErrorMessage = "An unhandled error within [$($MyInvocation.MyCommand.Name)] has occurred.`n$(Resolve-ADTErrorRecord -ErrorRecord $_)"
     Write-ADTLogEntry -Message $mainErrorMessage -Severity 3
