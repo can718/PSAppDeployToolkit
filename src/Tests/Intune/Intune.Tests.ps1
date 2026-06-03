@@ -326,6 +326,7 @@ Describe 'Intune Tests' {
                 {
                     Write-Information "Removing existing group '$testGroupName' (Id: $($existingGroup.Id))" -InformationAction Continue
                     Remove-MgGroup -GroupId $existingGroup.Id -ErrorAction Stop
+                    Start-Sleep -Seconds 5
                 }
 
                 # Create a fresh test group and store its ObjectId for assignment tests.
@@ -366,7 +367,28 @@ Describe 'Intune Tests' {
                 }
                 else
                 {
-                    New-MgGroupMember -GroupId $script:GroupID -DirectoryObjectId $device.Id -ErrorAction Stop
+                    # Retry adding the member to handle Graph eventual-consistency: the group may be
+                    # readable but the write replicas that back member-add can still return ResourceNotFound.
+                    $addMaxRetries = 6
+                    $addRetry = 0
+                    while ($true)
+                    {
+                        try
+                        {
+                            New-MgGroupMember -GroupId $script:GroupID -DirectoryObjectId $device.Id -ErrorAction Stop
+                            break
+                        }
+                        catch
+                        {
+                            $addRetry++
+                            if ($addRetry -ge $addMaxRetries -or $_.Exception.Message -notmatch 'ResourceNotFound')
+                            {
+                                throw
+                            }
+                            Write-Information "Member add failed (ResourceNotFound), retrying... ($addRetry/$addMaxRetries)" -InformationAction Continue
+                            Start-Sleep -Seconds 5
+                        }
+                    }
                     Write-Information "Added device '$deviceName' (Id: $($device.Id)) to group '$testGroupName'." -InformationAction Continue
                 }
             }
