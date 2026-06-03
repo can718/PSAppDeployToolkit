@@ -298,16 +298,19 @@ Describe 'Intune Tests' {
                 $null
             }
 
-            # Create a test group in Azure AD and set $script:GroupID to its ObjectId for assignment tests
-            # Install only the minimal required Graph sub-modules; wildcard check is intentionally avoided
-            # because it would match any unrelated Microsoft.Graph.* module that may already be present.
+            # Ensure required Microsoft Graph modules are installed and imported.
+            # Wildcard check is intentionally avoided because it would match any
+            # unrelated Microsoft.Graph.* module that may already be present.
             $requiredGraphModules = @('Microsoft.Graph.Authentication', 'Microsoft.Graph.Groups', 'Microsoft.Graph.Identity.DirectoryManagement')
             $missingGraphModules = $requiredGraphModules | Where-Object { -not (Get-Module -Name $_ -ListAvailable) }
             if ($missingGraphModules)
             {
+                Write-Information "Installing missing Graph modules: $($missingGraphModules -join ', ')" -InformationAction Continue
                 Install-Module -Name $missingGraphModules -Force -Scope CurrentUser
             }
             Import-Module Microsoft.Graph.Authentication, Microsoft.Graph.Groups, Microsoft.Graph.Identity.DirectoryManagement
+
+            # Connect to Microsoft Graph using client-secret credential.
             # Required application permissions on the app registration (admin-consented):
             #   Group.ReadWrite.All, GroupMember.ReadWrite.All, Device.Read.All
             $secureSecret = ConvertTo-SecureString $script:ClientSecret -AsPlainText -Force
@@ -315,18 +318,29 @@ Describe 'Intune Tests' {
             try
             {
                 Connect-MgGraph -TenantId $script:TenantID -ClientSecretCredential $clientSecretCredential -NoWelcome -ErrorAction Stop
+
+                # If 'PSADT Test Group' already exists, delete it to start clean.
+                $testGroupName = 'PSADT Test Group'
+                $existingGroups = Get-MgGroup -Filter "displayName eq '$testGroupName'" -ErrorAction Stop
+                foreach ($existingGroup in $existingGroups)
+                {
+                    Write-Information "Removing existing group '$testGroupName' (Id: $($existingGroup.Id))" -InformationAction Continue
+                    Remove-MgGroup -GroupId $existingGroup.Id -ErrorAction Stop
+                }
+
+                # Create a fresh test group and store its ObjectId for assignment tests.
                 $group = New-MgGroup -BodyParameter @{
-                    displayName = 'PSADT Test Group'
+                    displayName     = $testGroupName
                     securityEnabled = $true
-                    mailEnabled = $false
-                    mailNickname = [System.Guid]::NewGuid().Guid
+                    mailEnabled     = $false
+                    mailNickname    = [System.Guid]::NewGuid().Guid
                 } -ErrorAction Stop
                 $script:GroupID = $group.Id
-                Write-Information "Created test group with ObjectId: $($script:GroupID)" -InformationAction Continue
+                Write-Information "Created test group '$testGroupName' with ObjectId: $($script:GroupID)" -InformationAction Continue
 
-                # Add test client to the group to verify group membership in assignment tests
+                # Add the current test client device to the group to enable assignment tests.
                 $deviceName = $env:COMPUTERNAME
-                $device = Get-MgDevice -Filter "displayName eq '$deviceName'" | Select-Object -First 1
+                $device = Get-MgDevice -Filter "displayName eq '$deviceName'" -ErrorAction Stop | Select-Object -First 1
                 if (-not $device)
                 {
                     Write-Information "Unable to find a Microsoft Graph device with displayName '$deviceName'." -InformationAction Continue
@@ -334,6 +348,7 @@ Describe 'Intune Tests' {
                 else
                 {
                     New-MgGroupMember -GroupId $script:GroupID -DirectoryObjectId $device.Id -ErrorAction Stop
+                    Write-Information "Added device '$deviceName' (Id: $($device.Id)) to group '$testGroupName'." -InformationAction Continue
                 }
             }
             catch
