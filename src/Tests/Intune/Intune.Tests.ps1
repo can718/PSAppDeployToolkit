@@ -388,8 +388,8 @@ Describe 'Intune Tests' {
             $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
                 -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '3.0.23'
-            $InstallCmd = '%SystemRoot%\sysnative\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\Invoke-AppDeployToolkit.exe -DeploymentType Install'
-            $UninstallCmd = '%SystemRoot%\sysnative\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+            $InstallCmd   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+            $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
 
             Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
@@ -408,6 +408,13 @@ Describe 'Intune Tests' {
             }
             $win32App
             $win32App | Should -Not -BeNullOrEmpty
+
+            # Patch runAs32bit=false via Graph API so IME launches the .exe as a 64-bit process
+            Invoke-MgGraphRequest -Method PATCH `
+                -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($win32App.id)" `
+                -Body (@{ '@odata.type' = '#microsoft.graph.win32LobApp'; runAs32bit = $false } | ConvertTo-Json) `
+                -ContentType 'application/json' -ErrorAction SilentlyContinue
+            Write-Information "[Intune] Patched runAs32bit=false for '$DisplayName' (id: $($win32App.id))" -InformationAction Continue
 
             # Assign to group
             Add-IntuneWin32AppAssignmentGroup -Include -ID $($win32App.id) -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
@@ -591,8 +598,8 @@ Describe 'Intune Tests' {
                 }
             }
 
-            $InstallCmd = '%SystemRoot%\sysnative\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\Invoke-AppDeployToolkit.exe -DeploymentType Install'
-            $UninstallCmd = '%SystemRoot%\sysnative\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+            $InstallCmd   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+            $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
             $DisplayName = $appName
 
             Add-IntuneWin32App -FilePath $finalPath -DisplayName $DisplayName -Description "PSADT $appName deployment" `
@@ -611,6 +618,13 @@ Describe 'Intune Tests' {
                 $retryCount++
             }
             $win32App | Should -Not -BeNullOrEmpty
+
+            # Patch runAs32bit=false via Graph API so IME launches the .exe as a 64-bit process
+            Invoke-MgGraphRequest -Method PATCH `
+                -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($win32App.id)" `
+                -Body (@{ '@odata.type' = '#microsoft.graph.win32LobApp'; runAs32bit = $false } | ConvertTo-Json) `
+                -ContentType 'application/json' -ErrorAction SilentlyContinue
+            Write-Information "[Intune] Patched runAs32bit=false for '$DisplayName' (id: $($win32App.id))" -InformationAction Continue
 
             # Assign to group
             Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
