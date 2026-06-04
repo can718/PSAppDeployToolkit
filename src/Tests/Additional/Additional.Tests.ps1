@@ -540,7 +540,7 @@ if ($app) { Write-Host "Installed" }
                 # Step 8 - Poll application deployment status
                 # ----------------------------------------------------------------
                 Write-Information '[winSCP] Step 8: Polling application deployment status...' -InformationAction Continue
-                $maxWaitSecondsDeployment = 3600   # 60 minutes
+                $maxWaitSecondsDeployment = 1800   # 30 minutes
                 $pollIntervalDeployment = 180       # 3 minutes
                 $elapsedDeployment = 0
                 $deploymentSummary = $null
@@ -660,7 +660,7 @@ if ($app) { Write-Host "Installed" }
                 # Step 9 - Poll uninstall deployment status
                 # ----------------------------------------------------------------
                 Write-Information '[winSCP] Step 9: Polling uninstall deployment status...' -InformationAction Continue
-                $maxWaitSecondsUninstall = 1200   # 20 minutes
+                $maxWaitSecondsUninstall = 1800   # 30 minutes
                 $pollIntervalUninstall = 180      # 3 minutes
                 $elapsedUninstall = 0
                 $uninstallSummary = $null
