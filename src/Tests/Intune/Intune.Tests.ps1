@@ -388,13 +388,13 @@ Describe 'Intune Tests' {
             $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
                 -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '3.0.23'
-            $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
-            $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+            $InstallCmd = '%SystemRoot%\sysnative\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\Invoke-AppDeployToolkit.exe -DeploymentType Install'
+            $UninstallCmd = '%SystemRoot%\sysnative\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
 
             Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
-                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd `
+                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd
 
             # Intune Graph API has eventual consistency; retry until the app is visible
             $win32App = $null
@@ -591,15 +591,14 @@ Describe 'Intune Tests' {
                 }
             }
 
-            $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
-            $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+            $InstallCmd = '%SystemRoot%\sysnative\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\Invoke-AppDeployToolkit.exe -DeploymentType Install'
+            $UninstallCmd = '%SystemRoot%\sysnative\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
             $DisplayName = $appName
 
             Add-IntuneWin32App -FilePath $finalPath -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
-                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd `
-                -RunAs32Bit $false -Verbose
+                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd
 
             # Intune Graph API has eventual consistency; retry until the app is visible
             $win32App = $null
