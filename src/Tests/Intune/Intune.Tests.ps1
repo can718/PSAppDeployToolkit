@@ -554,7 +554,24 @@ Describe 'Intune Tests' {
                         Write-Information "Triggering MDM full sync (attempt $($syncCount + 1)/$maxSyncs) at $imeWaited s..." -InformationAction Continue
                         try
                         {
-                            Invoke-CimMethod -Namespace 'root/cimv2/mdm/dmmap' -ClassName 'MDM_Client' -MethodName 'StartFullSync' -ErrorAction Stop | Out-Null
+                            # Locate the MDM enrollment ID (EnrollmentType 6 = Azure AD / Intune).
+                            $enrollmentId = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Enrollments' -ErrorAction SilentlyContinue |
+                                Where-Object { (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).EnrollmentType -eq 6 } |
+                                Select-Object -First 1).PSChildName
+                            if ($enrollmentId)
+                            {
+                                $taskPath = "\Microsoft\Windows\EnterpriseMgmt\$enrollmentId\"
+                                $syncTasks = Get-ScheduledTask -TaskPath $taskPath -ErrorAction SilentlyContinue
+                                foreach ($task in $syncTasks)
+                                {
+                                    Start-ScheduledTask -TaskPath $task.TaskPath -TaskName $task.TaskName -ErrorAction SilentlyContinue
+                                }
+                                Write-Information "MDM sync tasks triggered for enrollment: $enrollmentId" -InformationAction Continue
+                            }
+                            else
+                            {
+                                Write-Information "No MDM enrollment (EnrollmentType=6) found; cannot trigger sync." -InformationAction Continue
+                            }
                         }
                         catch
                         {
