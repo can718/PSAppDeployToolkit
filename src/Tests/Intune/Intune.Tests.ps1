@@ -318,7 +318,7 @@ Describe 'Intune Tests' {
         }
 
         It 'VLC - wrap and upload to Intune' {
-            $appDownloadUrl = 'https://get.videolan.org/vlc/3.0.23/win64/vlc-3.0.23-win64.exe'
+            #$appDownloadUrl = 'https://get.videolan.org/vlc/3.0.23/win64/vlc-3.0.23-win64.exe'
             $appName = 'VLC'
             $workDir = Join-Path 'C:\PSADT' $appName
             New-Item -Path $workDir -ItemType Directory -Force | Out-Null
@@ -335,8 +335,10 @@ Describe 'Intune Tests' {
             # Download the app installer to Files folder
             $filesDir = Join-Path $workDir 'Files'
             if (-not (Test-Path $filesDir)) { New-Item -Path $filesDir -ItemType Directory -Force | Out-Null }
-            $installerFile = Join-Path $filesDir (Split-Path $appDownloadUrl -Leaf)
-            Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
+            $installerDir = 'C:\Tools\Intune\vlc'
+            Copy-Item -Path (Get-ChildItem -Path $installerDir -File | Select-Object -First 1).FullName -Destination $filesDir -Force
+            #$installerFile = Join-Path $filesDir (Split-Path $appDownloadUrl -Leaf)
+            #Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
 
             # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
             $runnerScript = Join-Path $PSScriptRoot '.\VLC\Invoke-AppDeployToolkit.ps1'
