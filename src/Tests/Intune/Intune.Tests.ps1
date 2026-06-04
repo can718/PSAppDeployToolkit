@@ -285,6 +285,7 @@ Describe 'Intune Tests' {
             {
                 Remove-Item -Path $templateDest -Recurse -Force
             }
+            New-Item -Path $templateDest -ItemType Directory -Force | Out-Null
 
             # Resolve IntuneWinAppUtil.exe from the default local install path.
             $script:IntuneWinAppUtil = Get-IntuneWinAppUtilPath
@@ -436,9 +437,10 @@ Describe 'Intune Tests' {
             $appDownloadUrl = 'https://get.videolan.org/vlc/3.0.23/win64/vlc-3.0.23-win64.exe'
             $appName = 'VLC'
             $workDir = Join-Path 'C:\PSADT' $appName
+            New-Item -Path $workDir -ItemType Directory -Force | Out-Null
 
             # Copy template to app working directory: like C:\PSADT\VLC\*
-            $v4Path = Join-Path $script:templateFolder.FullName 'v4'
+            $v4Path = Join-Path $script:templateFolder 'v4'
 
             if (-not (Test-Path $v4Path))
             {
@@ -519,26 +521,65 @@ Describe 'Intune Tests' {
             Add-IntuneWin32AppAssignmentGroup -Include -ID $($win32App.id) -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
 
             # ---------------------------------------------------------------
-            # Restart Intune sidecar agent services so the device picks up the
-            # new assignment without waiting for the default sync interval.
+            # Trigger MDM sync and ensure IME sidecar is running so the device
+            # picks up the new assignment without waiting for the default sync interval.
             # ---------------------------------------------------------------
-            $intuneServices = @(
-                'IntuneManagementExtension'   # Intune Management Extension (IME) — main sidecar
-                'dmwappushservice'            # Device Management WAP Push service
-            )
-            foreach ($svc in $intuneServices)
+            # Restart IntuneManagementExtension if present.
+            # If not found, trigger MDM sync up to 3 times and wait up to 15 minutes for IME to be installed.
+            $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
+            if ($imeSvc)
             {
-                $svcObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
-                if ($svcObj)
+                Write-Information "Restarting service 'IntuneManagementExtension' (current state: $($imeSvc.Status))..." -InformationAction Continue
+                Restart-Service -Name 'IntuneManagementExtension' -Force -ErrorAction SilentlyContinue
+                $imeSvc.Refresh()
+                Write-Information "Service 'IntuneManagementExtension' state after restart: $($imeSvc.Status)" -InformationAction Continue
+            }
+            else
+            {
+                Write-Information "IntuneManagementExtension not found; will trigger MDM sync and wait up to 15 minutes for it to be installed..." -InformationAction Continue
+                $imeMaxWaitSeconds = 900   # 15 minutes
+                $imePollInterval   = 30
+                $imeWaited         = 0
+                $imeInstalled      = $false
+                $maxSyncs          = 3
+                $syncCount         = 0
+                # Trigger sync intervals: 0 s, 300 s (5 min), 600 s (10 min)
+                $syncAtSeconds     = @(0, 300, 600)
+
+                while ($imeWaited -le $imeMaxWaitSeconds)
                 {
-                    Write-Information "Restarting service '$svc' (current state: $($svcObj.Status))..." -InformationAction Continue
-                    Restart-Service -Name $svc -Force -ErrorAction SilentlyContinue
-                    $svcObj.Refresh()
-                    Write-Information "Service '$svc' state after restart: $($svcObj.Status)" -InformationAction Continue
+                    # Trigger an MDM sync at the scheduled intervals.
+                    if ($syncCount -lt $maxSyncs -and $imeWaited -ge $syncAtSeconds[$syncCount])
+                    {
+                        Write-Information "Triggering MDM full sync (attempt $($syncCount + 1)/$maxSyncs) at $imeWaited s..." -InformationAction Continue
+                        try
+                        {
+                            Invoke-CimMethod -Namespace 'root/cimv2/mdm/dmmap' -ClassName 'MDM_Client' -MethodName 'StartFullSync' -ErrorAction Stop | Out-Null
+                        }
+                        catch
+                        {
+                            Write-Information "MDM sync trigger failed: $($_.Exception.Message)" -InformationAction Continue
+                        }
+                        $syncCount++
+                    }
+
+                    $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
+                    if ($imeSvc)
+                    {
+                        $imeInstalled = $true
+                        Write-Information "IntuneManagementExtension installed after $imeWaited s." -InformationAction Continue
+                        break
+                    }
+
+                    if ($imeWaited -ge $imeMaxWaitSeconds) { break }
+                    Write-Information "Waiting for IntuneManagementExtension... ($imeWaited / $imeMaxWaitSeconds s elapsed)" -InformationAction Continue
+                    Start-Sleep -Seconds $imePollInterval
+                    $imeWaited += $imePollInterval
                 }
-                else
+
+                if (-not $imeInstalled)
                 {
-                    Write-Information "Service '$svc' not found on this machine - skipping." -InformationAction Continue
+                    throw "IntuneManagementExtension was not installed within $($imeMaxWaitSeconds / 60) minutes after $maxSyncs MDM sync attempts."
                 }
             }
 
@@ -579,6 +620,7 @@ Describe 'Intune Tests' {
             $appDownloadUrl = 'https://winscp.net/download/WinSCP-6.5.6.msi/download'  # <-- Fill in WinSCP download URL
             $appName = 'WinSCP'
             $workDir = Join-Path 'C:\PSADT' $appName
+            New-Item -Path $workDir -ItemType Directory -Force | Out-Null
 
             # Copy template to app working directory
             $templateFolder = Get-ChildItem -Path 'C:\PSADT' -Directory | Where-Object { $_.Name -like 'PSAppDeployToolkit*' } | Select-Object -First 1
