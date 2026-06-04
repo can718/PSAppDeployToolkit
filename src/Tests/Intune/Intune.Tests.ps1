@@ -24,6 +24,7 @@ BeforeAll {
     $script:TenantID = $env:TEST_TENANTID
     $script:ClientID = $env:TEST_CLIENTID
     $script:ClientSecret = $env:TEST_CLIENTSECRET
+    $script:templateFolder = "C:\Tools\GitHubAgent\actions-runner\_work\PSAppDeployToolkit\PSAppDeployToolkit\src\Artifacts\TestTemplates"
 
     if ($script:TFTestRunId -and $script:TFApiBaseUrl)
     {
@@ -284,11 +285,6 @@ Describe 'Intune Tests' {
             {
                 Remove-Item -Path $templateDest -Recurse -Force
             }
-            #Import-Module -Name '.\src\PSAppDeployToolkit\PSAppDeployToolkit.psd1' -Force
-            Install-Module -Name PSAppDeployToolkit -Scope CurrentUser
-            New-ADTTemplate -Destination $templateDest -Name "PSAppDeployToolkitv4"
-
-            #New-ADTTemplate -Destination $templateDest -Force
 
             # Resolve IntuneWinAppUtil.exe from the default local install path.
             $script:IntuneWinAppUtil = Get-IntuneWinAppUtilPath
@@ -442,12 +438,13 @@ Describe 'Intune Tests' {
             $workDir = Join-Path 'C:\PSADT' $appName
 
             # Copy template to app working directory: like C:\PSADT\VLC\*
-            $templateFolder = Get-ChildItem -Path 'C:\PSADT' -Directory | Where-Object { $_.Name -like 'PSAppDeployToolkit*' } | Select-Object -First 1
-            if (-not $templateFolder)
+            $v4Path = Join-Path $script:templateFolder.FullName 'v4'
+
+            if (-not (Test-Path $v4Path))
             {
-                throw 'PSADT template folder not found under C:\PSADT'
+                throw "v4 folder missing : $v4Path"
             }
-            Copy-Item -Path $templateFolder.FullName -Destination $workDir -Recurse -Force
+            Copy-Item -Path (Join-Path $v4Path '*') -Destination $workDir -Recurse -Force
 
             # Download the app installer to Files folder
             $filesDir = Join-Path $workDir 'Files'
@@ -550,13 +547,13 @@ Describe 'Intune Tests' {
             # IME polls roughly every 60 s; allow up to 30 minutes total.
             # ---------------------------------------------------------------
             $installMaxWaitSeconds = 900
-            $installPollInterval   = 60
-            $installWaited         = 0
-            $installVerified       = $false
+            $installPollInterval = 60
+            $installWaited = 0
+            $installVerified = $false
 
             # Detection: check the same registry key used by the detection rule above.
-            $detectionKeyPath  = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player'
-            $detectionValue    = 'DisplayVersion'
+            $detectionKeyPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player'
+            $detectionValue = 'DisplayVersion'
             $detectionExpected = '3.0.23'
 
             Write-Information "Polling for VLC installation (timeout: $($installMaxWaitSeconds / 60) min)..." -InformationAction Continue
