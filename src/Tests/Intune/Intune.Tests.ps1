@@ -409,13 +409,6 @@ Describe 'Intune Tests' {
             $win32App
             $win32App | Should -Not -BeNullOrEmpty
 
-            # Patch runAs32bit=false via Graph API so IME launches the .exe as a 64-bit process
-            Invoke-MgGraphRequest -Method PATCH `
-                -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($win32App.id)" `
-                -Body (@{ '@odata.type' = '#microsoft.graph.win32LobApp'; runAs32bit = $false } | ConvertTo-Json) `
-                -ContentType 'application/json' -ErrorAction SilentlyContinue
-            Write-Information "[Intune] Patched runAs32bit=false for '$DisplayName' (id: $($win32App.id))" -InformationAction Continue
-
             # Assign to group
             Add-IntuneWin32AppAssignmentGroup -Include -ID $($win32App.id) -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
 
@@ -618,13 +611,6 @@ Describe 'Intune Tests' {
                 $retryCount++
             }
             $win32App | Should -Not -BeNullOrEmpty
-
-            # Patch runAs32bit=false via Graph API so IME launches the .exe as a 64-bit process
-            Invoke-MgGraphRequest -Method PATCH `
-                -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($win32App.id)" `
-                -Body (@{ '@odata.type' = '#microsoft.graph.win32LobApp'; runAs32bit = $false } | ConvertTo-Json) `
-                -ContentType 'application/json' -ErrorAction SilentlyContinue
-            Write-Information "[Intune] Patched runAs32bit=false for '$DisplayName' (id: $($win32App.id))" -InformationAction Continue
 
             # Assign to group
             Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
