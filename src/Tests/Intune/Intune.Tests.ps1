@@ -394,7 +394,8 @@ Describe 'Intune Tests' {
             Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
-                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd -Verbose
+                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd `
+                -RunAs32Bit $false -Verbose
 
             # Intune Graph API has eventual consistency; retry until the app is visible
             $win32App = $null
@@ -598,7 +599,8 @@ Describe 'Intune Tests' {
             Add-IntuneWin32App -FilePath $finalPath -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
-                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd -Verbose
+                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd `
+                -RunAs32Bit $false -Verbose
 
             # Intune Graph API has eventual consistency; retry until the app is visible
             $win32App = $null
