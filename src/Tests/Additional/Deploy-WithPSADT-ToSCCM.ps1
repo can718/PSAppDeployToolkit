@@ -175,7 +175,7 @@ $v3UninstallBlock = if ($ProductCode)
 }
 else
 {
-    "        Execute-MSI -Action 'Uninstall' -Path `"`$dirFiles\$MSIFileName`""
+    "        Execute-MSI -Action  'Uninstall' -Path `"`$dirFiles\$MSIFileName`""
 }
 
 Set-Content -Path $V3Script -Encoding UTF8 -Value @"
@@ -442,18 +442,26 @@ try
     'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$ProductCode',
     'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$ProductCode'
 )
-if (`$paths | Where-Object { Test-Path `$_ }) { exit 0 } else { exit 1 }
+if (`$paths | Where-Object { Test-Path `$_ }) { Write-Host 'Installed' }
 "@
     }
     else
     {
         @"
-`$app = Get-ItemProperty `
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
-    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' `
-    -ErrorAction SilentlyContinue |
-    Where-Object { `$_.DisplayName -like '*$AppName*' -and `$_.DisplayVersion -eq '$AppVersion' }
-if (`$app) { exit 0 } else { exit 1 }
+`$uninstallRoots = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+`$app = foreach (`$root in `$uninstallRoots)
+{
+    if (Test-Path `$root)
+    {
+        Get-ChildItem -Path `$root |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { `$_.DisplayName -like '*$AppName*' -and `$_.DisplayVersion -eq '$AppVersion' }
+    }
+}
+if (`$app) { Write-Host 'Installed' }
 "@
     }
 

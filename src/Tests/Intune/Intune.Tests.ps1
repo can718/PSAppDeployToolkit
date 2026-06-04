@@ -136,8 +136,6 @@ BeforeAll {
     }
 }
 
-# ---------------------------------------------------------------------------
-
 Describe 'Intune Tests' {
     Context 'Sanity checks' {
         BeforeEach {
