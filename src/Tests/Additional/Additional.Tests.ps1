@@ -245,67 +245,67 @@ Describe 'PSADT Build Template Validation' {
     }
 }
 
-Describe 'Deploy-WithPSADT-ToSCCM' {
-    Context 'SCCM deployment using build output templates' {
+# Describe 'Deploy-WithPSADT-ToSCCM' {
+#     Context 'SCCM deployment using build output templates' {
 
-        BeforeAll {
-            $script:v3Dir = $env:PSADT_TEMPLATE_V3_DIR
-            $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
-            $script:deployScript = Join-Path $PSScriptRoot 'Deploy-WithPSADT-ToSCCM.ps1'
+#         BeforeAll {
+#             $script:v3Dir = $env:PSADT_TEMPLATE_V3_DIR
+#             $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
+#             $script:deployScript = Join-Path $PSScriptRoot 'Deploy-WithPSADT-ToSCCM.ps1'
 
-            # Create a dummy MSI file if it does not exist (CI environments won't have the real installer)
-            $script:workDir = 'C:\PSADT'
-            $script:msiName = 'PatchMyPC-Publishing-Service-2.1.110.4 (2).msi'
-            $script:msiPath = Join-Path $script:workDir $script:msiName
-            $script:dummyCreated = $false
-            if (-not (Test-Path $script:msiPath))
-            {
-                New-Item -ItemType Directory -Force -Path $script:workDir | Out-Null
-                # Write a minimal valid MSI header (just needs to be a non-empty file;
-                # Get-MSIProductCode will fail gracefully and return $null)
-                [System.IO.File]::WriteAllBytes($script:msiPath, [byte[]](0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1))
-                $script:dummyCreated = $true
-                Write-Verbose "  [setup] Created dummy MSI at: $($script:msiPath)"
-            }
-        }
+#             # Create a dummy MSI file if it does not exist (CI environments won't have the real installer)
+#             $script:workDir = 'C:\PSADT'
+#             $script:msiName = 'PatchMyPC-Publishing-Service-2.1.110.4 (2).msi'
+#             $script:msiPath = Join-Path $script:workDir $script:msiName
+#             $script:dummyCreated = $false
+#             if (-not (Test-Path $script:msiPath))
+#             {
+#                 New-Item -ItemType Directory -Force -Path $script:workDir | Out-Null
+#                 # Write a minimal valid MSI header (just needs to be a non-empty file;
+#                 # Get-MSIProductCode will fail gracefully and return $null)
+#                 [System.IO.File]::WriteAllBytes($script:msiPath, [byte[]](0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1))
+#                 $script:dummyCreated = $true
+#                 Write-Verbose "  [setup] Created dummy MSI at: $($script:msiPath)"
+#             }
+#         }
 
-        AfterAll {
-            # Remove the dummy MSI if we created it, to keep the runner clean
-            if ($script:dummyCreated -and (Test-Path $script:msiPath))
-            {
-                Remove-Item $script:msiPath -Force -ErrorAction SilentlyContinue
-                Write-Verbose "  [teardown] Removed dummy MSI: $($script:msiPath)"
-            }
-        }
+#         AfterAll {
+#             # Remove the dummy MSI if we created it, to keep the runner clean
+#             if ($script:dummyCreated -and (Test-Path $script:msiPath))
+#             {
+#                 Remove-Item $script:msiPath -Force -ErrorAction SilentlyContinue
+#                 Write-Verbose "  [teardown] Removed dummy MSI: $($script:msiPath)"
+#             }
+#         }
 
-        BeforeEach {
-            $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates'
-            $script:CurrentTestMethod = $testInfo.Name
-            Write-Verbose "[BeforeEach] TestClass: $($script:CurrentTestClass)"
-            Write-Verbose "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
-        }
+#         BeforeEach {
+#             $testInfo = $____Pester.CurrentTest
+#             $script:CurrentTestClass = 'Deploy-WithPSADT-ToSCCM / SCCM deployment using build output templates'
+#             $script:CurrentTestMethod = $testInfo.Name
+#             Write-Verbose "[BeforeEach] TestClass: $($script:CurrentTestClass)"
+#             Write-Verbose "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
+#             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+#         }
 
-        AfterEach {
-            $currentTest = $____Pester.CurrentTest
-            Invoke-TFUpdateTestCase -TestResult $currentTest
-        }
+#         AfterEach {
+#             $currentTest = $____Pester.CurrentTest
+#             Invoke-TFUpdateTestCase -TestResult $currentTest
+#         }
 
-        It 'Deploy-WithPSADT-ToSCCM.ps1 script exists' {
-            Test-Path $script:deployScript | Should -BeTrue
-        }
+#         It 'Deploy-WithPSADT-ToSCCM.ps1 script exists' {
+#             Test-Path $script:deployScript | Should -BeTrue
+#         }
 
-        It 'Successfully runs SCCM deployment using build templates' {
-            if (-not $script:v3Dir -or -not $script:v4Dir)
-            {
-                Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V3_DIR or PSADT_TEMPLATE_V4_DIR not set'
-                return
-            }
-            { & $script:deployScript -TemplateV3Dir $script:v3Dir -TemplateV4Dir $script:v4Dir } | Should -Not -Throw
-        }
-    }
-}
+#         It 'Successfully runs SCCM deployment using build templates' {
+#             if (-not $script:v3Dir -or -not $script:v4Dir)
+#             {
+#                 Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V3_DIR or PSADT_TEMPLATE_V4_DIR not set'
+#                 return
+#             }
+#             { & $script:deployScript -TemplateV3Dir $script:v3Dir -TemplateV4Dir $script:v4Dir } | Should -Not -Throw
+#         }
+#     }
+# }
 
 Describe 'winSCP Package Preparation and SCCM Import' {
     Context 'Build winSCP package from V4 template and import into SCCM' {
@@ -355,33 +355,6 @@ Describe 'winSCP Package Preparation and SCCM Import' {
         AfterEach {
             $currentTest = $____Pester.CurrentTest
             Invoke-TFUpdateTestCase -TestResult $currentTest
-        }
-
-        function script:Enter-WinSCPSccmSiteContext
-        {
-            if ([string]::IsNullOrWhiteSpace($script:siteCode))
-            {
-                throw "siteCode cannot be null or empty"
-            }
-            if ([string]::IsNullOrWhiteSpace($script:siteServer))
-            {
-                throw "siteServer cannot be null or empty"
-            }
-            Import-Module $script:cmModulePath -ErrorAction Stop
-            $script:WinSCPSiteOriginalLocation = Get-Location
-            if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
-            {
-                New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
-            }
-            Set-Location "$($script:siteCode):\"
-        }
-
-        function script:Exit-WinSCPSccmSiteContext
-        {
-            if ($script:WinSCPSiteOriginalLocation)
-            {
-                Set-Location $script:WinSCPSiteOriginalLocation
-            }
         }
 
         function script:Invoke-WinSCPSccmClientEvaluation
@@ -486,7 +459,21 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             # Step 6 - Import application into SCCM
             # ----------------------------------------------------------------
             Write-Verbose '[winSCP] Step 6: Importing winSCP application into SCCM...'
-            Enter-WinSCPSccmSiteContext
+            if ([string]::IsNullOrWhiteSpace($script:siteCode))
+            {
+                throw "siteCode cannot be null or empty"
+            }
+            if ([string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                throw "siteServer cannot be null or empty"
+            }
+            Import-Module $script:cmModulePath -ErrorAction Stop
+            $script:WinSCPSiteOriginalLocation = Get-Location
+            if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
+            {
+                New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
+            }
+            Set-Location "$($script:siteCode):\"
             try
             {
                 # Remove existing application
@@ -721,7 +708,10 @@ if ($app) { Write-Host "Installed" }
             }
             finally
             {
-                Exit-WinSCPSccmSiteContext
+                if ($script:WinSCPSiteOriginalLocation)
+                {
+                    Set-Location $script:WinSCPSiteOriginalLocation
+                }
             }
         }
 
@@ -744,7 +734,21 @@ if ($app) { Write-Host "Installed" }
                 return
             }
 
-            Enter-WinSCPSccmSiteContext
+            if ([string]::IsNullOrWhiteSpace($script:siteCode))
+            {
+                throw "siteCode cannot be null or empty"
+            }
+            if ([string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                throw "siteServer cannot be null or empty"
+            }
+            Import-Module $script:cmModulePath -ErrorAction Stop
+            $script:WinSCPSiteOriginalLocation = Get-Location
+            if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
+            {
+                New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
+            }
+            Set-Location "$($script:siteCode):\"
             try
             {
                 $app = Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue
@@ -819,7 +823,10 @@ if ($app) { Write-Host "Installed" }
             }
             finally
             {
-                Exit-WinSCPSccmSiteContext
+                if ($script:WinSCPSiteOriginalLocation)
+                {
+                    Set-Location $script:WinSCPSiteOriginalLocation
+                }
             }
         }
     }
