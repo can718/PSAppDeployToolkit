@@ -171,14 +171,6 @@ Describe 'Intune Tests' {
             }
             New-Item -Path $templateDest -ItemType Directory -Force | Out-Null
 
-            if (-not (Get-Module -Name PSAppDeployToolkit -ListAvailable))
-            {
-                Install-Module -Name PSAppDeployToolkit -Force -Scope CurrentUser
-            }
-            Import-Module -Name PSAppDeployToolkit -ErrorAction Stop
-            New-ADTTemplate -Destination $templateDest -Name 'v4' -Force
-            $script:templateFolder = $templateDest
-
             # Resolve IntuneWinAppUtil.exe from the default local install path.
             $script:IntuneWinAppUtil = Get-IntuneWinAppUtilPath
             $script:Win32WrapAndUploadSkipReason = if (-not $script:IntuneWinAppUtil)

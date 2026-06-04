@@ -78,10 +78,11 @@ $adtSession = @{
 ## MARK: Pre-Install
 $PreInstall = {
     $saiwParams = @{
-        AllowDeferCloseProcesses = $true
-        DeferTimes = 3
+        AllowDefer = $true
+        DeferTimes = 2
         # PersistPrompt = $true
         ForceCountdown = 8
+        CheckDiskSpace = $true
     }
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
@@ -99,7 +100,7 @@ $Install = {
 ## MARK: Post-Install
 $PostInstall = {
     Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
-    Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
+    #Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
     Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
@@ -139,7 +140,7 @@ $Repair = {
 ## MARK: Post-Repair
 $PostRepair = {
     Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
-    Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
+    # Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
     Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
@@ -186,7 +187,6 @@ try
     {
         $installPhase = "$prefix$($adtSession.DeploymentType)"
         $scriptBlock = Get-Variable -Name $installPhase.Replace('-', '') -ValueOnly -ErrorAction Ignore
-        Write-Information "=== Executing $installPhase scriptblock ==="
         if (![System.String]::IsNullOrWhiteSpace($scriptBlock))
         {
             $adtSession.InstallPhase = $installPhase
