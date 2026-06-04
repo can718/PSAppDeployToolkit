@@ -186,6 +186,7 @@ try
     {
         $installPhase = "$prefix$($adtSession.DeploymentType)"
         $scriptBlock = Get-Variable -Name $installPhase.Replace('-', '') -ValueOnly -ErrorAction Ignore
+        Write-Information "=== Executing $installPhase scriptblock ==="
         if (![System.String]::IsNullOrWhiteSpace($scriptBlock))
         {
             $adtSession.InstallPhase = $installPhase

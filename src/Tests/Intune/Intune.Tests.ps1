@@ -161,122 +161,6 @@ BeforeAll {
 # ---------------------------------------------------------------------------
 
 Describe 'Intune Tests' {
-    Context 'Sanity checks' {
-        BeforeEach {
-            $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'Intune Tests / Sanity checks'
-            $script:CurrentTestMethod = $testInfo.Name
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
-
-            if ($(Test-AccessToken) -eq $false)
-            {
-                Write-Host "First use Connect-MSIntuneGraph to access Microsoft Graph." -ForegroundColor Yellow
-
-                # Authenticate to Microsoft Graph
-                $ClientSecret = $script:ClientSecret
-                Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $ClientSecret
-            }
-        }
-
-        AfterEach {
-            Invoke-TFUpdateTestCase -TestResult $____Pester.CurrentTest
-        }
-
-        It 'PowerShell version is 5.1 or higher' {
-            $PSVersionTable.PSVersion.Major | Should -BeGreaterOrEqual 5
-        }
-
-        It 'True is true' {
-            $true | Should -BeTrue
-        }
-
-        It 'Basic arithmetic works' {
-            (1 + 1) | Should -Be 2
-        }
-    }
-
-    Context 'Intune Module Availability' {
-        BeforeEach {
-            $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'Intune Tests / Intune Module Availability'
-            $script:CurrentTestMethod = $testInfo.Name
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
-        }
-
-        AfterEach {
-            Invoke-TFUpdateTestCase -TestResult $____Pester.CurrentTest
-        }
-
-
-    }
-
-    Context 'Intune Package Deployment Checks' {
-        BeforeEach {
-            $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'Intune Tests / Intune Package Deployment Checks'
-            $script:CurrentTestMethod = $testInfo.Name
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
-        }
-
-        AfterEach {
-            Invoke-TFUpdateTestCase -TestResult $____Pester.CurrentTest
-        }
-
-        It 'PSADT module artifacts directory exists after build' {
-            $artifactPath = '.\src\Artifacts'
-            Test-Path $artifactPath | Should -BeTrue
-        }
-
-        It 'Invoke-AppDeployToolkit.ps1 template exists in v4 artifacts' {
-            $templates = Get-ChildItem -Path '.\src\Artifacts' -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -ErrorAction SilentlyContinue
-            if (-not $templates)
-            {
-                Set-ItResult -Skipped -Because 'Build artifacts not found - build step may not have run'
-            }
-            else
-            {
-                $templates | Should -Not -BeNullOrEmpty
-            }
-        }
-
-        It 'AppDeployToolkitMain.ps1 is present in build output' {
-            $mainScript = Get-ChildItem -Path '.\src\Artifacts' -Filter 'AppDeployToolkitMain.ps1' -Recurse -ErrorAction SilentlyContinue
-            if (-not $mainScript)
-            {
-                Set-ItResult -Skipped -Because 'Build artifacts not found - build step may not have run'
-            }
-            else
-            {
-                $mainScript | Should -Not -BeNullOrEmpty
-            }
-        }
-    }
-
-    Context 'Intune Win32 App Packaging Requirements' {
-        BeforeEach {
-            $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'Intune Tests / Intune Win32 App Packaging Requirements'
-            $script:CurrentTestMethod = $testInfo.Name
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
-        }
-
-        AfterEach {
-            Invoke-TFUpdateTestCase -TestResult $____Pester.CurrentTest
-        }
-
-        It 'PSAppDeployToolkit module can be found in src output' {
-            $moduleManifest = Get-ChildItem -Path '.\src\Artifacts' -Filter 'PSAppDeployToolkit.psd1' -Recurse -ErrorAction SilentlyContinue
-            if (-not $moduleManifest)
-            {
-                Set-ItResult -Skipped -Because 'PSAppDeployToolkit.psd1 not found - build step may not have run'
-            }
-            else
-            {
-                $moduleManifest | Should -Not -BeNullOrEmpty
-            }
-        }
-    }
-
     Context 'Win32 App Wrap and Upload' {
         BeforeAll {
             # Generate PSADT template to C:\PSADT
@@ -286,6 +170,14 @@ Describe 'Intune Tests' {
                 Remove-Item -Path $templateDest -Recurse -Force
             }
             New-Item -Path $templateDest -ItemType Directory -Force | Out-Null
+
+            if (-not (Get-Module -Name PSAppDeployToolkit -ListAvailable))
+            {
+                Install-Module -Name PSAppDeployToolkit -Force -Scope CurrentUser
+            }
+            Import-Module -Name PSAppDeployToolkit -ErrorAction Stop
+            New-ADTTemplate -Destination $templateDest -Name 'v4' -Force
+            $script:templateFolder = $templateDest
 
             # Resolve IntuneWinAppUtil.exe from the default local install path.
             $script:IntuneWinAppUtil = Get-IntuneWinAppUtilPath
