@@ -173,7 +173,7 @@ BeforeAll {
         )
 
         $elapsed      = 0
-        $summary      = $null
+        $script:summary      = $null
         $cimNamespace = "root\SMS\Site_$SiteCode"
 
         do
@@ -181,18 +181,18 @@ BeforeAll {
             $deployments = Get-CMDeployment -SoftwareName $AppName -ErrorAction SilentlyContinue
             $deployments | ForEach-Object { Invoke-CMDeploymentSummarization -DeploymentId $_.DeploymentId }
 
-            $summary = $null
+            $script:summary = $null
             if (-not [string]::IsNullOrWhiteSpace($SiteCode))
             {
-                $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
+                $script:summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
                     Where-Object { $_.ApplicationName -eq $AppName } |
                     Select-Object -First 1
             }
 
-            if ($summary)
+            if ($script:summary)
             {
-                Write-Information "[winSCP] $Label status (elapsed ${elapsed}s): Success=$($summary.NumberSuccess) InProgress=$($summary.NumberInProgress) Error=$($summary.NumberErrors) Targeted=$($summary.NumberTargeted)" -InformationAction Continue
-                if ($summary.NumberSuccess -gt 0)
+                Write-Information "[winSCP] $Label status (elapsed ${elapsed}s): Success=$($script:summary.NumberSuccess) InProgress=$($script:summary.NumberInProgress) Error=$($script:summary.NumberErrors) Targeted=$($script:summary.NumberTargeted)" -InformationAction Continue
+                if ($script:summary.NumberSuccess -gt 0)
                 {
                     break
                 }
@@ -215,12 +215,12 @@ BeforeAll {
         # Final authoritative read
         if (-not [string]::IsNullOrWhiteSpace($SiteCode))
         {
-            $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
+            $script:summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
                 Where-Object { $_.ApplicationName -eq $AppName } |
                 Select-Object -First 1
         }
 
-        return $summary
+        return $script:summary
     }
 
 }
