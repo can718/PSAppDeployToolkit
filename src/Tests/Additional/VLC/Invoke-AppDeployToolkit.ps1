@@ -34,10 +34,10 @@ param
     [ValidateSet('Install', 'Uninstall', 'Repair')]
     [System.String]$DeploymentType,
 
-    # Default is 'Auto'. Don't hard-code this unless required.
+    # Hardcoded to 'Silent' for unattended SCCM / GitHub Actions deployments.
     [Parameter(Mandatory = $false)]
     [ValidateSet('Auto', 'Interactive', 'NonInteractive', 'Silent')]
-    [System.String]$DeployMode,
+    [System.String]$DeployMode = 'Silent',
 
     [Parameter(Mandatory = $false)]
     [System.Management.Automation.SwitchParameter]$SuppressRebootPassThru,
@@ -77,17 +77,10 @@ $adtSession = @{
 
 ## MARK: Pre-Install
 $PreInstall = {
-    $saiwParams = @{
-        AllowDeferCloseProcesses = $true
-        DeferTimes = 3
-        PersistPrompt = $true
-    }
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
+        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
-    Show-ADTInstallationWelcome @saiwParams
-    Show-ADTInstallationProgress
 }
 
 ## MARK: Install
@@ -99,7 +92,6 @@ $Install = {
 $PostInstall = {
     Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
     Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
-    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Pre-Uninstall
@@ -108,7 +100,6 @@ $PreUninstall = {
     {
         Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
-    Show-ADTInstallationProgress
 }
 
 ## MARK: Uninstall
@@ -126,7 +117,6 @@ $PreRepair = {
     {
         Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
-    Show-ADTInstallationProgress
 }
 
 ## MARK: Repair
@@ -139,7 +129,6 @@ $Repair = {
 $PostRepair = {
     Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
     Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
-    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Initialization

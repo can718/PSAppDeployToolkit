@@ -710,3 +710,445 @@ if ($app) { Write-Host "Installed" }
         }
     }
 }
+
+Describe 'VLC Package Preparation and SCCM Import' {
+    Context 'Build VLC package from V4 template and import into SCCM' {
+
+        BeforeAll {
+            $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
+            $script:vlcSourceScript = Join-Path $PSScriptRoot 'VLC\Invoke-AppDeployToolkit.ps1'
+            $script:vlcSourceFolder = Join-Path $PSScriptRoot 'VLC'
+            $script:vlcPackageDir = 'C:\PSADT\VLC'
+            $script:vlcAppName = 'VLC media player (PSADT v4 VLC)'
+            $script:vlcAppVendor = 'VideoLAN'
+            $script:vlcAppVersion = '3.0.23'
+            $script:vlcDTName = "VLC $script:vlcAppVersion (v4 VLC)"
+            $script:vlcContentUNC = "\\$env:COMPUTERNAME\PSADT_Content$\VLC"
+            $script:targetCollection = if ($env:SCCM_TARGET_COLLECTION) { $env:SCCM_TARGET_COLLECTION } else { 'All Systems' }
+            $script:vlcInstallDeploySucceeded = $false
+
+            $script:siteCode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Operations Management' -Name 'Site Code' -ErrorAction SilentlyContinue).'Site Code'
+            $script:siteServer = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Setup' -Name 'Provider Location' -ErrorAction SilentlyContinue).'Provider Location'
+
+            $script:cmModulePath = @(
+                'C:\Program Files (x86)\Microsoft Configuration Manager\AdminConsole\bin\ConfigurationManager.psd1',
+                'C:\Program Files\Microsoft Configuration Manager\AdminConsole\bin\ConfigurationManager.psd1'
+            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+            if (-not $script:cmModulePath -and $env:SMS_ADMIN_UI_PATH)
+            {
+                $candidate = Join-Path (Split-Path $env:SMS_ADMIN_UI_PATH -Parent) 'ConfigurationManager.psd1'
+                if (Test-Path $candidate) { $script:cmModulePath = $candidate }
+            }
+        }
+
+        AfterAll {
+            # if (Test-Path $script:vlcPackageDir)
+            # {
+            #     Remove-Item $script:vlcPackageDir -Recurse -Force -ErrorAction SilentlyContinue
+            #     Write-Verbose "  [teardown] Removed VLC package directory: $($script:vlcPackageDir)"
+            # }
+        }
+
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass = 'VLC Package Preparation and SCCM Import / Build VLC package from V4 template and import into SCCM'
+            $script:CurrentTestMethod = $testInfo.Name
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+        }
+
+        AfterEach {
+            $currentTest = $____Pester.CurrentTest
+            Invoke-TFUpdateTestCase -TestResult $currentTest
+        }
+
+        It 'Builds VLC package and imports into SCCM' {
+            # ----------------------------------------------------------------
+            # Step 1 - Verify prerequisites
+            # ----------------------------------------------------------------
+            if (-not $script:v4Dir)
+            {
+                Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V4_DIR not set'
+                return
+            }
+            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
+                return
+            }
+            Test-Path $script:v4Dir | Should -BeTrue -Because 'V4 template directory must exist'
+            Test-Path $script:vlcSourceScript | Should -BeTrue -Because 'VLC\Invoke-AppDeployToolkit.ps1 must exist'
+
+            # ----------------------------------------------------------------
+            # Step 2 - Copy V4 template to VLC package directory
+            # ----------------------------------------------------------------
+            Write-Verbose '[VLC] Step 2: Copying V4 template to VLC package directory...'
+            if (Test-Path $script:vlcPackageDir)
+            {
+                Remove-Item $script:vlcPackageDir -Recurse -Force
+            }
+            Copy-Item -Path $script:v4Dir -Destination $script:vlcPackageDir -Recurse -Force
+            Test-Path $script:vlcPackageDir | Should -BeTrue
+
+            # ----------------------------------------------------------------
+            # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with VLC version
+            # ----------------------------------------------------------------
+            Write-Verbose '[VLC] Step 3: Replacing Invoke-AppDeployToolkit.ps1 with VLC version...'
+            $allDestScripts = Get-ChildItem -Path $script:vlcPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File -ErrorAction SilentlyContinue
+            $destScript = $allDestScripts | Select-Object -First 1
+            $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
+            # copy vlc folder and overwrite the script to ensure any additional files (e.g. for detection logic) are included in the package source
+            Copy-Item -Path $script:vlcSourceFolder -Destination $script:vlcPackageDir -Recurse -Force
+            # Copy-Item -Path $script:vlcSourceScript -Destination $destScript.FullName -Force
+            $content = Get-Content -Path $destScript.FullName -Raw
+            $content | Should -Match 'VLC'
+
+            # ----------------------------------------------------------------
+            # Step 4 - Copy VLC installer into Files folder
+            # ----------------------------------------------------------------
+            Write-Verbose '[VLC] Step 4: Copying VLC installer into Files folder...'
+            $installerSource = "C:\Tools\Intune\VLC\vlc-$($script:vlcAppVersion)-win64.exe"
+            if (-not (Test-Path $installerSource))
+            {
+                Write-Information "::warning::[VLC] Installer not found at '$installerSource', skipping installer copy step." -InformationAction Continue
+            }
+            else
+            {
+                $filesDir = Join-Path $script:vlcPackageDir 'Files'
+                if (-not (Test-Path $filesDir))
+                {
+                    New-Item -ItemType Directory -Path $filesDir -Force | Out-Null
+                }
+                Copy-Item -Path $installerSource -Destination $filesDir -Force
+                Test-Path (Join-Path $filesDir "vlc-$($script:vlcAppVersion)-win64.exe") | Should -BeTrue
+            }
+
+            # ----------------------------------------------------------------
+            # Step 5 - Create SMB content share
+            # ----------------------------------------------------------------
+            Write-Verbose '[VLC] Step 5: Ensuring SMB content share exists...'
+            if (-not $script:cmModulePath)
+            {
+                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
+                return
+            }
+            $shareName = 'PSADT_Content$'
+            if (-not (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue))
+            {
+                New-SmbShare -Name $shareName -Path 'C:\PSADT' -FullAccess 'Everyone' -Description 'PSADT SCCM Content Source' | Out-Null
+            }
+            # Ensure the VLC subdirectory exists under the share root (C:\PSADT\VLC)
+            if (-not (Test-Path $script:vlcPackageDir))
+            {
+                New-Item -ItemType Directory -Path $script:vlcPackageDir -Force | Out-Null
+                Write-Verbose "[VLC] Created missing package directory: $($script:vlcPackageDir)"
+            }
+            Test-Path $script:vlcContentUNC | Should -BeTrue
+
+            # ----------------------------------------------------------------
+            # Step 6 - Import application into SCCM
+            # ----------------------------------------------------------------
+            Write-Verbose '[VLC] Step 6: Importing VLC application into SCCM...'
+            if ([string]::IsNullOrWhiteSpace($script:siteCode))
+            {
+                throw "siteCode cannot be null or empty"
+            }
+            if ([string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                throw "siteServer cannot be null or empty"
+            }
+            Import-Module $script:cmModulePath -ErrorAction Stop
+            $script:VLCSiteOriginalLocation = Get-Location
+            if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
+            {
+                New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
+            }
+            Set-Location "$($script:siteCode):\"
+            try
+            {
+                # Remove existing application
+                if (Get-CMApplication -Name $script:vlcAppName -ErrorAction SilentlyContinue)
+                {
+                    $existingDeps = Get-CMApplicationDeployment -Name $script:vlcAppName -ErrorAction SilentlyContinue
+                    foreach ($dep in $existingDeps)
+                    {
+                        Remove-CMApplicationDeployment -Name $script:vlcAppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
+                    }
+                    Remove-CMApplication -Name $script:vlcAppName -Force
+                    Start-Sleep -Seconds 2
+                }
+
+                New-CMApplication `
+                    -Name            $script:vlcAppName `
+                    -Publisher       $script:vlcAppVendor `
+                    -SoftwareVersion $script:vlcAppVersion `
+                    -LocalizedName   $script:vlcAppName `
+                    -Description     "PSADT v4 VLC template - VLC media player $script:vlcAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')" | Out-Null
+
+                $installCmd = if (Test-Path (Join-Path $script:vlcPackageDir 'Invoke-AppDeployToolkit.exe'))
+                {
+                    'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+                }
+                else
+                {
+                    'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Install'
+                }
+                $uninstallCmd = if (Test-Path (Join-Path $script:vlcPackageDir 'Invoke-AppDeployToolkit.exe'))
+                {
+                    'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
+                }
+                else
+                {
+                    'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Uninstall'
+                }
+
+                $detectScript = @'
+$uninstallRoots = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+$app = foreach ($root in $uninstallRoots)
+{
+    if (Test-Path $root)
+    {
+        Get-ChildItem -Path $root |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like '*VLC media player*' -and $_.DisplayVersion -like '3.0.23*' }
+    }
+}
+if ($app) { Write-Host "Installed" }
+'@
+
+                Add-CMScriptDeploymentType `
+                    -ApplicationName           $script:vlcAppName `
+                    -DeploymentTypeName        $script:vlcDTName `
+                    -ContentLocation           $script:vlcContentUNC `
+                    -InstallCommand            $installCmd `
+                    -UninstallCommand          $uninstallCmd `
+                    -ScriptLanguage            PowerShell `
+                    -ScriptText                $detectScript `
+                    -InstallationBehaviorType  InstallForSystem `
+                    -LogonRequirementType      WhetherOrNotUserLoggedOn `
+                    -RebootBehavior            BasedOnExitCode `
+                    -SlowNetworkDeploymentMode Download `
+                    -MaximumRuntimeMins        30 `
+                    -EstimatedRuntimeMins      5 | Out-Null
+
+                $dt = Get-CMDeploymentType -ApplicationName $script:vlcAppName -DeploymentTypeName $script:vlcDTName
+                Add-CMDeploymentTypeReturnCode -InputObject $dt -ReturnCode 3010 -CodeType SoftReboot -Name 'Reboot Required' | Out-Null
+                Add-CMDeploymentTypeReturnCode -InputObject $dt -ReturnCode 1641 -CodeType HardReboot -Name 'Reboot Initiated' | Out-Null
+
+                $created = Get-CMApplication -Name $script:vlcAppName -ErrorAction SilentlyContinue
+                $created | Should -Not -BeNullOrEmpty
+
+                # ----------------------------------------------------------------
+                # Step 7 - Distribute content
+                # ----------------------------------------------------------------
+                Write-Verbose '[VLC] Step 7: Triggering content distribution...'
+                $dpGroups = Get-CMDistributionPointGroup -ErrorAction SilentlyContinue
+                $dpList = Get-CMDistributionPoint -ErrorAction SilentlyContinue
+
+                if ($dpGroups)
+                {
+                    foreach ($grp in $dpGroups)
+                    {
+                        Start-CMContentDistribution -ApplicationName $script:vlcAppName `
+                            -DistributionPointGroupName $grp.Name -ErrorAction SilentlyContinue | Out-Null
+                    }
+                }
+                elseif ($dpList)
+                {
+                    foreach ($dp in $dpList)
+                    {
+                        Start-CMContentDistribution -ApplicationName $script:vlcAppName `
+                            -DistributionPointName $dp.NetworkOSPath.TrimStart('\') -ErrorAction SilentlyContinue | Out-Null
+                    }
+                }
+                else
+                {
+                    Write-Information '::warning::[VLC] No distribution points or DP groups found - content distribution skipped.' -InformationAction Continue
+                }
+                # Poll content distribution status every 60 seconds for up to 10 minutes
+                $packageId = (Get-CMApplication -Name $script:vlcAppName -ErrorAction SilentlyContinue).PackageID
+                if ($packageId)
+                {
+                    $maxWaitSeconds = 600
+                    $pollIntervalSeconds = 60
+                    $elapsed = 0
+                    $distributionStatus = $null
+
+                    do
+                    {
+                        $distributionStatus = Get-CMDistributionStatus -Id $packageId -ErrorAction SilentlyContinue
+                        if ($distributionStatus)
+                        {
+                            Write-Verbose "[VLC] Distribution status (elapsed ${elapsed}s): Targeted=$($distributionStatus.Targeted) Success=$($distributionStatus.NumberSuccess) InProgress=$($distributionStatus.NumberInProgress) Errors=$($distributionStatus.NumberErrors)"
+                            if ($distributionStatus.NumberSuccess -ge $distributionStatus.Targeted -and $distributionStatus.Targeted -gt 0)
+                            {
+                                break
+                            }
+                        }
+
+                        if ($elapsed -lt $maxWaitSeconds)
+                        {
+                            Write-Verbose "[VLC] Distribution not yet complete - waiting ${pollIntervalSeconds}s before next check..."
+                            Start-Sleep -Seconds $pollIntervalSeconds
+                            $elapsed += $pollIntervalSeconds
+                        }
+                        else
+                        {
+                            break
+                        }
+                    }
+                    while ($elapsed -le $maxWaitSeconds)
+
+                    $distributionStatus | Should -Not -BeNullOrEmpty -Because 'Content distribution status must exist'
+                    $distributionStatus.NumberSuccess | Should -Be $distributionStatus.Targeted -Because "All $($distributionStatus.Targeted) targeted distribution points must have received the content successfully (waited up to ${maxWaitSeconds}s)"
+                }
+                else
+                {
+                    Write-Information '::warning::[VLC] Could not retrieve PackageID for distribution status check.' -InformationAction Continue
+                }
+
+                # ----------------------------------------------------------------
+                # Step 7b - Deploy application to collection
+                # ----------------------------------------------------------------
+                Write-Verbose "[VLC] Step 7b: Deploying application to collection '$($script:targetCollection)'..."
+
+                # Validate collection exists if not using default
+                if ($script:targetCollection -ne 'All Systems')
+                {
+                    $col = Get-CMDeviceCollection -Name $script:targetCollection -ErrorAction SilentlyContinue
+                    $col | Should -Not -BeNullOrEmpty -Because "Collection '$($script:targetCollection)' must exist in SCCM"
+                    Write-Verbose "[VLC] Collection validated: $($script:targetCollection) ($($col.MemberCount) device(s))"
+                }
+
+                # Remove existing deployment before recreating
+                $existDeploy = Get-CMApplicationDeployment -Name $script:vlcAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
+                if ($existDeploy)
+                {
+                    Remove-CMApplicationDeployment -Name $script:vlcAppName -CollectionName $script:targetCollection -Force -ErrorAction SilentlyContinue
+                    Write-Verbose "[VLC] Removed existing deployment: $($script:vlcAppName) -> $($script:targetCollection)"
+                }
+
+                New-CMApplicationDeployment `
+                    -Name                       $script:vlcAppName `
+                    -CollectionName             $script:targetCollection `
+                    -DeployAction               Install `
+                    -DeployPurpose              Required `
+                    -UserNotification           DisplaySoftwareCenterOnly `
+                    -TimeBaseOn                 LocalTime `
+                    -OverrideServiceWindow      $false `
+                    -RebootOutsideServiceWindow $false | Out-Null
+
+                $createdDeploy = Get-CMApplicationDeployment -Name $script:vlcAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
+                $createdDeploy | Should -Not -BeNullOrEmpty -Because "Deployment of '$($script:vlcAppName)' to '$($script:targetCollection)' must be created successfully"
+                Write-Verbose "[VLC] Deployment created: $($script:vlcAppName) -> $($script:targetCollection) (Required)"
+
+                # ----------------------------------------------------------------
+                # Step 8 - Poll application deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[VLC] Step 8: Polling application deployment status...' -InformationAction Continue
+                $deploymentSummary = Invoke-WinSCPPollDeploymentStatus `
+                    -AppName        $script:vlcAppName `
+                    -SiteCode       $script:siteCode `
+                    -Label          'Deployment' `
+                    -MaxWaitSeconds 3600 `
+                    -PollInterval   180
+                $deploymentSummary | Should -Not -BeNullOrEmpty -Because 'Application deployment status must exist'
+                $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because 'At least one device must have successfully deployed the application (waited up to 3600s)'
+                $script:vlcInstallDeploySucceeded = $true
+            }
+            finally
+            {
+                if ($script:VLCSiteOriginalLocation)
+                {
+                    Set-Location $script:VLCSiteOriginalLocation
+                }
+            }
+        }
+
+        It 'Creates uninstall deployment after VLC install deployment succeeds' {
+            if (-not $script:vlcInstallDeploySucceeded)
+            {
+                Set-ItResult -Skipped -Because "Prerequisite test 'Builds VLC package and imports into SCCM' did not complete successfully"
+                return
+            }
+
+            if (-not $script:cmModulePath)
+            {
+                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
+                return
+            }
+
+            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
+                return
+            }
+
+            if ([string]::IsNullOrWhiteSpace($script:siteCode))
+            {
+                throw "siteCode cannot be null or empty"
+            }
+            if ([string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                throw "siteServer cannot be null or empty"
+            }
+            Import-Module $script:cmModulePath -ErrorAction Stop
+            $script:VLCSiteOriginalLocation = Get-Location
+            if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
+            {
+                New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
+            }
+            Set-Location "$($script:siteCode):\"
+            try
+            {
+                $app = Get-CMApplication -Name $script:vlcAppName -ErrorAction SilentlyContinue
+                $app | Should -Not -BeNullOrEmpty -Because 'VLC application must exist before creating uninstall deployment'
+
+                $existingDeployments = Get-CMApplicationDeployment -Name $script:vlcAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
+                foreach ($dep in $existingDeployments)
+                {
+                    Remove-CMApplicationDeployment -Name $script:vlcAppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
+                    Write-Information "Removed existing deployment for '$($script:vlcAppName)' to collection '$($dep.CollectionName)'" -InformationAction Continue
+                }
+                Start-Sleep -Seconds 2
+
+                New-CMApplicationDeployment `
+                    -Name                       $script:vlcAppName `
+                    -CollectionName             $script:targetCollection `
+                    -DeployAction               Uninstall `
+                    -DeployPurpose              Required `
+                    -UserNotification           DisplaySoftwareCenterOnly `
+                    -TimeBaseOn                 LocalTime `
+                    -OverrideServiceWindow      $false `
+                    -RebootOutsideServiceWindow $false | Out-Null
+
+                $uninstallDeploy = Get-CMApplicationDeployment -Name $script:vlcAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
+                $uninstallDeploy | Should -Not -BeNullOrEmpty -Because "Uninstall deployment of '$($script:vlcAppName)' to '$($script:targetCollection)' must be created successfully"
+                Write-Information "[VLC] Uninstall deployment created: $($script:vlcAppName) -> $($script:targetCollection) (Required)" -InformationAction Continue
+
+                # ----------------------------------------------------------------
+                # Step 9 - Poll uninstall deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[VLC] Step 9: Polling uninstall deployment status...' -InformationAction Continue
+                $uninstallSummary = Invoke-WinSCPPollDeploymentStatus `
+                    -AppName        $script:vlcAppName `
+                    -SiteCode       $script:siteCode `
+                    -Label          'Uninstall deployment' `
+                    -MaxWaitSeconds 3600 `
+                    -PollInterval   180
+                $uninstallSummary | Should -Not -BeNullOrEmpty -Because 'Uninstall deployment status must exist'
+                $uninstallSummary.NumberSuccess | Should -BeGreaterThan 0 -Because 'At least one device must have successfully uninstalled the application (waited up to 3600s)'
+            }
+            finally
+            {
+                if ($script:VLCSiteOriginalLocation)
+                {
+                    Set-Location $script:VLCSiteOriginalLocation
+                }
+            }
+        }
+    }
+}
