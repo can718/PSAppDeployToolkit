@@ -139,6 +139,90 @@ BeforeAll {
             Write-Warning "[TerraForge] Failed to update result Id=$($script:TFCurrentResultId): $($_.Exception.Message)"
         }
     }
+
+    function script:Invoke-WinSCPSccmClientEvaluation
+        {
+            Write-Information "Triggering policy/application/update evaluation" -InformationAction Continue
+
+            # Computer policy
+            $trigger = "{00000000-0000-0000-0000-000000000021}"
+            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+
+            # Application evaluation
+            $trigger = "{00000000-0000-0000-0000-000000000121}"
+            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+
+            # Software update
+            $trigger = "{00000000-0000-0000-0000-000000000108}"
+            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+        }
+
+    function script:Invoke-WinSCPPollDeploymentStatus
+    {
+        <#
+            Polls SMS_DeploymentSummary until at least one device reports success
+            or the timeout is reached.
+            Returns the final SMS_DeploymentSummary CIM instance (or $null).
+        #>
+        param (
+            [string]$AppName,
+            [string]$SiteCode,
+            [string]$Label          = 'Deployment',
+            [int]   $MaxWaitSeconds = 3600,
+            [int]   $PollInterval   = 180
+        )
+
+        $elapsed      = 0
+        $summary      = $null
+        $cimNamespace = "root\SMS\Site_$SiteCode"
+
+        do
+        {
+            $deployments = Get-CMDeployment -SoftwareName $AppName -ErrorAction SilentlyContinue
+            $deployments | ForEach-Object { Invoke-CMDeploymentSummarization -DeploymentId $_.DeploymentId }
+
+            $summary = $null
+            if (-not [string]::IsNullOrWhiteSpace($SiteCode))
+            {
+                $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
+                    Where-Object { $_.ApplicationName -eq $AppName } |
+                    Select-Object -First 1
+            }
+
+            if ($summary)
+            {
+                Write-Information "[winSCP] $Label status (elapsed ${elapsed}s): Success=$($summary.NumberSuccess) InProgress=$($summary.NumberInProgress) Error=$($summary.NumberErrors) Targeted=$($summary.NumberTargeted)" -InformationAction Continue
+                if ($summary.NumberSuccess -gt 0)
+                {
+                    break
+                }
+            }
+
+            if ($elapsed -lt $MaxWaitSeconds)
+            {
+                Write-Information "[winSCP] $Label not yet successful - waiting ${PollInterval}s before next check..." -InformationAction Continue
+                Invoke-WinSCPSccmClientEvaluation
+                Start-Sleep -Seconds $PollInterval
+                $elapsed += $PollInterval
+            }
+            else
+            {
+                break
+            }
+        }
+        while ($elapsed -le $MaxWaitSeconds)
+
+        # Final authoritative read
+        if (-not [string]::IsNullOrWhiteSpace($SiteCode))
+        {
+            $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
+                Where-Object { $_.ApplicationName -eq $AppName } |
+                Select-Object -First 1
+        }
+
+        return $summary
+    }
+
 }
 
 # ---------------------------------------------------------------------------
@@ -235,23 +319,6 @@ Describe 'winSCP Package Preparation and SCCM Import' {
         AfterEach {
             $currentTest = $____Pester.CurrentTest
             Invoke-TFUpdateTestCase -TestResult $currentTest
-        }
-
-        function script:Invoke-WinSCPSccmClientEvaluation
-        {
-            Write-Information "Triggering policy/application/update evaluation" -InformationAction Continue
-
-            # Computer policy
-            $trigger = "{00000000-0000-0000-0000-000000000021}"
-            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-
-            # Application evaluation
-            $trigger = "{00000000-0000-0000-0000-000000000121}"
-            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-
-            # Software update
-            $trigger = "{00000000-0000-0000-0000-000000000108}"
-            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
         }
 
         It 'Builds winSCP package and imports into SCCM' {
@@ -540,50 +607,14 @@ if ($app) { Write-Host "Installed" }
                 # Step 8 - Poll application deployment status
                 # ----------------------------------------------------------------
                 Write-Information '[winSCP] Step 8: Polling application deployment status...' -InformationAction Continue
-                $maxWaitSecondsDeployment = 3600   # 60 minutes
-                $pollIntervalDeployment = 180       # 3 minutes
-                $elapsedDeployment = 0
-                $deploymentSummary = $null
-
-                do
-                {
-                    $deployments = Get-CMDeployment -SoftwareName "$script:winscpAppName" -ErrorAction SilentlyContinue
-                    $deployments | ForEach-Object { Invoke-CMDeploymentSummarization -DeploymentId $_.DeploymentId }
-                    if (-not [string]::IsNullOrWhiteSpace($script:siteCode))
-                    {
-                        $cimNamespace = "root\SMS\Site_$($script:siteCode)"
-                        $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
-                    }
-                    else
-                    {
-                        $deploymentSummary = $null
-                    }
-                    if ($deploymentSummary)
-                    {
-                        Write-Information "[winSCP] Deployment status (elapsed ${elapsedDeployment}s): Success=$($deploymentSummary.NumberSuccess) InProgress=$($deploymentSummary.NumberInProgress) Error=$($deploymentSummary.NumberErrors) Targeted=$($deploymentSummary.NumberTargeted)" -InformationAction Continue
-                        if ($deploymentSummary.NumberSuccess -gt 0)
-                        {
-                            break
-                        }
-                    }
-
-                    if ($elapsedDeployment -lt $maxWaitSecondsDeployment)
-                    {
-                        Write-Information "[winSCP] Deployment not yet successful - waiting ${pollIntervalDeployment}s before next check..." -InformationAction Continue
-                        Invoke-WinSCPSccmClientEvaluation
-
-                        Start-Sleep -Seconds $pollIntervalDeployment
-                        $elapsedDeployment += $pollIntervalDeployment
-                    }
-                    else
-                    {
-                        break
-                    }
-                }
-                while ($elapsedDeployment -le $maxWaitSecondsDeployment)
-                $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                $deploymentSummary = Invoke-WinSCPPollDeploymentStatus `
+                    -AppName        $script:winscpAppName `
+                    -SiteCode       $script:siteCode `
+                    -Label          'Deployment' `
+                    -MaxWaitSeconds 3600 `
+                    -PollInterval   180
                 $deploymentSummary | Should -Not -BeNullOrEmpty -Because 'Application deployment status must exist'
-                $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully deployed the application (waited up to ${maxWaitSecondsDeployment}s)"
+                $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because 'At least one device must have successfully deployed the application (waited up to 3600s)'
                 $script:winscpInstallDeploySucceeded = $true
             }
             finally
@@ -660,46 +691,14 @@ if ($app) { Write-Host "Installed" }
                 # Step 9 - Poll uninstall deployment status
                 # ----------------------------------------------------------------
                 Write-Information '[winSCP] Step 9: Polling uninstall deployment status...' -InformationAction Continue
-                $maxWaitSecondsUninstall = 3600   # 60 minutes
-                $pollIntervalUninstall = 180      # 3 minutes
-                $elapsedUninstall = 0
-                $uninstallSummary = $null
-
-                do
-                {
-                    $uninstallSummary = $null
-                    if (-not [string]::IsNullOrWhiteSpace($script:siteCode))
-                    {
-                        $cimNamespace = "root\SMS\Site_$($script:siteCode)"
-                        $uninstallSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
-                    }
-                    if ($uninstallSummary)
-                    {
-                        Write-Information "[winSCP] Uninstall deployment status (elapsed ${elapsedUninstall}s): Success=$($uninstallSummary.NumberSuccess) InProgress=$($uninstallSummary.NumberInProgress) Error=$($uninstallSummary.NumberErrors) Targeted=$($uninstallSummary.NumberTargeted)" -InformationAction Continue
-                        if ($uninstallSummary.NumberSuccess -gt 0)
-                        {
-                            break
-                        }
-                    }
-
-                    if ($elapsedUninstall -lt $maxWaitSecondsUninstall)
-                    {
-                        Write-Information "[winSCP] Uninstall deployment not yet successful - waiting ${pollIntervalUninstall}s before next check..." -InformationAction Continue
-                        Invoke-WinSCPSccmClientEvaluation
-
-                        Start-Sleep -Seconds $pollIntervalUninstall
-                        $elapsedUninstall += $pollIntervalUninstall
-                    }
-                    else
-                    {
-                        break
-                    }
-                }
-                while ($elapsedUninstall -le $maxWaitSecondsUninstall)
-
-                $uninstallSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
+                $uninstallSummary = Invoke-WinSCPPollDeploymentStatus `
+                    -AppName        $script:winscpAppName `
+                    -SiteCode       $script:siteCode `
+                    -Label          'Uninstall deployment' `
+                    -MaxWaitSeconds 3600 `
+                    -PollInterval   180
                 $uninstallSummary | Should -Not -BeNullOrEmpty -Because 'Uninstall deployment status must exist'
-                $uninstallSummary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully uninstalled the application (waited up to ${maxWaitSecondsUninstall}s)"
+                $uninstallSummary.NumberSuccess | Should -BeGreaterThan 0 -Because 'At least one device must have successfully uninstalled the application (waited up to 3600s)'
             }
             finally
             {
