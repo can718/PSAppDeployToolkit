@@ -48,6 +48,9 @@ jobs:
         run: |
           if [ "$STATUS" = "success" ]; then COLOR=00FF00; else COLOR=FF0000; fi
 
+          # Default STEPS_JSON to empty object when not provided
+          STEPS_JSON="${STEPS_JSON:-{}}"
+
           # Build per-step facts from the JSON object
           STEP_FACTS=$(echo "$STEPS_JSON" | jq -c '[to_entries[] | {
             "name": .key,
