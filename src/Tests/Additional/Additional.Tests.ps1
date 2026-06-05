@@ -169,7 +169,7 @@ BeforeAll {
             [string]$SiteCode,
             [string]$Label = 'Deployment',
             [int]$MaxWaitSeconds = 3600,
-            [int]$PollInterval   = 180
+            [int]$PollInterval = 180
         )
 
         $elapsed = 0
@@ -179,7 +179,7 @@ BeforeAll {
         do
         {
             $deployments = Get-CMDeployment -SoftwareName $AppName -ErrorAction SilentlyContinue
-            $deployments | ForEach-Object { Invoke-CMDeploymentSummarization -DeploymentId $_.DeploymentId }
+            $deployments | ForEach-Object { Invoke-CMDeploymentSummarization -DeploymentId $_.DeploymentId | Out-Null }
 
             $summary = $null
             if (-not [string]::IsNullOrWhiteSpace($SiteCode))
@@ -797,9 +797,8 @@ Describe 'VLC Package Preparation and SCCM Import' {
             $allDestScripts = Get-ChildItem -Path $script:vlcPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File -ErrorAction SilentlyContinue
             $destScript = $allDestScripts | Select-Object -First 1
             $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
-            # copy vlc folder and overwrite the script to ensure any additional files (e.g. for detection logic) are included in the package source
-            Copy-Item -Path $script:vlcSourceFolder -Destination $script:vlcPackageDir -Recurse -Force
-            # Copy-Item -Path $script:vlcSourceScript -Destination $destScript.FullName -Force
+            # copy vlc folder contents (not the folder itself) to ensure any additional files (e.g. for detection logic) are included in the package source
+            Copy-Item -Path "$script:vlcSourceFolder\*" -Destination $script:vlcPackageDir -Recurse -Force
             $content = Get-Content -Path $destScript.FullName -Raw
             $content | Should -Match 'VLC'
 

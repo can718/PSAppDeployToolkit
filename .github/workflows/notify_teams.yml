@@ -46,86 +46,56 @@ jobs:
           WORKFLOW: ${{ github.workflow }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ "$STATUS" = "success" ]; then COLOR=00FF00; else COLOR=FF0000; fi
+          case "$STATUS" in
+            success)   COLOR=00CC44; STATUS_ICON="✅" ;;
+            failure)   COLOR=FF0000; STATUS_ICON="❌" ;;
+            cancelled) COLOR=808080; STATUS_ICON="🚫" ;;
+            *)         COLOR=FFA500; STATUS_ICON="⏭️" ;;
+          esac
 
-          # Default STEPS_JSON to empty object when not provided
           STEPS_JSON="${STEPS_JSON:-{}}"
-
-          # Build per-step facts from the JSON object
-          STEP_FACTS=$(echo "$STEPS_JSON" | jq -c '[to_entries[] | {
-            "name": .key,
-            "value": (if   .value == "success"   then "✅ success"
-                      elif .value == "failure"   then "❌ failure"
-                      elif .value == "skipped"   then "⏭️ skipped"
-                      elif .value == "cancelled" then "🚫 cancelled"
-                      else "🔄 " + .value end)
-          }]')
-
           SHORT_SHA="${COMMIT_SHA:0:7}"
           COMMIT_TITLE=$(echo "$COMMIT_MSG" | head -1)
 
-          # Build CI info facts (branch / commit / author)
-          CI_FACTS=$(jq -n \
-            --arg workflow "$WORKFLOW" \
-            --arg branch   "$BRANCH" \
-            --arg sha      "$SHORT_SHA" \
-            --arg msg      "$COMMIT_TITLE" \
-            --arg actor    "$ACTOR" \
-            '[
-              {"name":"Workflow",     "value":$workflow},
-              {"name":"Branch",       "value":$branch},
-              {"name":"Commit",       "value":$sha},
-              {"name":"Message",      "value":$msg},
-              {"name":"Triggered by", "value":$actor}
-            ]')
+          # Map each step outcome to an emoji label (single-line filter, object-lookup avoids if/elif)
+          STEP_FACTS=$(echo "$STEPS_JSON" | jq -c '[to_entries[] | {"name": .key, "value": ({"success":"✅ success","failure":"❌ failure","skipped":"⏭️ skipped","cancelled":"🚫 cancelled"}[.value] // .value)}]')
 
-          # Build sections array: pipeline overview + CI info
-          SECTIONS=$(jq -n \
-            --arg       status     "$STATUS" \
-            --argjson   step_facts "$STEP_FACTS" \
-            --argjson   ci_facts   "$CI_FACTS" \
-            '[
-              {"activityTitle": ("Pipeline overall: " + $status), "facts": $step_facts},
-              {"activityTitle": "CI Info", "facts": $ci_facts}
-            ]')
+          # Build sections: Pipeline Steps + CI Info in one jq call (single-line filter)
+          SECTIONS=$(jq -cn \
+            --argjson steps "$STEP_FACTS" \
+            --arg wf    "$WORKFLOW" \
+            --arg br    "$BRANCH" \
+            --arg sha   "$SHORT_SHA" \
+            --arg msg   "$COMMIT_TITLE" \
+            --arg actor "$ACTOR" \
+            '[{"activityTitle":"Stage: Pipeline Steps","facts":$steps},{"activityTitle":"CI Info","facts":[{"name":"Workflow","value":$wf},{"name":"Branch","value":$br},{"name":"Commit","value":$sha},{"name":"Message","value":$msg},{"name":"Triggered by","value":$actor}]}]')
 
           # Append Pester section only when tests were actually run
           if [ "$PESTER_TOTAL" -gt 0 ]; then
-            PESTER_SECTION=$(jq -n \
-              --argjson total   "$PESTER_TOTAL" \
-              --argjson passed  "$PESTER_PASSED" \
-              --argjson failed  "$PESTER_FAILED" \
-              --argjson skipped "$PESTER_SKIPPED" \
-              '{"activityTitle":"Pester Test Results","facts":[
-                {"name":"Total",        "value":($total   | tostring)},
-                {"name":"✅ Passed",    "value":($passed  | tostring)},
-                {"name":"❌ Failed",    "value":($failed  | tostring)},
-                {"name":"⏭️ Skipped",  "value":($skipped | tostring)}
-              ]}')
-            SECTIONS=$(echo "$SECTIONS" | jq --argjson ps "$PESTER_SECTION" '. + [$ps]')
+            PESTER_SEC=$(jq -cn \
+              --arg total   "$PESTER_TOTAL" \
+              --arg passed  "$PESTER_PASSED" \
+              --arg failed  "$PESTER_FAILED" \
+              --arg skipped "$PESTER_SKIPPED" \
+              '{"activityTitle":"Pester Test Results","facts":[{"name":"Total","value":$total},{"name":"✅ Passed","value":$passed},{"name":"❌ Failed","value":$failed},{"name":"⏭️ Skipped","value":$skipped}]}')
+            SECTIONS=$(echo "$SECTIONS" | jq -c --argjson ps "$PESTER_SEC" '. + [$ps]')
           fi
 
           # "View Workflow Run" button
-          ACTIONS=$(jq -n --arg url "$RUN_URL" '[{
-            "@type": "OpenUri",
-            "name":  "🔗 View Workflow Run",
-            "targets": [{"os": "default", "uri": $url}]
-          }]')
+          ACTIONS=$(jq -cn --arg url "$RUN_URL" '[{"@type":"OpenUri","name":"🔗 View Workflow Run","targets":[{"os":"default","uri":$url}]}]')
 
-          PAYLOAD=$(jq -n \
-            --arg     color    "$COLOR" \
-            --arg     status   "$STATUS" \
+          # Assemble final payload (single-line filter)
+          PAYLOAD=$(jq -cn \
+            --arg     color  "$COLOR" \
+            --arg     icon   "$STATUS_ICON" \
+            --arg     status "$STATUS" \
+            --arg     wf     "$WORKFLOW" \
+            --arg     br     "$BRANCH" \
+            --arg     sha    "$SHORT_SHA" \
+            --arg     msg    "$COMMIT_TITLE" \
+            --arg     actor  "$ACTOR" \
             --argjson sections "$SECTIONS" \
             --argjson actions  "$ACTIONS" \
-            '{
-              "@type":           "MessageCard",
-              "@context":        "http://schema.org/extensions",
-              "themeColor":      $color,
-              "summary":         ("Pipeline " + $status),
-              "sections":        $sections,
-              "potentialAction": $actions
-            }')
+            '{"@type":"MessageCard","@context":"http://schema.org/extensions","themeColor":$color,"title":("🚀 Pipeline: " + $wf),"text":("Pipeline Status: **" + $icon + " " + $status + "**\n\nBranch: `" + $br + "` · Commit: `" + $sha + "`\n\nMessage: " + $msg + "\n\nTriggered by: " + $actor),"sections":$sections,"potentialAction":$actions}')
 
-          curl -H "Content-Type: application/json" \
-               -d "$PAYLOAD" \
-               "$WEBHOOK"
+          curl -H "Content-Type: application/json" -d "$PAYLOAD" "$WEBHOOK"
