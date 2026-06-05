@@ -38,6 +38,12 @@ jobs:
     name: Run Additional Tests
     needs: discover-agent
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
+    outputs:
+      steps_json:     ${{ steps.collect-outputs.outputs.steps_json }}
+      pester_total:   ${{ steps.run-pester.outputs.pester-total }}
+      pester_passed:  ${{ steps.run-pester.outputs.pester-passed }}
+      pester_failed:  ${{ steps.run-pester.outputs.pester-failed }}
+      pester_skipped: ${{ steps.run-pester.outputs.pester-skipped }}
     strategy:
       fail-fast: false
     env:
@@ -172,6 +178,7 @@ jobs:
         dotnet nuget list source
 
     - name: Build (minimal - Prerequisites, Clean, Dependencies, DotNet, Build)
+      id: build
       shell: pwsh
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
@@ -219,6 +226,7 @@ jobs:
 
     # Add your new test cases below this line
     - name: Run Additional Tests
+      id: run-pester
       shell: pwsh
       env:
         PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
@@ -232,9 +240,14 @@ jobs:
         $config.TestResult.Enabled = $true
         $config.TestResult.OutputPath = '.\src\Artifacts\TestOutput\AdditionalTests.xml'
         $config.TestResult.OutputFormat = 'NUnitXml'
-        Invoke-Pester -Configuration $config
+        $result = Invoke-Pester -Configuration $config -PassThru
+        "pester-total=$($result.TotalCount)"     | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-passed=$($result.PassedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-failed=$($result.FailedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-skipped=$($result.SkippedCount)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
 
     - name: Upload additional test results
+      id: upload-artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # https://github.com/actions/upload-artifact/releases/tag/v7.0.1
       with:
@@ -244,6 +257,7 @@ jobs:
         overwrite: true
   # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
     - name: Complete Test Run
+      id: complete-test-run
       if: always()
       shell: pwsh
       env:
@@ -253,6 +267,7 @@ jobs:
         Invoke-TFCompleteTestRun
 
     - name: Upload Test Results to Azure Blob Storage
+      id: upload-to-blob
       if: always()
       shell: pwsh
       env:
@@ -262,8 +277,39 @@ jobs:
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml'
 
     - name: Reset Azure Session VM
+      id: reset-sessionvm
       if: false #always()
       shell: pwsh
       run: |
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
         Invoke-TFResetSessionVM
+
+    - name: Collect step outcomes
+      id: collect-outputs
+      if: always()
+      shell: pwsh
+      run: |
+        $steps = [ordered]@{
+          'Build'                       = '${{ steps.build.outcome }}'
+          'Generate Artifact Templates' = '${{ steps.exports.outcome }}'
+          'Prepare Templates'           = '${{ steps.template-prep.outcome }}'
+          'Run Pester Tests'            = '${{ steps.run-pester.outcome }}'
+          'Upload Test Results'         = '${{ steps.upload-artifacts.outcome }}'
+          'Complete Test Run'           = '${{ steps.complete-test-run.outcome }}'
+          'Upload to Blob Storage'      = '${{ steps.upload-to-blob.outcome }}'
+        }
+        "steps_json=$($steps | ConvertTo-Json -Compress)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  notify-teams:
+    name: Notify Teams
+    needs: run-additional-tests
+    if: always()
+    uses: ./.github/workflows/notify_teams.yml
+    with:
+      job_status:     ${{ needs.run-additional-tests.result }}
+      steps_json:     ${{ needs.run-additional-tests.outputs.steps_json }}
+      pester_total:   ${{ fromJson(needs.run-additional-tests.outputs.pester_total   || '0') }}
+      pester_passed:  ${{ fromJson(needs.run-additional-tests.outputs.pester_passed  || '0') }}
+      pester_failed:  ${{ fromJson(needs.run-additional-tests.outputs.pester_failed  || '0') }}
+      pester_skipped: ${{ fromJson(needs.run-additional-tests.outputs.pester_skipped || '0') }}
+    secrets: inherit

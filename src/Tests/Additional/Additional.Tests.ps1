@@ -141,21 +141,21 @@ BeforeAll {
     }
 
     function script:Invoke-WinSCPSccmClientEvaluation
-        {
-            Write-Information "Triggering policy/application/update evaluation" -InformationAction Continue
+    {
+        Write-Information "Triggering policy/application/update evaluation" -InformationAction Continue
 
-            # Computer policy
-            $trigger = "{00000000-0000-0000-0000-000000000021}"
-            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+        # Computer policy
+        $trigger = "{00000000-0000-0000-0000-000000000021}"
+        ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
 
-            # Application evaluation
-            $trigger = "{00000000-0000-0000-0000-000000000121}"
-            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+        # Application evaluation
+        $trigger = "{00000000-0000-0000-0000-000000000121}"
+        ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
 
-            # Software update
-            $trigger = "{00000000-0000-0000-0000-000000000108}"
-            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-        }
+        # Software update
+        $trigger = "{00000000-0000-0000-0000-000000000108}"
+        ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+    }
 
     function script:Invoke-WinSCPPollDeploymentStatus
     {
@@ -167,13 +167,13 @@ BeforeAll {
         param (
             [string]$AppName,
             [string]$SiteCode,
-            [string]$Label          = 'Deployment',
-            [int]   $MaxWaitSeconds = 3600,
-            [int]   $PollInterval   = 180
+            [string]$Label = 'Deployment',
+            [int]$MaxWaitSeconds = 3600,
+            [int]$PollInterval   = 180
         )
 
-        $elapsed      = 0
-        $script:summary      = $null
+        $elapsed = 0
+        $script:summary = $null
         $cimNamespace = "root\SMS\Site_$SiteCode"
 
         do
@@ -212,8 +212,8 @@ BeforeAll {
         }
         while ($elapsed -le $MaxWaitSeconds)
 
-        # Final authoritative read
-        if (-not [string]::IsNullOrWhiteSpace($SiteCode))
+        # Final authoritative read - only if the loop did not already capture a result
+        if (-not $script:summary -and -not [string]::IsNullOrWhiteSpace($SiteCode))
         {
             $script:summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
                 Where-Object { $_.ApplicationName -eq $AppName } |

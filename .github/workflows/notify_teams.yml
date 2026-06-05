@@ -1,0 +1,71 @@
+name: Notify Teams of Job Status
+on:
+  workflow_call:
+    inputs:
+      job_status:
+        required: true
+        type: string
+      steps_json:
+        description: 'JSON object mapping step name to outcome, e.g. {"Build":"success","Test":"failure"}'
+        required: false
+        type: string
+        default: '{}'
+      pester_total:
+        required: false
+        type: number
+        default: 0
+      pester_passed:
+        required: false
+        type: number
+        default: 0
+      pester_failed:
+        required: false
+        type: number
+        default: 0
+      pester_skipped:
+        required: false
+        type: number
+        default: 0
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: send msg
+        env:
+          WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
+          STATUS: ${{ inputs.job_status }}
+          STEPS_JSON: ${{ inputs.steps_json }}
+          PESTER_TOTAL: ${{ inputs.pester_total }}
+          PESTER_PASSED: ${{ inputs.pester_passed }}
+          PESTER_FAILED: ${{ inputs.pester_failed }}
+          PESTER_SKIPPED: ${{ inputs.pester_skipped }}
+        run: |
+          if [ "$STATUS" = "success" ]; then COLOR=00FF00; else COLOR=FF0000; fi
+
+          # Build per-step facts from the JSON object
+          STEP_FACTS=$(echo "$STEPS_JSON" | jq -c '[to_entries[] | {
+            "name": .key,
+            "value": (if   .value == "success"   then "✅ success"
+                      elif .value == "failure"   then "❌ failure"
+                      elif .value == "skipped"   then "⏭️ skipped"
+                      elif .value == "cancelled" then "🚫 cancelled"
+                      else "🔄 " + .value end)
+          }]')
+
+          # Start sections array with the pipeline overview
+          SECTIONS='[{"activityTitle":"Pipeline overall: '"$STATUS"'","facts":'"$STEP_FACTS"'}'
+
+          # Append Pester section only when tests were actually run
+          if [ "$PESTER_TOTAL" -gt 0 ]; then
+            SECTIONS="$SECTIONS"',{"activityTitle":"Pester Test Results","facts":['
+            SECTIONS="$SECTIONS"'{"name":"Total","value":"'"$PESTER_TOTAL"'"},'
+            SECTIONS="$SECTIONS"'{"name":"✅ Passed","value":"'"$PESTER_PASSED"'"},'
+            SECTIONS="$SECTIONS"'{"name":"❌ Failed","value":"'"$PESTER_FAILED"'"},'
+            SECTIONS="$SECTIONS"'{"name":"⏭️ Skipped","value":"'"$PESTER_SKIPPED"'"}]}'
+          fi
+
+          SECTIONS="$SECTIONS"']'
+
+          curl -H "Content-Type: application/json" \
+               -d '{"@type":"MessageCard","@context":"http://schema.org/extensions","themeColor":"'"$COLOR"'","summary":"Pipeline '"$STATUS"'","sections":'"$SECTIONS"'}' \
+               "$WEBHOOK"      
