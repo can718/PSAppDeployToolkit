@@ -39,6 +39,12 @@ jobs:
           PESTER_PASSED: ${{ inputs.pester_passed }}
           PESTER_FAILED: ${{ inputs.pester_failed }}
           PESTER_SKIPPED: ${{ inputs.pester_skipped }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          ACTOR: ${{ github.actor }}
+          WORKFLOW: ${{ github.workflow }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ "$STATUS" = "success" ]; then COLOR=00FF00; else COLOR=FF0000; fi
 
@@ -52,20 +58,71 @@ jobs:
                       else "🔄 " + .value end)
           }]')
 
-          # Start sections array with the pipeline overview
-          SECTIONS='[{"activityTitle":"Pipeline overall: '"$STATUS"'","facts":'"$STEP_FACTS"'}'
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          COMMIT_TITLE=$(echo "$COMMIT_MSG" | head -1)
+
+          # Build CI info facts (branch / commit / author)
+          CI_FACTS=$(jq -n \
+            --arg workflow "$WORKFLOW" \
+            --arg branch   "$BRANCH" \
+            --arg sha      "$SHORT_SHA" \
+            --arg msg      "$COMMIT_TITLE" \
+            --arg actor    "$ACTOR" \
+            '[
+              {"name":"Workflow",     "value":$workflow},
+              {"name":"Branch",       "value":$branch},
+              {"name":"Commit",       "value":$sha},
+              {"name":"Message",      "value":$msg},
+              {"name":"Triggered by", "value":$actor}
+            ]')
+
+          # Build sections array: pipeline overview + CI info
+          SECTIONS=$(jq -n \
+            --arg       status     "$STATUS" \
+            --argjson   step_facts "$STEP_FACTS" \
+            --argjson   ci_facts   "$CI_FACTS" \
+            '[
+              {"activityTitle": ("Pipeline overall: " + $status), "facts": $step_facts},
+              {"activityTitle": "CI Info", "facts": $ci_facts}
+            ]')
 
           # Append Pester section only when tests were actually run
           if [ "$PESTER_TOTAL" -gt 0 ]; then
-            SECTIONS="$SECTIONS"',{"activityTitle":"Pester Test Results","facts":['
-            SECTIONS="$SECTIONS"'{"name":"Total","value":"'"$PESTER_TOTAL"'"},'
-            SECTIONS="$SECTIONS"'{"name":"✅ Passed","value":"'"$PESTER_PASSED"'"},'
-            SECTIONS="$SECTIONS"'{"name":"❌ Failed","value":"'"$PESTER_FAILED"'"},'
-            SECTIONS="$SECTIONS"'{"name":"⏭️ Skipped","value":"'"$PESTER_SKIPPED"'"}]}'
+            PESTER_SECTION=$(jq -n \
+              --argjson total   "$PESTER_TOTAL" \
+              --argjson passed  "$PESTER_PASSED" \
+              --argjson failed  "$PESTER_FAILED" \
+              --argjson skipped "$PESTER_SKIPPED" \
+              '{"activityTitle":"Pester Test Results","facts":[
+                {"name":"Total",        "value":($total   | tostring)},
+                {"name":"✅ Passed",    "value":($passed  | tostring)},
+                {"name":"❌ Failed",    "value":($failed  | tostring)},
+                {"name":"⏭️ Skipped",  "value":($skipped | tostring)}
+              ]}')
+            SECTIONS=$(echo "$SECTIONS" | jq --argjson ps "$PESTER_SECTION" '. + [$ps]')
           fi
 
-          SECTIONS="$SECTIONS"']'
+          # "View Workflow Run" button
+          ACTIONS=$(jq -n --arg url "$RUN_URL" '[{
+            "@type": "OpenUri",
+            "name":  "🔗 View Workflow Run",
+            "targets": [{"os": "default", "uri": $url}]
+          }]')
+
+          PAYLOAD=$(jq -n \
+            --arg     color    "$COLOR" \
+            --arg     status   "$STATUS" \
+            --argjson sections "$SECTIONS" \
+            --argjson actions  "$ACTIONS" \
+            '{
+              "@type":           "MessageCard",
+              "@context":        "http://schema.org/extensions",
+              "themeColor":      $color,
+              "summary":         ("Pipeline " + $status),
+              "sections":        $sections,
+              "potentialAction": $actions
+            }')
 
           curl -H "Content-Type: application/json" \
-               -d '{"@type":"MessageCard","@context":"http://schema.org/extensions","themeColor":"'"$COLOR"'","summary":"Pipeline '"$STATUS"'","sections":'"$SECTIONS"'}' \
-               "$WEBHOOK"      
+               -d "$PAYLOAD" \
+               "$WEBHOOK"

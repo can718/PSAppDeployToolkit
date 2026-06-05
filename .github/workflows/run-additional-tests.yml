@@ -240,7 +240,8 @@ jobs:
         $config.TestResult.Enabled = $true
         $config.TestResult.OutputPath = '.\src\Artifacts\TestOutput\AdditionalTests.xml'
         $config.TestResult.OutputFormat = 'NUnitXml'
-        $result = Invoke-Pester -Configuration $config -PassThru
+        $config.Run.PassThru = $true
+        $result = Invoke-Pester -Configuration $config
         "pester-total=$($result.TotalCount)"     | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester-passed=$($result.PassedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester-failed=$($result.FailedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -276,14 +277,6 @@ jobs:
         . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml'
 
-    - name: Reset Azure Session VM
-      id: reset-sessionvm
-      if: false #always()
-      shell: pwsh
-      run: |
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
-        Invoke-TFResetSessionVM
-
     - name: Collect step outcomes
       id: collect-outputs
       if: always()
@@ -299,6 +292,14 @@ jobs:
           'Upload to Blob Storage'      = '${{ steps.upload-to-blob.outcome }}'
         }
         "steps_json=$($steps | ConvertTo-Json -Compress)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+    - name: Reset Azure Session VM
+      id: reset-sessionvm
+      if: false #always()
+      shell: pwsh
+      run: |
+        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        Invoke-TFResetSessionVM
 
   notify-teams:
     name: Notify Teams
