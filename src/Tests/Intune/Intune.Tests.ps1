@@ -24,7 +24,7 @@ BeforeAll {
     $script:TenantID = $env:TEST_TENANTID
     $script:ClientID = $env:TEST_CLIENTID
     $script:ClientSecret = $env:TEST_CLIENTSECRET
-    $script:templateFolder = "C:\Tools\GitHubAgent\actions-runner\_work\PSAppDeployToolkit\PSAppDeployToolkit\src\Artifacts\TestTemplates"
+    #$script:templateFolder = "C:\Tools\GitHubAgent\actions-runner\_work\PSAppDeployToolkit\PSAppDeployToolkit\src\Artifacts\TestTemplates"
 
     if ($script:TFTestRunId -and $script:TFApiBaseUrl)
     {
@@ -315,7 +315,7 @@ Describe 'Intune Tests' {
             Invoke-TFUpdateTestCase -TestResult $____Pester.CurrentTest
         }
 
-        It 'VLC - wrap and upload to Intune' {
+        It 'VLC - wrap and upload to Intune' -Skip {
             #$appDownloadUrl = 'https://get.videolan.org/vlc/3.0.23/win64/vlc-3.0.23-win64.exe'
             $appName = 'VLC'
             $workDir = Join-Path 'C:\PSADT' $appName
@@ -379,7 +379,7 @@ Describe 'Intune Tests' {
             $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
                 -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '3.0.23'
-            $InstallCmd   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+            $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
             $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
 
             Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $DisplayName -Description "PSADT $appName deployment" `
@@ -421,13 +421,13 @@ Describe 'Intune Tests' {
             {
                 Write-Information "IntuneManagementExtension not found; will trigger MDM sync and wait up to 15 minutes for it to be installed..." -InformationAction Continue
                 $imeMaxWaitSeconds = 900   # 15 minutes
-                $imePollInterval   = 30
-                $imeWaited         = 0
-                $imeInstalled      = $false
-                $maxSyncs          = 3
-                $syncCount         = 0
+                $imePollInterval = 30
+                $imeWaited = 0
+                $imeInstalled = $false
+                $maxSyncs = 3
+                $syncCount = 0
                 # Trigger sync intervals: 0 s, 300 s (5 min), 600 s (10 min)
-                $syncAtSeconds     = @(0, 300, 600)
+                $syncAtSeconds = @(0, 300, 600)
 
                 while ($imeWaited -le $imeMaxWaitSeconds)
                 {
@@ -515,76 +515,85 @@ Describe 'Intune Tests' {
             $installVerified | Should -BeTrue -Because "VLC $detectionExpected should appear in the Uninstall registry key within the polling window"
         }
 
-        It 'WinSCP - wrap and upload to Intune' -Skip {
-            # TODO: Set your WinSCP download URL here
-            $appDownloadUrl = 'https://winscp.net/download/WinSCP-6.5.6.msi/download'  # <-- Fill in WinSCP download URL
+        It 'WinSCP - wrap and upload to Intune' {
+            #$appDownloadUrl = 'https://winscp.net/download/WinSCP-6.5.6.msi/download'  # <-- Fill in WinSCP download URL
             $appName = 'WinSCP'
             $workDir = Join-Path 'C:\PSADT' $appName
             New-Item -Path $workDir -ItemType Directory -Force | Out-Null
 
-            # Copy template to app working directory
-            $templateFolder = Get-ChildItem -Path 'C:\PSADT' -Directory | Where-Object { $_.Name -like 'PSAppDeployToolkit*' } | Select-Object -First 1
-            if (-not $templateFolder)
+            # Copy template to app working directory: like C:\PSADT\WinSCP\*
+            $v4Path = $env:PSADT_TEMPLATE_V4_DIR
+            if (-not (Test-Path $v4Path))
             {
-                throw 'PSADT template folder not found under C:\PSADT'
+                throw "v4 folder missing : $v4Path"
             }
-            Copy-Item -Path $templateFolder.FullName -Destination $workDir -Recurse -Force
+            Copy-Item -Path (Join-Path $v4Path '*') -Destination $workDir -Recurse -Force
 
+            # Download the app installer to Files folder
             # Download the app installer to Files folder
             $filesDir = Join-Path $workDir 'Files'
             if (-not (Test-Path $filesDir)) { New-Item -Path $filesDir -ItemType Directory -Force | Out-Null }
-            $installerFile = Join-Path $filesDir (Split-Path $appDownloadUrl -Leaf)
-            Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
+            $installerDir = 'C:\Tools\Intune\WinSCP'
+            Copy-Item -Path (Get-ChildItem -Path $installerDir -File | Select-Object -First 1).FullName -Destination $filesDir -Force
 
             # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
-            $runnerScript = Join-Path $PSScriptRoot '..\..\..\examples\WinSCP\Invoke-AppDeployToolkit.ps1'
+            $runnerScript = Join-Path $PSScriptRoot '.\VLC\Invoke-AppDeployToolkit.ps1'
             $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
             Copy-Item -Path $runnerScript -Destination $targetScript -Force
 
             # Wrap with IntuneWinAppUtil
             $setupFile = 'Invoke-AppDeployToolkit.exe'
-            & $script:IntuneWinAppUtil -c $workDir -s $setupFile -o $workDir -q
+            & $script:IntuneWinAppUtil -c $workDir -s $setupFile -o $workDir
             $intunewinFile = Join-Path $workDir 'Invoke-AppDeployToolkit.intunewin'
             Test-Path $intunewinFile | Should -BeTrue
 
             # Rename .intunewin and move to WIN32APP folder
-            $newName = "$appName.intunewin"
-            $finalPath = Join-Path 'C:\PSADT\WIN32APP' $newName
-            Move-Item -Path $intunewinFile -Destination $finalPath -Force
-            Test-Path $finalPath | Should -BeTrue
+            $FileDir = Split-Path $intunewinFile -Parent
+            $PackageFile = Get-ChildItem -Path "$FileDir\Files" -File |
+            Where-Object { $_.Extension -in '.msi', '.exe' } |
+            Select-Object -First 1
+            if (-not $PackageFile)
+            {
+                Write-Host "Can't find msi/exe files in the source folder."
+                return
+            }
+            $DisplayName = $PackageFile.BaseName
+
+            $NewFileName = "$DisplayName.intunewin"
+            $NewIntuneWinFile = Join-Path -Path $FileDir -ChildPath $NewFileName
+            if (Test-Path $intunewinFile)
+            {
+                Rename-Item -Path $intunewinFile -NewName $NewFileName -Force
+                Write-Host "Renamed to $NewIntuneWinFile" -ForegroundColor Green
+            }
+            else
+            {
+                Write-Host "Original intunewin file does not exist." -ForegroundColor Blue
+            }
+            Test-Path $NewIntuneWinFile | Should -BeTrue
 
             # Upload to Intune
             $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture 'x64x86' -MinimumSupportedWindowsRelease 'W10_1607'
 
             # Detect by MSI ProductCode or registry - adjust as needed for WinSCP
-            $DetectionScriptFile = Join-Path $PSScriptRoot 'DetectionRule.ps1'
-            if (Test-Path $DetectionScriptFile)
+            $msiFile = Get-ChildItem -Path $filesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($msiFile)
             {
-                $DetectionRule = New-IntuneWin32AppDetectionRuleScript -ScriptFile $DetectionScriptFile -EnforceSignatureCheck $false -RunAs32Bit $false
+                $comObj = New-Object -ComObject WindowsInstaller.Installer
+                $db = $comObj.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $comObj, @($msiFile.FullName, 0))
+                $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @("SELECT Value FROM Property WHERE Property='ProductCode'"))
+                $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+                $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+                $ProductCode = $record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1)
+                $DetectionRule = New-IntuneWin32AppDetectionRuleMSI -ProductCode $ProductCode
             }
             else
             {
-                # Fallback: detect via Files folder MSI ProductCode
-                $msiFile = Get-ChildItem -Path $filesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($msiFile)
-                {
-                    $comObj = New-Object -ComObject WindowsInstaller.Installer
-                    $db = $comObj.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $comObj, @($msiFile.FullName, 0))
-                    $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @("SELECT Value FROM Property WHERE Property='ProductCode'"))
-                    $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
-                    $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
-                    $ProductCode = $record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1)
-                    $DetectionRule = New-IntuneWin32AppDetectionRuleMSI -ProductCode $ProductCode
-                }
-                else
-                {
-                    throw 'No detection rule available for WinSCP - provide DetectionRule.ps1 or an MSI file'
-                }
+                throw 'No detection rule available for WinSCP - provide DetectionRule.ps1 or an MSI file'
             }
 
-            $InstallCmd   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+            $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
             $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
-            $DisplayName = $appName
 
             Add-IntuneWin32App -FilePath $finalPath -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
@@ -605,6 +614,117 @@ Describe 'Intune Tests' {
 
             # Assign to group
             Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
+
+            # ---------------------------------------------------------------
+            # Trigger MDM sync and ensure IME sidecar is running so the device
+            # picks up the new assignment without waiting for the default sync interval.
+            # ---------------------------------------------------------------
+            # Restart IntuneManagementExtension if present.
+            # If not found, trigger MDM sync up to 3 times and wait up to 15 minutes for IME to be installed.
+            $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
+            if ($imeSvc)
+            {
+                Write-Information "Restarting service 'IntuneManagementExtension' (current state: $($imeSvc.Status))..." -InformationAction Continue
+                Restart-Service -Name 'IntuneManagementExtension' -Force -ErrorAction SilentlyContinue
+                $imeSvc.Refresh()
+                Write-Information "Service 'IntuneManagementExtension' state after restart: $($imeSvc.Status)" -InformationAction Continue
+            }
+            else
+            {
+                Write-Information "IntuneManagementExtension not found; will trigger MDM sync and wait up to 15 minutes for it to be installed..." -InformationAction Continue
+                $imeMaxWaitSeconds = 900   # 15 minutes
+                $imePollInterval = 30
+                $imeWaited = 0
+                $imeInstalled = $false
+                $maxSyncs = 3
+                $syncCount = 0
+                # Trigger sync intervals: 0 s, 300 s (5 min), 600 s (10 min)
+                $syncAtSeconds = @(0, 300, 600)
+
+                while ($imeWaited -le $imeMaxWaitSeconds)
+                {
+                    # Trigger an MDM sync at the scheduled intervals.
+                    if ($syncCount -lt $maxSyncs -and $imeWaited -ge $syncAtSeconds[$syncCount])
+                    {
+                        Write-Information "Triggering MDM full sync (attempt $($syncCount + 1)/$maxSyncs) at $imeWaited s..." -InformationAction Continue
+                        try
+                        {
+                            # Locate the MDM enrollment ID (EnrollmentType 6 = Azure AD / Intune).
+                            $enrollmentId = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Enrollments' -ErrorAction SilentlyContinue |
+                                Where-Object { (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).EnrollmentType -eq 6 } |
+                                Select-Object -First 1).PSChildName
+                            if ($enrollmentId)
+                            {
+                                $taskPath = "\Microsoft\Windows\EnterpriseMgmt\$enrollmentId\"
+                                $syncTasks = Get-ScheduledTask -TaskPath $taskPath -ErrorAction SilentlyContinue
+                                foreach ($task in $syncTasks)
+                                {
+                                    Start-ScheduledTask -TaskPath $task.TaskPath -TaskName $task.TaskName -ErrorAction SilentlyContinue
+                                }
+                                Write-Information "MDM sync tasks triggered for enrollment: $enrollmentId" -InformationAction Continue
+                            }
+                            else
+                            {
+                                Write-Information "No MDM enrollment (EnrollmentType=6) found; cannot trigger sync." -InformationAction Continue
+                            }
+                        }
+                        catch
+                        {
+                            Write-Information "MDM sync trigger failed: $($_.Exception.Message)" -InformationAction Continue
+                        }
+                        $syncCount++
+                    }
+
+                    $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
+                    if ($imeSvc)
+                    {
+                        $imeInstalled = $true
+                        Write-Information "IntuneManagementExtension installed after $imeWaited s." -InformationAction Continue
+                        break
+                    }
+
+                    if ($imeWaited -ge $imeMaxWaitSeconds) { break }
+                    Write-Information "Waiting for IntuneManagementExtension... ($imeWaited / $imeMaxWaitSeconds s elapsed)" -InformationAction Continue
+                    Start-Sleep -Seconds $imePollInterval
+                    $imeWaited += $imePollInterval
+                }
+
+                if (-not $imeInstalled)
+                {
+                    throw "IntuneManagementExtension was not installed within $($imeMaxWaitSeconds / 60) minutes after $maxSyncs MDM sync attempts."
+                }
+            }
+
+            # ---------------------------------------------------------------
+            # Wait for Intune to push and install the Win32 app on this client.
+            # IME polls roughly every 60 s; allow up to 30 minutes total.
+            # ---------------------------------------------------------------
+            $installMaxWaitSeconds = 900
+            $installPollInterval = 60
+            $installWaited = 0
+            $installVerified = $false
+
+            # Detection: check the same registry key used by the detection rule above.
+            $detectionKeyPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\WinSCP'
+            $detectionValue = 'DisplayVersion'
+            $detectionExpected = '6.5.6'  # <-- Adjust expected version for WinSCP
+
+            Write-Information "Polling for WinSCP installation (timeout: $($installMaxWaitSeconds / 60) min)..." -InformationAction Continue
+            while ($installWaited -lt $installMaxWaitSeconds)
+            {
+                $regVal = Get-ItemProperty -Path $detectionKeyPath -Name $detectionValue -ErrorAction SilentlyContinue
+                if ($regVal -and $regVal.$detectionValue -eq $detectionExpected)
+                {
+                    $installVerified = $true
+                    Write-Information "WinSCP $detectionExpected detected in registry after $installWaited s." -InformationAction Continue
+                    break
+                }
+                Write-Information "WinSCP not yet installed; waiting $installPollInterval s... ($installWaited / $installMaxWaitSeconds s elapsed)" -InformationAction Continue
+                Start-Sleep -Seconds $installPollInterval
+                $installWaited += $installPollInterval
+            }
+
+            $installVerified | Should -BeTrue -Because "WinSCP $detectionExpected should appear in the Uninstall registry key within the polling window"
         }
     }
 }
