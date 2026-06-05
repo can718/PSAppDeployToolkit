@@ -324,8 +324,7 @@ Describe 'Intune Tests' {
             New-Item -Path $workDir -ItemType Directory -Force | Out-Null
 
             # Copy template to app working directory: like C:\PSADT\VLC\*
-            $v4Path = Join-Path $script:templateFolder 'v4'
-
+            $v4Path = $env:PSADT_TEMPLATE_V4_DIR
             if (-not (Test-Path $v4Path))
             {
                 throw "v4 folder missing : $v4Path"
