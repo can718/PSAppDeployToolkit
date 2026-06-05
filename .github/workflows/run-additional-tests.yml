@@ -291,7 +291,8 @@ jobs:
           'Complete Test Run'           = '${{ steps.complete-test-run.outcome }}'
           'Upload to Blob Storage'      = '${{ steps.upload-to-blob.outcome }}'
         }
-        "steps_json=$($steps | ConvertTo-Json -Compress)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        # Use AppendAllText with LF (not CRLF) so the value is not corrupted when consumed on Linux runners
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($steps | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
 
     - name: Reset Azure Session VM
       id: reset-sessionvm

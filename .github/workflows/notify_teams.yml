@@ -53,7 +53,7 @@ jobs:
             *)         COLOR=FFA500; STATUS_ICON="⏭️" ;;
           esac
 
-          STEPS_JSON="${STEPS_JSON:-{}}"
+          STEPS_JSON=$(printf '%s' "${STEPS_JSON:-{}}" | tr -d '\r')
           SHORT_SHA="${COMMIT_SHA:0:7}"
           COMMIT_TITLE=$(echo "$COMMIT_MSG" | head -1)
 

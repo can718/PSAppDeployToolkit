@@ -614,6 +614,8 @@ if ($app) { Write-Host "Installed" }
                     -MaxWaitSeconds 3600 `
                     -PollInterval   180
                 $deploymentSummary | Should -Not -BeNullOrEmpty -Because 'Application deployment status must exist'
+                # write $deploymentSummary
+                Write-Information $deploymentSummary -InformationAction Continue
                 $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because 'At least one device must have successfully deployed the application (waited up to 3600s)'
                 $script:winscpInstallDeploySucceeded = $true
             }
@@ -1055,6 +1057,8 @@ if ($app) { Write-Host "Installed" }
                     -MaxWaitSeconds 3600 `
                     -PollInterval   180
                 $deploymentSummary | Should -Not -BeNullOrEmpty -Because 'Application deployment status must exist'
+                # write $deploymentSummary
+                Write-Information $deploymentSummary -InformationAction Continue
                 $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because 'At least one device must have successfully deployed the application (waited up to 3600s)'
                 $script:vlcInstallDeploySucceeded = $true
             }
