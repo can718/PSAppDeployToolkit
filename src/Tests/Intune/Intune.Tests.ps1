@@ -706,20 +706,28 @@ Describe 'Intune Tests' {
             $installVerified = $false
 
             # Detection: check the same registry key used by the detection rule above.
-            $detectionKeyPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\WinSCP'
+            # Check both native and WOW6432Node paths for 32-bit apps on 64-bit OS.
+            $detectionKeyPaths = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\WinSCP'
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\WinSCP'
+            )
             $detectionValue = 'DisplayVersion'
             $detectionExpected = '6.5.6'  # <-- Adjust expected version for WinSCP
 
             Write-Information "Polling for WinSCP installation (timeout: $($installMaxWaitSeconds / 60) min)..." -InformationAction Continue
             while ($installWaited -lt $installMaxWaitSeconds)
             {
-                $regVal = Get-ItemProperty -Path $detectionKeyPath -Name $detectionValue -ErrorAction SilentlyContinue
-                if ($regVal -and $regVal.$detectionValue -eq $detectionExpected)
+                foreach ($detectionKeyPath in $detectionKeyPaths)
                 {
-                    $installVerified = $true
-                    Write-Information "WinSCP $detectionExpected detected in registry after $installWaited s." -InformationAction Continue
-                    break
+                    $regVal = Get-ItemProperty -Path $detectionKeyPath -Name $detectionValue -ErrorAction SilentlyContinue
+                    if ($regVal -and $regVal.$detectionValue -eq $detectionExpected)
+                    {
+                        $installVerified = $true
+                        Write-Information "WinSCP $detectionExpected detected in registry after $installWaited s (path: $detectionKeyPath)." -InformationAction Continue
+                        break
+                    }
                 }
+                if ($installVerified) { break }
                 Write-Information "WinSCP not yet installed; waiting $installPollInterval s... ($installWaited / $installMaxWaitSeconds s elapsed)" -InformationAction Continue
                 Start-Sleep -Seconds $installPollInterval
                 $installWaited += $installPollInterval
