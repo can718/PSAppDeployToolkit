@@ -184,9 +184,7 @@ BeforeAll {
             $summary = $null
             if (-not [string]::IsNullOrWhiteSpace($SiteCode))
             {
-                $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
-                Where-Object { $_.ApplicationName -eq $AppName } |
-                Select-Object -First 1
+                $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $AppName } | Select-Object -First 1
             }
 
             if ($summary)
@@ -215,11 +213,8 @@ BeforeAll {
         # Final authoritative read - only if the loop did not already capture a result
         if (-not $summary -and -not [string]::IsNullOrWhiteSpace($SiteCode))
         {
-            $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
-            Where-Object { $_.ApplicationName -eq $AppName } |
-            Select-Object -First 1
+            $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $AppName } | Select-Object -First 1
         }
-
         return $summary
     }
 
