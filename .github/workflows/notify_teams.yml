@@ -172,9 +172,20 @@ jobs:
             }
           }
 
+          $jobResultDisplay = if ($outcomeMap.ContainsKey($statusKey)) {
+            $outcomeMap[$statusKey]
+          }
+          else {
+            "⚠️ $statusKey"
+          }
+
           if ($stepRows.Count -eq 0) {
             $stepRows += @{
-              Step   = 'Info'
+              Step   = 'Pipeline Job Result'
+              Result = $jobResultDisplay
+            }
+            $stepRows += @{
+              Step   = 'Details'
               Result = 'No step outcomes were provided.'
             }
           }
@@ -239,18 +250,36 @@ jobs:
           )
 
           $pesterTotal = 0
+          $pesterPassed = 0
+          $pesterFailed = 0
+          $pesterSkipped = 0
           [void][int]::TryParse([string]$env:PESTER_TOTAL, [ref]$pesterTotal)
+          [void][int]::TryParse([string]$env:PESTER_PASSED, [ref]$pesterPassed)
+          [void][int]::TryParse([string]$env:PESTER_FAILED, [ref]$pesterFailed)
+          [void][int]::TryParse([string]$env:PESTER_SKIPPED, [ref]$pesterSkipped)
           if ($pesterTotal -gt 0) {
             $pesterRows = @(
-              @{ Metric = 'Total'; Value = [string]$env:PESTER_TOTAL },
-              @{ Metric = 'Passed'; Value = "✅ $([string]$env:PESTER_PASSED)" },
-              @{ Metric = 'Failed'; Value = "❌ $([string]$env:PESTER_FAILED)" },
-              @{ Metric = 'Skipped'; Value = "⏭️ $([string]$env:PESTER_SKIPPED)" }
+              @{ Metric = 'Total'; Value = [string]$pesterTotal },
+              @{ Metric = 'Passed'; Value = "✅ $pesterPassed" },
+              @{ Metric = 'Failed'; Value = "❌ $pesterFailed" },
+              @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" }
             )
 
             $sections += @{
               activityTitle = 'Pester Test Results'
               text          = (New-MarkdownTable -Headers @('Metric', 'Value') -Rows $pesterRows)
+            }
+          }
+          else {
+            $sections += @{
+              activityTitle = 'Pester Test Results'
+              text          = (New-MarkdownTable -Headers @('Metric', 'Value') -Rows @(
+                @{ Metric = 'Total'; Value = '0' },
+                @{ Metric = 'Passed'; Value = "✅ $pesterPassed" },
+                @{ Metric = 'Failed'; Value = "❌ $pesterFailed" },
+                @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" },
+                @{ Metric = 'Info'; Value = 'No test case results were provided.' }
+              ))
             }
           }
 
