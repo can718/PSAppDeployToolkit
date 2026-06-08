@@ -84,6 +84,7 @@ jobs:
         }
 
     - name: Install 7-Zip (required for build packaging on self-hosted runner)
+      if: false  # Temporarily disable 7-Zip installation step until we can confirm it works reliably across all self-hosted runner environments - see
       shell: pwsh
       run: |
         # Check if 7-Zip is already installed via registry
