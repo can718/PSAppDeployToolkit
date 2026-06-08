@@ -256,11 +256,12 @@ jobs:
 
         # 2) Run WinSCP and VLC in parallel after validation succeeds.
         $tagsToRun = @('WinSCP', 'VLC')
+        $workspaceRoot = '${{ github.workspace }}'
         $parallelResults = $tagsToRun | ForEach-Object -Parallel {
           param($tag)
 
-          Set-Location $using:GITHUB_WORKSPACE
-          $testOutputDir = Join-Path $using:GITHUB_WORKSPACE 'src\Artifacts\TestOutput'
+          Set-Location $using:workspaceRoot
+          $testOutputDir = Join-Path $using:workspaceRoot 'src\Artifacts\TestOutput'
           $outputPath = Join-Path $testOutputDir ("AdditionalTests-{0}.xml" -f $tag)
 
           $env:PSADT_TEMPLATE_VALIDATION_PASSED = 'true'
