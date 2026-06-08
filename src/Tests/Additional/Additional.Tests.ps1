@@ -189,7 +189,7 @@ BeforeAll {
 
             if ($summary)
             {
-                Write-Information "[winSCP] $Label status (elapsed ${elapsed}s): Success=$($summary.NumberSuccess) InProgress=$($summary.NumberInProgress) Error=$($summary.NumberErrors) Targeted=$($summary.NumberTargeted)" -InformationAction Continue
+                Write-Information "[$AppName] $Label status (elapsed ${elapsed}s): Success=$($summary.NumberSuccess) InProgress=$($summary.NumberInProgress) Error=$($summary.NumberErrors) Targeted=$($summary.NumberTargeted)" -InformationAction Continue
                 if ($summary.NumberSuccess -gt 0)
                 {
                     break
@@ -198,7 +198,7 @@ BeforeAll {
 
             if ($elapsed -lt $MaxWaitSeconds)
             {
-                Write-Information "[winSCP] $Label not yet successful - waiting ${PollInterval}s before next check..." -InformationAction Continue
+                Write-Information "[$AppName] $Label not yet successful - waiting ${PollInterval}s before next check..." -InformationAction Continue
                 Invoke-WinSCPSccmClientEvaluation | Out-Null
                 Start-Sleep -Seconds $PollInterval
                 $elapsed += $PollInterval

@@ -47,20 +47,51 @@ jobs:
           WORKFLOW: ${{ github.workflow }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          $diagnostics = New-Object System.Collections.Generic.List[string]
+
+          $webhook = [string]$env:WEBHOOK
+          if ([string]::IsNullOrWhiteSpace($webhook)) {
+            Write-Error 'Teams webhook is missing. Cannot send notification.'
+            exit 1
+          }
+
+          if (-not [System.Uri]::IsWellFormedUriString($webhook, [System.UriKind]::Absolute)) {
+            Write-Error 'Teams webhook is not a valid absolute URL. Cannot send notification.'
+            exit 1
+          }
+
+          $statusKey = ([string]$env:STATUS).Trim().ToLowerInvariant()
+          if ([string]::IsNullOrWhiteSpace($statusKey)) {
+            $statusKey = 'unknown'
+            [void]$diagnostics.Add('job_status is empty; using unknown.')
+          }
+
           $statusMap = @{
             success   = @{ Color = '00CC44'; Icon = '✅' }
             failure   = @{ Color = 'FF0000'; Icon = '❌' }
             cancelled = @{ Color = '808080'; Icon = '🚫' }
+            skipped   = @{ Color = 'FFA500'; Icon = '⏭️' }
+            unknown   = @{ Color = 'FFA500'; Icon = '⚠️' }
           }
 
-          $statusMeta = if ($statusMap.ContainsKey($env:STATUS)) {
-            $statusMap[$env:STATUS]
+          $statusMeta = if ($statusMap.ContainsKey($statusKey)) {
+            $statusMap[$statusKey]
           }
           else {
-            @{ Color = 'FFA500'; Icon = '⏭️' }
+            @{ Color = 'FFA500'; Icon = '⚠️' }
           }
 
+          $statusLabelMap = @{
+            success   = 'success'
+            failure   = 'failure'
+            cancelled = 'cancelled'
+            skipped   = 'skipped'
+            unknown   = 'unknown'
+          }
+          $statusLabel = if ($statusLabelMap.ContainsKey($statusKey)) { $statusLabelMap[$statusKey] } else { $statusKey }
+
           $stepsJsonRaw = if ([string]::IsNullOrWhiteSpace($env:STEPS_JSON)) {
+            [void]$diagnostics.Add('steps_json is empty; using {}.')
             '{}'
           }
           else {
@@ -71,10 +102,12 @@ jobs:
             $stepsObject = $stepsJsonRaw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
             if ($stepsObject -isnot [hashtable]) {
               $stepsObject = @{}
+              [void]$diagnostics.Add('steps_json is not a JSON object; using {}.')
             }
           }
           catch {
             $stepsObject = @{}
+            [void]$diagnostics.Add("steps_json parse failed: $($_.Exception.Message)")
           }
 
           $outcomeMap = @{
@@ -82,22 +115,85 @@ jobs:
             failure   = '❌ failure'
             skipped   = '⏭️ skipped'
             cancelled = '🚫 cancelled'
+            unknown   = '⚠️ unknown'
           }
 
-          $stepFacts = @()
-          foreach ($stepName in $stepsObject.Keys) {
-            $rawValue = [string]$stepsObject[$stepName]
-            $displayValue = if ($outcomeMap.ContainsKey($rawValue)) {
-              $outcomeMap[$rawValue]
-            }
-            else {
-              $rawValue
+          function New-MarkdownTable {
+            param(
+              [Parameter(Mandatory = $true)]
+              [string[]]$Headers,
+              [Parameter(Mandatory = $true)]
+              [object[]]$Rows
+            )
+
+            $headerLine = '| ' + ($Headers -join ' | ') + ' |'
+            $separatorLine = '| ' + (($Headers | ForEach-Object { '---' }) -join ' | ') + ' |'
+            $rowLines = @()
+            foreach ($row in $Rows) {
+              $cells = foreach ($header in $Headers) {
+                $value = [string]$row[$header]
+                if ($null -eq $value) {
+                  $value = ''
+                }
+
+                $value = $value.Replace('|', '\|').Replace("`r", ' ').Replace("`n", '<br/>')
+                $value
+              }
+
+              $rowLines += ('| ' + ($cells -join ' | ') + ' |')
             }
 
-            $stepFacts += @{
-              name  = $stepName
-              value = $displayValue
+            @($headerLine, $separatorLine) + $rowLines -join "`n"
+          }
+
+          $stepRows = @()
+          foreach ($stepName in $stepsObject.Keys) {
+            $normalizedStepName = ([string]$stepName).Trim()
+            if ([string]::IsNullOrWhiteSpace($normalizedStepName)) {
+              $normalizedStepName = '(unnamed step)'
             }
+
+            $rawValue = [string]$stepsObject[$stepName]
+            $normalizedOutcome = $rawValue.Trim().ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($normalizedOutcome)) {
+              $normalizedOutcome = 'unknown'
+            }
+
+            $displayValue = if ($outcomeMap.ContainsKey($normalizedOutcome)) {
+              $outcomeMap[$normalizedOutcome]
+            }
+            else {
+              "⚠️ $normalizedOutcome"
+            }
+
+            $stepRows += @{
+              Step   = $normalizedStepName
+              Result = $displayValue
+            }
+          }
+
+          if ($stepRows.Count -eq 0) {
+            $stepRows += @{
+              Step   = 'Info'
+              Result = 'No step outcomes were provided.'
+            }
+          }
+
+          $stepRows = $stepRows | Sort-Object -Property Step
+
+          $workflowName = ([string]$env:WORKFLOW).Trim()
+          if ([string]::IsNullOrWhiteSpace($workflowName)) {
+            $workflowName = '(unknown workflow)'
+          }
+
+          $branchName = ([string]$env:BRANCH).Trim()
+          if ([string]::IsNullOrWhiteSpace($branchName)) {
+            $branchName = '(unknown branch)'
+          }
+
+          $actorName = ([string]$env:ACTOR).Trim()
+          if ([string]::IsNullOrWhiteSpace($actorName)) {
+            $actorName = '(unknown actor)'
           }
 
           $shortSha = if ($env:COMMIT_SHA -and $env:COMMIT_SHA.Length -ge 7) {
@@ -107,59 +203,103 @@ jobs:
             [string]$env:COMMIT_SHA
           }
 
+          if ([string]::IsNullOrWhiteSpace($shortSha)) {
+            $shortSha = '(none)'
+          }
+
           $commitMessage = [string]$env:COMMIT_MSG
-          $commitTitle = ($commitMessage -split "`r?`n")[0]
+          $commitTitle = (($commitMessage -split "`r?`n")[0]).Trim()
+          if ([string]::IsNullOrWhiteSpace($commitTitle)) {
+            $commitTitle = '(no commit message)'
+          }
+
+          $runUrl = ([string]$env:RUN_URL).Trim()
+          if (-not [System.Uri]::IsWellFormedUriString($runUrl, [System.UriKind]::Absolute)) {
+            $runUrl = $null
+            [void]$diagnostics.Add('run_url is invalid; action button omitted.')
+          }
+
+          $ciInfoRows = @(
+            @{ Item = 'Workflow'; Value = $workflowName },
+            @{ Item = 'Branch'; Value = $branchName },
+            @{ Item = 'Commit'; Value = $shortSha },
+            @{ Item = 'Message'; Value = $commitTitle },
+            @{ Item = 'Triggered by'; Value = $actorName }
+          )
 
           $sections = @(
             @{
-              activityTitle = 'Stage: Pipeline Steps'
-              facts         = $stepFacts
+              activityTitle = 'CI Info'
+              text          = (New-MarkdownTable -Headers @('Item', 'Value') -Rows $ciInfoRows)
             },
             @{
-              activityTitle = 'CI Info'
-              facts         = @(
-                @{ name = 'Workflow'; value = $env:WORKFLOW },
-                @{ name = 'Branch'; value = $env:BRANCH },
-                @{ name = 'Commit'; value = $shortSha },
-                @{ name = 'Message'; value = $commitTitle },
-                @{ name = 'Triggered by'; value = $env:ACTOR }
-              )
+              activityTitle = 'Stage: Pipeline Steps'
+              text          = (New-MarkdownTable -Headers @('Step', 'Result') -Rows $stepRows)
             }
           )
 
           $pesterTotal = 0
           [void][int]::TryParse([string]$env:PESTER_TOTAL, [ref]$pesterTotal)
           if ($pesterTotal -gt 0) {
+            $pesterRows = @(
+              @{ Metric = 'Total'; Value = [string]$env:PESTER_TOTAL },
+              @{ Metric = 'Passed'; Value = "✅ $([string]$env:PESTER_PASSED)" },
+              @{ Metric = 'Failed'; Value = "❌ $([string]$env:PESTER_FAILED)" },
+              @{ Metric = 'Skipped'; Value = "⏭️ $([string]$env:PESTER_SKIPPED)" }
+            )
+
             $sections += @{
               activityTitle = 'Pester Test Results'
+              text          = (New-MarkdownTable -Headers @('Metric', 'Value') -Rows $pesterRows)
+            }
+          }
+
+          if ($diagnostics.Count -gt 0) {
+            $sections += @{
+              activityTitle = 'Notification Diagnostics'
               facts         = @(
-                @{ name = 'Total'; value = [string]$env:PESTER_TOTAL },
-                @{ name = '✅ Passed'; value = [string]$env:PESTER_PASSED },
-                @{ name = '❌ Failed'; value = [string]$env:PESTER_FAILED },
-                @{ name = '⏭️ Skipped'; value = [string]$env:PESTER_SKIPPED }
+                @{ name = 'Warnings'; value = ($diagnostics -join '; ') }
               )
             }
           }
 
-          $actions = @(
-            @{
+          $actions = @()
+          if ($runUrl) {
+            $actions += @{
               '@type'  = 'OpenUri'
               name     = '🔗 View Workflow Run'
               targets  = @(
-                @{ os = 'default'; uri = $env:RUN_URL }
+                @{ os = 'default'; uri = $runUrl }
               )
             }
-          )
+          }
 
           $payload = @{
             '@type'           = 'MessageCard'
             '@context'        = 'http://schema.org/extensions'
             themeColor        = $statusMeta.Color
-            title             = "🚀 Pipeline: $($env:WORKFLOW)"
-            text              = "Pipeline Status: **$($statusMeta.Icon) $($env:STATUS)**`n`nBranch: ``$($env:BRANCH)`` · Commit: ``$shortSha`` `n`nMessage: $commitTitle`n`nTriggered by: $($env:ACTOR)"
+            title             = "🚀 Pipeline: $workflowName"
+            text              = "Pipeline Status: **$($statusMeta.Icon) $statusLabel**`n`nBranch: ``$branchName`` · Commit: ``$shortSha`` `n`nMessage: $commitTitle`n`nTriggered by: $actorName"
             sections          = $sections
             potentialAction   = $actions
           }
 
           $payloadJson = $payload | ConvertTo-Json -Depth 10 -Compress
-          Invoke-RestMethod -Method Post -Uri $env:WEBHOOK -ContentType 'application/json' -Body $payloadJson | Out-Null
+
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            try {
+              Invoke-RestMethod -Method Post -Uri $webhook -ContentType 'application/json' -Body $payloadJson | Out-Null
+              Write-Host 'Teams notification sent successfully.'
+              break
+            }
+            catch {
+              if ($attempt -eq $maxAttempts) {
+                Write-Error "Failed to send Teams notification after $maxAttempts attempts: $($_.Exception.Message)"
+                exit 1
+              }
+
+              Write-Warning "Teams notification attempt $attempt failed: $($_.Exception.Message). Retrying..."
+              Start-Sleep -Seconds ([math]::Pow(2, $attempt))
+            }
+          }
