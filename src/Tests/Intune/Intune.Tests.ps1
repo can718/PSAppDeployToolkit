@@ -538,7 +538,7 @@ Describe 'Intune Tests' {
             Copy-Item -Path (Get-ChildItem -Path $installerDir -File | Select-Object -First 1).FullName -Destination $filesDir -Force
 
             # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
-            $runnerScript = Join-Path $PSScriptRoot '.\VLC\Invoke-AppDeployToolkit.ps1'
+            $runnerScript = Join-Path $PSScriptRoot '.\WinSCP\Invoke-AppDeployToolkit.ps1'
             $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
             Copy-Item -Path $runnerScript -Destination $targetScript -Force
 
