@@ -523,6 +523,7 @@ Describe 'Intune Tests' {
 
             # Copy template to app working directory: like C:\PSADT\WinSCP\*
             $v4Path = $env:PSADT_TEMPLATE_V4_DIR
+            Write-Information " $v4Path............................"
             if (-not (Test-Path $v4Path))
             {
                 throw "v4 folder missing : $v4Path"
