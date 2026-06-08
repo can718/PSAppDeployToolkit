@@ -218,16 +218,34 @@ BeforeAll {
         return $summary
     }
 
+    function script:Test-PSADTTemplateValidationGate
+    {
+        <#
+            Allows SCCM package tests to run only after template validation.
+            Gate can be satisfied by:
+            1) Current test run has already passed validation, or
+            2) Pipeline sets PSADT_TEMPLATE_VALIDATION_PASSED=true
+        #>
+        if ($script:TemplateValidationPassed)
+        {
+            return $true
+        }
+
+        $gateFromEnv = $env:PSADT_TEMPLATE_VALIDATION_PASSED
+        return @('1', 'true', 'yes', 'passed') -contains "$gateFromEnv".ToLowerInvariant()
+    }
+
 }
 
 # ---------------------------------------------------------------------------
 
-Describe 'PSADT Build Template Validation' {
+Describe 'PSADT Build Template Validation' -Tag 'Validation' {
     Context 'Template paths from build output' {
 
         BeforeAll {
             $script:v3Dir = $env:PSADT_TEMPLATE_V3_DIR
             $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
+            $script:TemplateValidationPassed = $false
         }
 
         BeforeEach {
@@ -262,12 +280,15 @@ Describe 'PSADT Build Template Validation' {
             # Search recursively - zip may extract into a subdirectory
             $foundV4 = Get-ChildItem -Path $script:v4Dir -File -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             $foundV4 | Should -Not -BeNullOrEmpty -Because 'V4 template must contain Invoke-AppDeployToolkit.ps1'
+
+            # Mark validation as passed for downstream tests within the same run.
+            $script:TemplateValidationPassed = $true
         }
     }
 }
 
-Describe 'winSCP Package Preparation and SCCM Import' {
-    Context 'Build winSCP package from V4 template and import into SCCM' {
+Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
+    Context 'Build winSCP package from V4 template and deploy into SCCM' {
 
         BeforeAll {
             $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
@@ -306,7 +327,7 @@ Describe 'winSCP Package Preparation and SCCM Import' {
 
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'winSCP Package Preparation and SCCM Import / Build winSCP package from V4 template and import into SCCM'
+            $script:CurrentTestClass = 'winSCP Package Preparation and SCCM Deployment / Build winSCP package from V4 template and deploy into SCCM'
             $script:CurrentTestMethod = $testInfo.Name
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
@@ -316,7 +337,13 @@ Describe 'winSCP Package Preparation and SCCM Import' {
             Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
-        It 'Builds winSCP package and imports into SCCM' {
+        It 'Builds winSCP package and deploys into SCCM' {
+            if (-not (Test-PSADTTemplateValidationGate))
+            {
+                Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
+                return
+            }
+
             # ----------------------------------------------------------------
             # Step 1 - Verify prerequisites
             # ----------------------------------------------------------------
@@ -626,7 +653,7 @@ if ($app) { Write-Host "Installed" }
         It 'Creates uninstall deployment after winSCP install deployment succeeds' {
             if (-not $script:winscpInstallDeploySucceeded)
             {
-                Set-ItResult -Skipped -Because "Prerequisite test 'Builds winSCP package and imports into SCCM' did not complete successfully"
+                Set-ItResult -Skipped -Because "Prerequisite test 'Builds winSCP package and deploys into SCCM' did not complete successfully"
                 return
             }
 
@@ -708,8 +735,8 @@ if ($app) { Write-Host "Installed" }
     }
 }
 
-Describe 'VLC Package Preparation and SCCM Import' {
-    Context 'Build VLC package from V4 template and import into SCCM' {
+Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
+    Context 'Build VLC package from V4 template and deploy into SCCM' {
 
         BeforeAll {
             $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
@@ -759,7 +786,13 @@ Describe 'VLC Package Preparation and SCCM Import' {
             Invoke-TFUpdateTestCase -TestResult $currentTest
         }
 
-        It 'Builds VLC package and imports into SCCM' {
+        It 'Builds VLC package and deploys into SCCM' {
+            if (-not (Test-PSADTTemplateValidationGate))
+            {
+                Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
+                return
+            }
+
             # ----------------------------------------------------------------
             # Step 1 - Verify prerequisites
             # ----------------------------------------------------------------
