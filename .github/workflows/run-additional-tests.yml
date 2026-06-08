@@ -234,6 +234,15 @@ jobs:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
+        # Discover all targeted tests first so we can report how many were not executed.
+        $discoveryConfig = New-PesterConfiguration
+        $discoveryConfig.Run.Path = '.\src\Tests\Additional'
+        $discoveryConfig.Filter.Tag = @('Validation', 'WinSCP', 'VLC')
+        $discoveryConfig.Run.SkipRun = $true
+        $discoveryConfig.Run.PassThru = $true
+        $discoveryResult = Invoke-Pester -Configuration $discoveryConfig
+        $discoveredTotal = [int]$discoveryResult.TotalCount
+
         # 1) Run Validation first as a hard gate.
         $validationConfig = New-PesterConfiguration
         $validationConfig.Run.Path = '.\src\Tests\Additional'
@@ -247,7 +256,7 @@ jobs:
 
         if ($validationResult.FailedCount -gt 0)
         {
-          "pester-total=$($validationResult.TotalCount)"     | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester-total=$discoveredTotal"                    | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester-passed=$($validationResult.PassedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester-failed=$($validationResult.FailedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester-skipped=$($validationResult.SkippedCount)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -292,7 +301,7 @@ jobs:
         $failed = ($allResults | Measure-Object -Property FailedCount -Sum).Sum
         $skipped = ($allResults | Measure-Object -Property SkippedCount -Sum).Sum
 
-        "pester-total=$total"     | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-total=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester-passed=$passed"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester-failed=$failed"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester-skipped=$skipped" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8

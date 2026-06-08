@@ -257,12 +257,17 @@ jobs:
           [void][int]::TryParse([string]$env:PESTER_PASSED, [ref]$pesterPassed)
           [void][int]::TryParse([string]$env:PESTER_FAILED, [ref]$pesterFailed)
           [void][int]::TryParse([string]$env:PESTER_SKIPPED, [ref]$pesterSkipped)
-          if ($pesterTotal -gt 0) {
+          $pesterExecuted = [math]::Max($pesterPassed + $pesterFailed + $pesterSkipped, 0)
+          $pesterNotRun = [math]::Max($pesterTotal - $pesterExecuted, 0)
+
+          if ($pesterTotal -gt 0 -or $pesterExecuted -gt 0) {
             $pesterRows = @(
               @{ Metric = 'Total'; Value = [string]$pesterTotal },
+              @{ Metric = 'Executed'; Value = [string]$pesterExecuted },
               @{ Metric = 'Passed'; Value = "✅ $pesterPassed" },
               @{ Metric = 'Failed'; Value = "❌ $pesterFailed" },
-              @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" }
+              @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" },
+              @{ Metric = 'Not Run'; Value = "⏸️ $pesterNotRun" }
             )
 
             $sections += @{
@@ -278,7 +283,8 @@ jobs:
                 @{ Metric = 'Passed'; Value = "✅ $pesterPassed" },
                 @{ Metric = 'Failed'; Value = "❌ $pesterFailed" },
                 @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" },
-                @{ Metric = 'Info'; Value = 'No test case results were provided.' }
+                @{ Metric = 'Not Run'; Value = "⏸️ $pesterNotRun" },
+                @{ Metric = 'Info'; Value = if ($pesterNotRun -gt 0) { 'No test cases executed; some discovered cases were not run.' } else { 'No test case results were provided.' } }
               ))
             }
           }

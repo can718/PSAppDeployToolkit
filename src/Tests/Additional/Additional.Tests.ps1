@@ -235,6 +235,64 @@ BeforeAll {
         return @('1', 'true', 'yes', 'passed') -contains "$gateFromEnv".ToLowerInvariant()
     }
 
+    function script:Remove-DirectoryWithRetry
+    {
+        <#
+            Removes a directory tree with retry to handle transient file locks in CI.
+            Falls back to cmd rmdir for stubborn cases where Remove-Item can fail on Windows.
+        #>
+        param (
+            [Parameter(Mandatory = $true)]
+            [string]$Path,
+            [int]$MaxAttempts = 4,
+            [int]$DelaySeconds = 2
+        )
+
+        if (-not (Test-Path -LiteralPath $Path))
+        {
+            return
+        }
+
+        $lastError = $null
+        for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++)
+        {
+            try
+            {
+                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+                if (-not (Test-Path -LiteralPath $Path))
+                {
+                    return
+                }
+            }
+            catch
+            {
+                $lastError = $_
+            }
+
+            # Fallback for stubborn directory trees on Windows CI agents.
+            try
+            {
+                cmd.exe /c "rmdir /s /q \"$Path\"" | Out-Null
+                if (-not (Test-Path -LiteralPath $Path))
+                {
+                    return
+                }
+            }
+            catch
+            {
+                $lastError = $_
+            }
+
+            if ($attempt -lt $MaxAttempts)
+            {
+                Start-Sleep -Seconds $DelaySeconds
+            }
+        }
+
+        $msg = if ($lastError) { $lastError.Exception.Message } else { 'Unknown error while removing directory.' }
+        throw "Failed to remove directory '$Path' after $MaxAttempts attempts. Last error: $msg"
+    }
+
 }
 
 # ---------------------------------------------------------------------------
@@ -366,7 +424,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             Write-Verbose '[winSCP] Step 2: Copying V4 template to winSCP package directory...'
             if (Test-Path $script:winscpPackageDir)
             {
-                Remove-Item $script:winscpPackageDir -Recurse -Force
+                Remove-DirectoryWithRetry -Path $script:winscpPackageDir
             }
             Copy-Item -Path $script:v4Dir -Destination $script:winscpPackageDir -Recurse -Force
             Test-Path $script:winscpPackageDir | Should -BeTrue
