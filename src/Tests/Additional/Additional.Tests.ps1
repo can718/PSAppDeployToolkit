@@ -146,15 +146,15 @@ BeforeAll {
 
         # Computer policy
         $trigger = "{00000000-0000-0000-0000-000000000021}"
-        ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+        [void]([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
 
         # Application evaluation
         $trigger = "{00000000-0000-0000-0000-000000000121}"
-        ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+        [void]([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
 
         # Software update
         $trigger = "{00000000-0000-0000-0000-000000000108}"
-        ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
+        [void]([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
     }
 
     function script:Invoke-WinSCPPollDeploymentStatus
@@ -185,8 +185,8 @@ BeforeAll {
             if (-not [string]::IsNullOrWhiteSpace($SiteCode))
             {
                 $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
-                    Where-Object { $_.ApplicationName -eq $AppName } |
-                    Select-Object -First 1
+                Where-Object { $_.ApplicationName -eq $AppName } |
+                Select-Object -First 1
             }
 
             if ($summary)
@@ -201,7 +201,7 @@ BeforeAll {
             if ($elapsed -lt $MaxWaitSeconds)
             {
                 Write-Information "[winSCP] $Label not yet successful - waiting ${PollInterval}s before next check..." -InformationAction Continue
-                Invoke-WinSCPSccmClientEvaluation
+                Invoke-WinSCPSccmClientEvaluation | Out-Null
                 Start-Sleep -Seconds $PollInterval
                 $elapsed += $PollInterval
             }
@@ -216,8 +216,8 @@ BeforeAll {
         if (-not $summary -and -not [string]::IsNullOrWhiteSpace($SiteCode))
         {
             $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue |
-                Where-Object { $_.ApplicationName -eq $AppName } |
-                Select-Object -First 1
+            Where-Object { $_.ApplicationName -eq $AppName } |
+            Select-Object -First 1
         }
 
         return $summary

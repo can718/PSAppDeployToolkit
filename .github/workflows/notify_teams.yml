@@ -28,9 +28,10 @@ on:
         default: 0
 jobs:
   send:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: send msg
+        shell: pwsh
         env:
           WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
           STATUS: ${{ inputs.job_status }}
@@ -46,56 +47,119 @@ jobs:
           WORKFLOW: ${{ github.workflow }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          case "$STATUS" in
-            success)   COLOR=00CC44; STATUS_ICON="✅" ;;
-            failure)   COLOR=FF0000; STATUS_ICON="❌" ;;
-            cancelled) COLOR=808080; STATUS_ICON="🚫" ;;
-            *)         COLOR=FFA500; STATUS_ICON="⏭️" ;;
-          esac
+          $statusMap = @{
+            success   = @{ Color = '00CC44'; Icon = '✅' }
+            failure   = @{ Color = 'FF0000'; Icon = '❌' }
+            cancelled = @{ Color = '808080'; Icon = '🚫' }
+          }
 
-          STEPS_JSON=$(printf '%s' "${STEPS_JSON:-{}}" | tr -d '\r')
-          SHORT_SHA="${COMMIT_SHA:0:7}"
-          COMMIT_TITLE=$(echo "$COMMIT_MSG" | head -1)
+          $statusMeta = if ($statusMap.ContainsKey($env:STATUS)) {
+            $statusMap[$env:STATUS]
+          }
+          else {
+            @{ Color = 'FFA500'; Icon = '⏭️' }
+          }
 
-          # Map each step outcome to an emoji label (single-line filter, object-lookup avoids if/elif)
-          STEP_FACTS=$(echo "$STEPS_JSON" | jq -c '[to_entries[] | {"name": .key, "value": ({"success":"✅ success","failure":"❌ failure","skipped":"⏭️ skipped","cancelled":"🚫 cancelled"}[.value] // .value)}]')
+          $stepsJsonRaw = if ([string]::IsNullOrWhiteSpace($env:STEPS_JSON)) {
+            '{}'
+          }
+          else {
+            $env:STEPS_JSON.Replace("`r", '')
+          }
 
-          # Build sections: Pipeline Steps + CI Info in one jq call (single-line filter)
-          SECTIONS=$(jq -cn \
-            --argjson steps "$STEP_FACTS" \
-            --arg wf    "$WORKFLOW" \
-            --arg br    "$BRANCH" \
-            --arg sha   "$SHORT_SHA" \
-            --arg msg   "$COMMIT_TITLE" \
-            --arg actor "$ACTOR" \
-            '[{"activityTitle":"Stage: Pipeline Steps","facts":$steps},{"activityTitle":"CI Info","facts":[{"name":"Workflow","value":$wf},{"name":"Branch","value":$br},{"name":"Commit","value":$sha},{"name":"Message","value":$msg},{"name":"Triggered by","value":$actor}]}]')
+          try {
+            $stepsObject = $stepsJsonRaw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+            if ($stepsObject -isnot [hashtable]) {
+              $stepsObject = @{}
+            }
+          }
+          catch {
+            $stepsObject = @{}
+          }
 
-          # Append Pester section only when tests were actually run
-          if [ "$PESTER_TOTAL" -gt 0 ]; then
-            PESTER_SEC=$(jq -cn \
-              --arg total   "$PESTER_TOTAL" \
-              --arg passed  "$PESTER_PASSED" \
-              --arg failed  "$PESTER_FAILED" \
-              --arg skipped "$PESTER_SKIPPED" \
-              '{"activityTitle":"Pester Test Results","facts":[{"name":"Total","value":$total},{"name":"✅ Passed","value":$passed},{"name":"❌ Failed","value":$failed},{"name":"⏭️ Skipped","value":$skipped}]}')
-            SECTIONS=$(echo "$SECTIONS" | jq -c --argjson ps "$PESTER_SEC" '. + [$ps]')
-          fi
+          $outcomeMap = @{
+            success   = '✅ success'
+            failure   = '❌ failure'
+            skipped   = '⏭️ skipped'
+            cancelled = '🚫 cancelled'
+          }
 
-          # "View Workflow Run" button
-          ACTIONS=$(jq -cn --arg url "$RUN_URL" '[{"@type":"OpenUri","name":"🔗 View Workflow Run","targets":[{"os":"default","uri":$url}]}]')
+          $stepFacts = @()
+          foreach ($stepName in $stepsObject.Keys) {
+            $rawValue = [string]$stepsObject[$stepName]
+            $displayValue = if ($outcomeMap.ContainsKey($rawValue)) {
+              $outcomeMap[$rawValue]
+            }
+            else {
+              $rawValue
+            }
 
-          # Assemble final payload (single-line filter)
-          PAYLOAD=$(jq -cn \
-            --arg     color  "$COLOR" \
-            --arg     icon   "$STATUS_ICON" \
-            --arg     status "$STATUS" \
-            --arg     wf     "$WORKFLOW" \
-            --arg     br     "$BRANCH" \
-            --arg     sha    "$SHORT_SHA" \
-            --arg     msg    "$COMMIT_TITLE" \
-            --arg     actor  "$ACTOR" \
-            --argjson sections "$SECTIONS" \
-            --argjson actions  "$ACTIONS" \
-            '{"@type":"MessageCard","@context":"http://schema.org/extensions","themeColor":$color,"title":("🚀 Pipeline: " + $wf),"text":("Pipeline Status: **" + $icon + " " + $status + "**\n\nBranch: `" + $br + "` · Commit: `" + $sha + "`\n\nMessage: " + $msg + "\n\nTriggered by: " + $actor),"sections":$sections,"potentialAction":$actions}')
+            $stepFacts += @{
+              name  = $stepName
+              value = $displayValue
+            }
+          }
 
-          curl -H "Content-Type: application/json" -d "$PAYLOAD" "$WEBHOOK"
+          $shortSha = if ($env:COMMIT_SHA -and $env:COMMIT_SHA.Length -ge 7) {
+            $env:COMMIT_SHA.Substring(0, 7)
+          }
+          else {
+            [string]$env:COMMIT_SHA
+          }
+
+          $commitMessage = [string]$env:COMMIT_MSG
+          $commitTitle = ($commitMessage -split "`r?`n")[0]
+
+          $sections = @(
+            @{
+              activityTitle = 'Stage: Pipeline Steps'
+              facts         = $stepFacts
+            },
+            @{
+              activityTitle = 'CI Info'
+              facts         = @(
+                @{ name = 'Workflow'; value = $env:WORKFLOW },
+                @{ name = 'Branch'; value = $env:BRANCH },
+                @{ name = 'Commit'; value = $shortSha },
+                @{ name = 'Message'; value = $commitTitle },
+                @{ name = 'Triggered by'; value = $env:ACTOR }
+              )
+            }
+          )
+
+          $pesterTotal = 0
+          [void][int]::TryParse([string]$env:PESTER_TOTAL, [ref]$pesterTotal)
+          if ($pesterTotal -gt 0) {
+            $sections += @{
+              activityTitle = 'Pester Test Results'
+              facts         = @(
+                @{ name = 'Total'; value = [string]$env:PESTER_TOTAL },
+                @{ name = '✅ Passed'; value = [string]$env:PESTER_PASSED },
+                @{ name = '❌ Failed'; value = [string]$env:PESTER_FAILED },
+                @{ name = '⏭️ Skipped'; value = [string]$env:PESTER_SKIPPED }
+              )
+            }
+          }
+
+          $actions = @(
+            @{
+              '@type'  = 'OpenUri'
+              name     = '🔗 View Workflow Run'
+              targets  = @(
+                @{ os = 'default'; uri = $env:RUN_URL }
+              )
+            }
+          )
+
+          $payload = @{
+            '@type'           = 'MessageCard'
+            '@context'        = 'http://schema.org/extensions'
+            themeColor        = $statusMeta.Color
+            title             = "🚀 Pipeline: $($env:WORKFLOW)"
+            text              = "Pipeline Status: **$($statusMeta.Icon) $($env:STATUS)**`n`nBranch: ``$($env:BRANCH)`` · Commit: ``$shortSha`` `n`nMessage: $commitTitle`n`nTriggered by: $($env:ACTOR)"
+            sections          = $sections
+            potentialAction   = $actions
+          }
+
+          $payloadJson = $payload | ConvertTo-Json -Depth 10 -Compress
+          Invoke-RestMethod -Method Post -Uri $env:WEBHOOK -ContentType 'application/json' -Body $payloadJson | Out-Null
