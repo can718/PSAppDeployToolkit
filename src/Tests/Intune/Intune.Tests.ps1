@@ -523,7 +523,7 @@ Describe 'Intune Tests' {
 
             # Copy template to app working directory: like C:\PSADT\WinSCP\*
             $v4Path = $env:PSADT_TEMPLATE_V4_DIR
-            Write-Information " $v4Path............................"
+            Write-Host " $v4Path ***************************************************"
             if (-not (Test-Path $v4Path))
             {
                 throw "v4 folder missing : $v4Path"
@@ -596,7 +596,7 @@ Describe 'Intune Tests' {
             $InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
             $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
 
-            Add-IntuneWin32App -FilePath $finalPath -DisplayName $DisplayName -Description "PSADT $appName deployment" `
+            Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $DisplayName -Description "PSADT $appName deployment" `
                 -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
                 -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
                 -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd
