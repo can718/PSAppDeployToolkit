@@ -356,7 +356,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             $script:winscpAppVendor = 'Martin Prikryl'
             $script:winscpAppVersion = '6.5.6'
             $script:winscpDTName = "WinSCP $script:winscpAppVersion (v4 winSCP)"
-            $script:winscpContentUNC = "\\$env:COMPUTERNAME\PSADT_Content$\winSCP"
+            $script:winscpContentUNC = "\\$env:COMPUTERNAME\PSADT_Content`$\winSCP"
             $script:targetCollection = if ($env:SCCM_TARGET_COLLECTION) { $env:SCCM_TARGET_COLLECTION } else { 'All Systems' }
             $script:winscpInstallDeploySucceeded = $false
 
@@ -805,7 +805,7 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             $script:vlcAppVendor = 'VideoLAN'
             $script:vlcAppVersion = '3.0.23'
             $script:vlcDTName = "VLC $script:vlcAppVersion (v4 VLC)"
-            $script:vlcContentUNC = "\\$env:COMPUTERNAME\PSADT_Content$\VLC"
+            $script:vlcContentUNC = "\\$env:COMPUTERNAME\PSADT_Content`$\VLC"
             $script:targetCollection = if ($env:SCCM_TARGET_COLLECTION) { $env:SCCM_TARGET_COLLECTION } else { 'All Systems' }
             $script:vlcInstallDeploySucceeded = $false
 
