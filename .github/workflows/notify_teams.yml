@@ -10,6 +10,10 @@ on:
         required: false
         type: string
         default: '{}'
+      pester_discovered:
+        required: false
+        type: number
+        default: 0
       pester_total:
         required: false
         type: number
@@ -26,6 +30,10 @@ on:
         required: false
         type: number
         default: 0
+      pester_notrun:
+        required: false
+        type: number
+        default: 0
 jobs:
   send:
     runs-on: windows-latest
@@ -36,10 +44,12 @@ jobs:
           WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
           STATUS: ${{ inputs.job_status }}
           STEPS_JSON: ${{ inputs.steps_json }}
+          PESTER_DISCOVERED: ${{ inputs.pester_discovered }}
           PESTER_TOTAL: ${{ inputs.pester_total }}
           PESTER_PASSED: ${{ inputs.pester_passed }}
           PESTER_FAILED: ${{ inputs.pester_failed }}
           PESTER_SKIPPED: ${{ inputs.pester_skipped }}
+          PESTER_NOTRUN: ${{ inputs.pester_notrun }}
           BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}

@@ -40,10 +40,12 @@ jobs:
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     outputs:
       steps_json:     ${{ steps.collect-outputs.outputs.steps_json }}
+      pester_discovered: ${{ steps.run-pester.outputs.pester-discovered }}
       pester_total:   ${{ steps.run-pester.outputs.pester-total }}
       pester_passed:  ${{ steps.run-pester.outputs.pester-passed }}
       pester_failed:  ${{ steps.run-pester.outputs.pester-failed }}
       pester_skipped: ${{ steps.run-pester.outputs.pester-skipped }}
+      pester_notrun:  ${{ steps.run-pester.outputs.pester-notrun }}
     strategy:
       fail-fast: false
     env:
@@ -296,15 +298,18 @@ jobs:
         } -ThrottleLimit 2
 
         $allResults = @($validationResult) + @($parallelResults)
-        $total = ($allResults | Measure-Object -Property TotalCount -Sum).Sum
+        $executedTotal = ($allResults | Measure-Object -Property TotalCount -Sum).Sum
         $passed = ($allResults | Measure-Object -Property PassedCount -Sum).Sum
         $failed = ($allResults | Measure-Object -Property FailedCount -Sum).Sum
         $skipped = ($allResults | Measure-Object -Property SkippedCount -Sum).Sum
+        $notRun = $discoveredTotal - $executedTotal
 
-        "pester-total=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester-passed=$passed"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester-failed=$failed"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester-skipped=$skipped" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-total=$executedTotal"        | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-passed=$passed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-failed=$failed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-skipped=$skipped"            | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-notrun=$notRun"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
 
         if ($failed -gt 0)
         {
@@ -374,8 +379,10 @@ jobs:
     with:
       job_status:     ${{ needs.run-additional-tests.result }}
       steps_json:     ${{ needs.run-additional-tests.outputs.steps_json }}
+      pester_discovered: ${{ fromJson(needs.run-additional-tests.outputs.pester_discovered || '0') }}
       pester_total:   ${{ fromJson(needs.run-additional-tests.outputs.pester_total   || '0') }}
       pester_passed:  ${{ fromJson(needs.run-additional-tests.outputs.pester_passed  || '0') }}
       pester_failed:  ${{ fromJson(needs.run-additional-tests.outputs.pester_failed  || '0') }}
       pester_skipped: ${{ fromJson(needs.run-additional-tests.outputs.pester_skipped || '0') }}
+      pester_notrun:  ${{ fromJson(needs.run-additional-tests.outputs.pester_notrun  || '0') }}
     secrets: inherit
