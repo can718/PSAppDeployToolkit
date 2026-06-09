@@ -118,7 +118,7 @@ Describe 'Intune Tests' {
         # ===================================================================
         # VLC - Wrap, Upload, Assign, Verify
         # ===================================================================
-        It 'VLC - wrap and upload to Intune' -Skip {
+        It 'VLC - wrap and upload to Intune' {
             $appName = 'VLC'
             $runnerScript = Join-Path $PSScriptRoot 'VLC\Invoke-AppDeployToolkit.ps1'
 
