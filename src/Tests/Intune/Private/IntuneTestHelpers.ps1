@@ -650,7 +650,7 @@ function Get-MsiProductCode
     $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @("SELECT Value FROM Property WHERE Property='ProductCode'"))
     $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
     $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
-    return [string]($record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1))
+    return ($record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1))
 }
 
 function Get-IntuneWinAppUtilPath
