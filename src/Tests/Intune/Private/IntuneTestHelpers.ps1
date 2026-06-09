@@ -333,7 +333,7 @@ function Publish-IntuneWin32App
         $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture 'x64x86' -MinimumSupportedWindowsRelease 'W10_1607'
     }
 
-    Add-IntuneWin32App -FilePath $FilePath -DisplayName $DisplayName `
+    $null = Add-IntuneWin32App -FilePath $FilePath -DisplayName $DisplayName `
         -Description "PSADT $AppName deployment" `
         -Publisher $Publisher -InstallExperience 'system' -RestartBehavior 'suppress' `
         -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
@@ -345,7 +345,9 @@ function Publish-IntuneWin32App
     while (-not $win32App -and $retryCount -lt $MaxRetries)
     {
         Start-Sleep -Seconds $RetryIntervalSeconds
-        $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
+        $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose |
+            Sort-Object -Property createdDateTime -Descending |
+            Select-Object -First 1
         $retryCount++
     }
 
