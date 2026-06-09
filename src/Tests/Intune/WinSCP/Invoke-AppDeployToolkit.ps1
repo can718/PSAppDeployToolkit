@@ -26,6 +26,7 @@ Disables logging to file for the script.
 Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent
 #>
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '')]
 [CmdletBinding()]
 param
 (
@@ -48,6 +49,14 @@ param
     [Parameter(Mandatory = $false)]
     [System.Management.Automation.SwitchParameter]$DisableLogging
 )
+
+# ---------------------------------------------------------------------------
+# PSADT v3 and earlier desktop refreshes can cause issues in test environments, so we disable them globally for the test session.
+# $global:SkipDesktopRefresh = $true
+# $global:SkipStartMenuRefresh = $true
+# PSADT v4 introduced new functions for these refreshes, so we override them with no-op implementations to prevent any accidental calls from causing issues.
+function Update-ADTDesktopRefresh { }
+function Update-ADTStartMenuRefresh { }
 
 ## MARK: Variables
 $adtSession = @{
@@ -86,13 +95,13 @@ $PreInstall = {
     {
         $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
     }
-    Show-ADTInstallationWelcome @saiwParams
-    Show-ADTInstallationProgress
+    # Show-ADTInstallationWelcome @saiwParams
+    # Show-ADTInstallationProgress
 }
 
 ## MARK: Install
 $Install = {
-    Start-ADTMsiProcess -Action Install -FilePath "WinSCP-$($adtSession.AppVersion).msi"
+    Start-ADTMsiProcess -Action Install -FilePath "WinSCP-$($adtSession.AppVersion).msi" -NoDesktopRefresh
 }
 
 ## MARK: Post-Install
@@ -104,21 +113,21 @@ $PostInstall = {
         Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'BetaVersions' -Value 1 -Type DWord -SID $_.SID
         Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'ShowOnStartup' -Value 0 -Type DWord -SID $_.SID
     }
-    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
+    # Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Pre-Uninstall
 $PreUninstall = {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
+        # Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
-    Show-ADTInstallationProgress
+    # Show-ADTInstallationProgress
 }
 
 ## MARK: Uninstall
 $Uninstall = {
-    Start-ADTMsiProcess -Action Uninstall -FilePath "WinSCP-$($adtSession.AppVersion).msi"
+    Start-ADTMsiProcess -Action Uninstall -FilePath "WinSCP-$($adtSession.AppVersion).msi" -NoDesktopRefresh
 }
 
 ## MARK: Post-Uninstall
@@ -129,14 +138,14 @@ $PostUninstall = {
 $PreRepair = {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
+        # Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
-    Show-ADTInstallationProgress
+    # Show-ADTInstallationProgress
 }
 
 ## MARK: Repair
 $Repair = {
-    Start-ADTMsiProcess -Action Repair -FilePath "WinSCP-$($adtSession.AppVersion).msi" -RepairFromSource
+    Start-ADTMsiProcess -Action Repair -FilePath "WinSCP-$($adtSession.AppVersion).msi" -RepairFromSource -NoDesktopRefresh
 }
 
 ## MARK: Post-Repair
@@ -148,7 +157,7 @@ $PostRepair = {
         Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'BetaVersions' -Value 1 -Type DWord -SID $_.SID
         Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'ShowOnStartup' -Value 0 -Type DWord -SID $_.SID
     }
-    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
+    # Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Initialization

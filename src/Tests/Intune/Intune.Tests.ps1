@@ -169,7 +169,7 @@ Describe 'Intune Tests' {
         # ===================================================================
         It 'WinSCP - wrap and upload to Intune' {
             $appName = 'WinSCP'
-            $runnerScript = Join-Path $PSScriptRoot 'VLC\Invoke-AppDeployToolkit.ps1'
+            $runnerScript = Join-Path $PSScriptRoot 'WinSCP\Invoke-AppDeployToolkit.ps1'
 
             # --- Step 1: Prepare working directory ---
             $env = New-IntuneTestWorkDir `
