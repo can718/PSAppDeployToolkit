@@ -158,7 +158,7 @@ Describe 'Intune Tests' {
             # --- Step 6: Poll for app installation on client ---
             $installVerified = Wait-AppInstallation `
                 -AppName         $appName `
-                -RegistryKeyName 'VLC media player' `
+                -DisplayName     'VLC media player' `
                 -ValueName       'DisplayVersion' `
                 -ExpectedValue   '3.0.23'
             $installVerified | Should -BeTrue -Because "VLC 3.0.23 should appear in the Uninstall registry key within the polling window"
@@ -212,7 +212,7 @@ Describe 'Intune Tests' {
             # --- Step 7: Poll for app installation on client ---
             $installVerified = Wait-AppInstallation `
                 -AppName         $appName `
-                -RegistryKeyName 'WinSCP' `
+                -DisplayName     'WinSCP' `
                 -ValueName       'DisplayVersion' `
                 -ExpectedValue   '6.5.6'
             $installVerified | Should -BeTrue -Because "WinSCP 6.5.6 should appear in the Uninstall registry key within the polling window"

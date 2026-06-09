@@ -461,6 +461,9 @@ function Wait-AppInstallation
     .SYNOPSIS
         Polls registry uninstall keys for a specific app version, checking
         both native and WOW6432Node paths for 32-bit compatibility.
+    .DESCRIPTION
+        Enumerates all subkeys under the Uninstall registry paths and matches
+        by DisplayName, so apps registered under a GUID key are also found.
     .OUTPUTS
         $true if the app was detected within the timeout, $false otherwise.
     #>
@@ -469,7 +472,7 @@ function Wait-AppInstallation
         [string]$AppName,
 
         [Parameter(Mandatory)]
-        [string]$RegistryKeyName,
+        [string]$DisplayName,
 
         [Parameter(Mandatory)]
         [string]$ValueName,
@@ -481,26 +484,31 @@ function Wait-AppInstallation
         [int]$PollIntervalSeconds = 60
     )
 
-    $detectionPaths = @(
-        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$RegistryKeyName"
-        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$RegistryKeyName"
+    $uninstallRoots = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
     )
 
     $waited = 0
     $verified = $false
 
-    Write-Information "Polling for $AppName installation (timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
+    Write-Information "Polling for $AppName installation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
     while ($waited -lt $MaxWaitSeconds)
     {
-        foreach ($path in $detectionPaths)
+        foreach ($root in $uninstallRoots)
         {
-            $regVal = Get-ItemProperty -Path $path -Name $ValueName -ErrorAction SilentlyContinue
-            if ($regVal -and $regVal.$ValueName -eq $ExpectedValue)
+            $subKeys = Get-ChildItem -Path $root -ErrorAction SilentlyContinue
+            foreach ($subKey in $subKeys)
             {
-                $verified = $true
-                Write-Information "$AppName $ExpectedValue detected in registry after $waited s (path: $path)." -InformationAction Continue
-                break
+                $props = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
+                if ($props -and $props.DisplayName -eq $DisplayName -and $props.$ValueName -eq $ExpectedValue)
+                {
+                    $verified = $true
+                    Write-Information "$AppName $ExpectedValue detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
+                    break
+                }
             }
+            if ($verified) { break }
         }
         if ($verified) { break }
 
