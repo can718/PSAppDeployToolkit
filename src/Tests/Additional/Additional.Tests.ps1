@@ -424,7 +424,9 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             Write-Verbose '[winSCP] Step 2: Copying V4 template to winSCP package directory...'
             if (Test-Path $script:winscpPackageDir)
             {
+                Write-Information "::warning::[winSCP] Package directory '$script:winscpPackageDir' already exists, removing it." -InformationAction Continue
                 Remove-DirectoryWithRetry -Path $script:winscpPackageDir
+                Write-Information "::info::[winSCP] Package directory '$script:winscpPackageDir' removed." -InformationAction Continue
             }
             Copy-Item -Path $script:v4Dir -Destination $script:winscpPackageDir -Recurse -Force
             Test-Path $script:winscpPackageDir | Should -BeTrue
