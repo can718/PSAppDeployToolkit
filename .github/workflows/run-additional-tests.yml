@@ -290,8 +290,18 @@ jobs:
 
         # 2) Run WinSCP and VLC in parallel after validation succeeds.
         $tagsToRun = @('WinSCP', 'VLC')
-        $parallelResults = $tagsToRun | ForEach-Object -Parallel {
-          $tag = $_
+        $indexedTags = for ($i = 0; $i -lt $tagsToRun.Count; $i++) {
+          [pscustomobject]@{ Index = $i; Tag = $tagsToRun[$i] }
+        }
+
+        $parallelResults = $indexedTags | ForEach-Object -Parallel {
+          $tag = $_.Tag
+          $delaySeconds = [int]($_.Index * 120)
+
+          if ($delaySeconds -gt 0) {
+            Write-Host "Delaying start for tag '$tag' by $delaySeconds seconds..."
+            Start-Sleep -Seconds $delaySeconds
+          }
 
           Set-Location $using:workspaceRoot
           $testOutputDir = Join-Path $using:workspaceRoot 'src\Artifacts\TestOutput'
