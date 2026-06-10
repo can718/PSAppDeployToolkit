@@ -266,9 +266,9 @@ function New-IntuneWinPackage
 
     # Find the actual installer (msi/exe) to derive the display name
     $filesDir = Join-Path $WorkDir 'Files'
-    $packageFile = Get-ChildItem -Path $filesDir -File |
-    Where-Object { $_.Extension -in '.msi', '.exe' } |
-    Select-Object -First 1
+    $packageFile = Get-ChildItem -Path $filesDir -File | Where-Object {
+        $_.Extension -in '.msi', '.exe'
+    } | Select-Object -First 1
 
     if (-not $packageFile)
     {
@@ -295,6 +295,49 @@ function New-IntuneWinPackage
 # ---------------------------------------------------------------------------
 # Region: Intune Upload & Assignment
 # ---------------------------------------------------------------------------
+
+function Remove-ExistingIntuneWin32App
+{
+    <#
+    .SYNOPSIS
+        Removes any existing Win32 apps from Intune that match the given DisplayName.
+    .DESCRIPTION
+        Queries the Intune Graph API for apps matching the DisplayName and deletes
+        each one found. Waits briefly after deletion to allow API propagation.
+    .OUTPUTS
+        The number of apps removed.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$DisplayName,
+
+        [int]$PropagationDelaySeconds = 10
+    )
+
+    $existingApps = Get-IntuneWin32App -DisplayName $DisplayName -ErrorAction SilentlyContinue
+    if (-not $existingApps)
+    {
+        Write-Information "No existing Intune app found with DisplayName '$DisplayName'." -InformationAction Continue
+        return 0
+    }
+
+    $removedCount = 0
+    foreach ($app in $existingApps)
+    {
+        Write-Information "Removing existing Intune app '$($app.displayName)' (Id: $($app.id))..." -InformationAction Continue
+        Remove-IntuneWin32App -ID $app.id
+        $removedCount++
+    }
+
+    if ($removedCount -gt 0 -and $PropagationDelaySeconds -gt 0)
+    {
+        # Allow time for Graph API to propagate the deletion.
+        Start-Sleep -Seconds $PropagationDelaySeconds
+    }
+
+    Write-Information "Removed $removedCount existing Intune app(s) with DisplayName '$DisplayName'." -InformationAction Continue
+    return $removedCount
+}
 
 function Publish-IntuneWin32App
 {
@@ -333,6 +376,9 @@ function Publish-IntuneWin32App
         $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture 'x64x86' -MinimumSupportedWindowsRelease 'W10_1607'
     }
 
+    # Remove existing app with the same DisplayName before uploading.
+    $null = Remove-ExistingIntuneWin32App -DisplayName $DisplayName
+
     $null = Add-IntuneWin32App -FilePath $FilePath -DisplayName $DisplayName `
         -Description "PSADT $AppName deployment" `
         -Publisher $Publisher -InstallExperience 'system' -RestartBehavior 'suppress' `
@@ -346,8 +392,8 @@ function Publish-IntuneWin32App
     {
         Start-Sleep -Seconds $RetryIntervalSeconds
         $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose |
-        Sort-Object -Property createdDateTime -Descending |
-        Select-Object -First 1
+            Sort-Object -Property createdDateTime -Descending |
+            Select-Object -First 1
         $retryCount++
     }
 
@@ -426,9 +472,9 @@ function Invoke-MdmSync
     #>
     try
     {
-        $enrollmentId = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Enrollments' -ErrorAction SilentlyContinue |
-            Where-Object { (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).EnrollmentType -eq 6 } |
-            Select-Object -First 1).PSChildName
+        $enrollmentId = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Enrollments' -ErrorAction SilentlyContinue | Where-Object {
+                (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).EnrollmentType -eq 6
+            } | Select-Object -First 1).PSChildName
 
         if ($enrollmentId)
         {
