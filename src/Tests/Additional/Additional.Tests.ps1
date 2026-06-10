@@ -428,6 +428,8 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
                 Remove-DirectoryWithRetry -Path $script:winscpPackageDir
                 Write-Information "::info::[winSCP] Package directory '$script:winscpPackageDir' removed." -InformationAction Continue
             }
+            New-Item -Path $script:winscpPackageDir -ItemType Directory -Force | Out-Null
+            Write-Information "::info::[winSCP] Package directory '$script:winscpPackageDir' created." -InformationAction Continue
             Copy-Item -Path $script:v4Dir -Destination $script:winscpPackageDir -Recurse -Force
             Test-Path $script:winscpPackageDir | Should -BeTrue
 
