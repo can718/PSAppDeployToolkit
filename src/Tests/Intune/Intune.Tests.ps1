@@ -18,6 +18,18 @@ BeforeAll {
     # Load shared helper functions.
     . (Join-Path $script:_tfScriptRoot 'Private\IntuneTestHelpers.ps1')
 
+    # Load TerraForge helper script at script scope so exported functions
+    # remain available in later Pester blocks (BeforeEach/AfterEach).
+    $script:TerraForgeHelperPath = [System.IO.Path]::GetFullPath((Join-Path $script:_tfScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
+    if (Test-Path $script:TerraForgeHelperPath)
+    {
+        . $script:TerraForgeHelperPath
+    }
+    else
+    {
+        Write-Warning "[TerraForge] Helper script not found at: $script:TerraForgeHelperPath"
+    }
+
     Write-Information "[Pester] Version: $((Get-Module Pester).Version)" -InformationAction Continue
 
     # ---------------------------------------------------------------------------
