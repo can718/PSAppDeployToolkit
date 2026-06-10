@@ -239,6 +239,22 @@ jobs:
         $workspaceRoot = '${{ github.workspace }}'
         $additionalTestsPath = Join-Path $workspaceRoot 'src\Tests\Additional'
 
+        # Pre-create SMB share before parallel tests to avoid race condition
+        $shareName = 'PSADT_Content$'
+        $shareRootPath = 'C:\PSADT'
+        if (-not (Test-Path $shareRootPath)) {
+          New-Item -ItemType Directory -Path $shareRootPath -Force | Out-Null
+        }
+        if (-not (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue)) {
+          New-SmbShare -Name $shareName -Path $shareRootPath -FullAccess 'Everyone' -Description 'PSADT SCCM Content Source' | Out-Null
+          Write-Host "Created SMB share: $shareName at $shareRootPath"
+        } else {
+          Write-Host "SMB share $shareName already exists"
+        }
+        # Create subdirectories for WinSCP and VLC
+        New-Item -ItemType Directory -Path "$shareRootPath\winSCP" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$shareRootPath\VLC" -Force | Out-Null
+
         # Discover all targeted tests first so we can report how many were not executed.
         $discoveryConfig = New-PesterConfiguration
         $discoveryConfig.Run.Path = $additionalTestsPath

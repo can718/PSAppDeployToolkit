@@ -470,26 +470,21 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             }
 
             # ----------------------------------------------------------------
-            # Step 5 - Create SMB content share
+            # Step 5 - Verify SMB content share and directories exist
             # ----------------------------------------------------------------
-            Write-Information "::info::[winSCP] Step 5: Ensuring SMB content share exists..."
+            Write-Information "::info::[winSCP] Step 5: Verifying SMB content share and package directories..."
             if (-not $script:cmModulePath)
             {
                 Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
                 return
             }
-            $shareName = 'PSADT_Content$'
-            if (-not (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue))
-            {
-                New-SmbShare -Name $shareName -Path 'C:\PSADT' -FullAccess 'Everyone' -Description 'PSADT SCCM Content Source' | Out-Null
-            }
-            # Ensure the winSCP subdirectory exists under the share root (C:\PSADT\winSCP)
+            # SMB share should already be created by workflow; ensure package directory exists
             if (-not (Test-Path $script:winscpPackageDir))
             {
                 New-Item -ItemType Directory -Path $script:winscpPackageDir -Force | Out-Null
-                Write-Verbose "[winSCP] Created missing package directory: $($script:winscpPackageDir)"
+                Write-Information "::info::[winSCP] Created package directory: $($script:winscpPackageDir)" -InformationAction Continue
             }
-            Test-Path $script:winscpContentUNC | Should -BeTrue
+            Test-Path $script:winscpContentUNC | Should -BeTrue -Because "SMB content UNC path '$($script:winscpContentUNC)' must exist"
 
             # ----------------------------------------------------------------
             # Step 6 - Import application into SCCM
@@ -920,26 +915,21 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             }
 
             # ----------------------------------------------------------------
-            # Step 5 - Create SMB content share
+            # Step 5 - Verify SMB content share and directories exist
             # ----------------------------------------------------------------
-            Write-Verbose '[VLC] Step 5: Ensuring SMB content share exists...'
+            Write-Verbose '[VLC] Step 5: Verifying SMB content share and package directories...'
             if (-not $script:cmModulePath)
             {
                 Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
                 return
             }
-            $shareName = 'PSADT_Content$'
-            if (-not (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue))
-            {
-                New-SmbShare -Name $shareName -Path 'C:\PSADT' -FullAccess 'Everyone' -Description 'PSADT SCCM Content Source' | Out-Null
-            }
-            # Ensure the VLC subdirectory exists under the share root (C:\PSADT\VLC)
+            # SMB share should already be created by workflow; ensure package directory exists
             if (-not (Test-Path $script:vlcPackageDir))
             {
                 New-Item -ItemType Directory -Path $script:vlcPackageDir -Force | Out-Null
-                Write-Verbose "[VLC] Created missing package directory: $($script:vlcPackageDir)"
+                Write-Verbose "[VLC] Created package directory: $($script:vlcPackageDir)"
             }
-            Test-Path $script:vlcContentUNC | Should -BeTrue
+            Test-Path $script:vlcContentUNC | Should -BeTrue -Because "SMB content UNC path '$($script:vlcContentUNC)' must exist"
 
             # ----------------------------------------------------------------
             # Step 6 - Import application into SCCM
