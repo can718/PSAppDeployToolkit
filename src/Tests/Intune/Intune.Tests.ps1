@@ -42,7 +42,7 @@ BeforeAll {
     # ---------------------------------------------------------------------------
     $script:TenantID = $env:TEST_TENANTID
     $script:ClientID = $env:TEST_CLIENTID
-    $script:ClientSecret = $env:TEST_CLIENTSECRET
+    $script:ClientSecret = $env:TEST_CLIENTSECRET | ConvertTo-SecureString -AsPlainText -Force
 
     # ---------------------------------------------------------------------------
     # Ensure IntuneWin32App module is available.
@@ -109,7 +109,7 @@ Describe 'Intune Tests' {
             # Ensure Intune Graph session is active.
             if ($(Test-AccessToken) -eq $false)
             {
-                Write-Host "Connecting to MS Intune Graph..." -ForegroundColor Yellow
+                Write-Information "Connecting to MS Intune Graph..."
                 Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $script:ClientSecret
             }
 
