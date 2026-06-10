@@ -40,12 +40,12 @@ jobs:
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     outputs:
       steps_json:     ${{ steps.collect-outputs.outputs.steps_json }}
-      pester_discovered: ${{ steps.run-pester.outputs.pester-discovered }}
-      pester_total:   ${{ steps.run-pester.outputs.pester-total }}
-      pester_passed:  ${{ steps.run-pester.outputs.pester-passed }}
-      pester_failed:  ${{ steps.run-pester.outputs.pester-failed }}
-      pester_skipped: ${{ steps.run-pester.outputs.pester-skipped }}
-      pester_notrun:  ${{ steps.run-pester.outputs.pester-notrun }}
+      pester_discovered: ${{ steps.run-pester.outputs.pester_discovered }}
+      pester_total:   ${{ steps.run-pester.outputs.pester_total }}
+      pester_passed:  ${{ steps.run-pester.outputs.pester_passed }}
+      pester_failed:  ${{ steps.run-pester.outputs.pester_failed }}
+      pester_skipped: ${{ steps.run-pester.outputs.pester_skipped }}
+      pester_notrun:  ${{ steps.run-pester.outputs.pester_notrun }}
     strategy:
       fail-fast: false
     env:
@@ -260,12 +260,12 @@ jobs:
         {
           $executedValidation = [math]::Max([int]$validationResult.PassedCount + [int]$validationResult.FailedCount + [int]$validationResult.SkippedCount, 0)
           $notRunValidation = [math]::Max($discoveredTotal - $executedValidation, 0)
-          "pester-discovered=$discoveredTotal"               | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "pester-total=$discoveredTotal"                    | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "pester-passed=$($validationResult.PassedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "pester-failed=$($validationResult.FailedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "pester-skipped=$($validationResult.SkippedCount)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "pester-notrun=$notRunValidation"                  | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_discovered=$discoveredTotal"               | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_total=$discoveredTotal"                    | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_passed=$($validationResult.PassedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_failed=$($validationResult.FailedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_skipped=$($validationResult.SkippedCount)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_notrun=$notRunValidation"                  | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           throw 'Validation tests failed. WinSCP/VLC test suites were not started.'
         }
 
@@ -308,12 +308,12 @@ jobs:
         $skipped = ($allResults | Measure-Object -Property SkippedCount -Sum).Sum
         $notRun = $discoveredTotal - $executedTotal
 
-        "pester-discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester-total=$discoveredTotal"      | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester-passed=$passed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester-failed=$failed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester-skipped=$skipped"            | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester-notrun=$notRun"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_total=$discoveredTotal"      | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_passed=$passed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_failed=$failed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_skipped=$skipped"            | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_notrun=$notRun"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
 
         if ($failed -gt 0)
         {
@@ -383,10 +383,10 @@ jobs:
     with:
       job_status:     ${{ needs.run-additional-tests.result }}
       steps_json:     ${{ needs.run-additional-tests.outputs.steps_json }}
-      pester_discovered: ${{ fromJson(needs.run-additional-tests.outputs.pester_discovered || '0') }}
-      pester_total:   ${{ fromJson(needs.run-additional-tests.outputs.pester_total   || '0') }}
-      pester_passed:  ${{ fromJson(needs.run-additional-tests.outputs.pester_passed  || '0') }}
-      pester_failed:  ${{ fromJson(needs.run-additional-tests.outputs.pester_failed  || '0') }}
-      pester_skipped: ${{ fromJson(needs.run-additional-tests.outputs.pester_skipped || '0') }}
-      pester_notrun:  ${{ fromJson(needs.run-additional-tests.outputs.pester_notrun  || '0') }}
+      pester_discovered: ${{ needs.run-additional-tests.outputs.pester_discovered || '0' }}
+      pester_total:   ${{ needs.run-additional-tests.outputs.pester_total   || '0' }}
+      pester_passed:  ${{ needs.run-additional-tests.outputs.pester_passed  || '0' }}
+      pester_failed:  ${{ needs.run-additional-tests.outputs.pester_failed  || '0' }}
+      pester_skipped: ${{ needs.run-additional-tests.outputs.pester_skipped || '0' }}
+      pester_notrun:  ${{ needs.run-additional-tests.outputs.pester_notrun  || '0' }}
     secrets: inherit

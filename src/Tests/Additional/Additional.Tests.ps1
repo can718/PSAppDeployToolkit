@@ -396,11 +396,13 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
         }
 
         It 'Builds winSCP package and deploys into SCCM' {
+            Write-Information "::info::[winSCP] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
                 Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
                 return
             }
+            Write-Information "::info::[winSCP] Template validation gate satisfied." -InformationAction Continue
 
             # ----------------------------------------------------------------
             # Step 1 - Verify prerequisites
@@ -415,8 +417,11 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
                 Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
                 return
             }
-            Test-Path $script:v4Dir | Should -BeTrue -Because 'V4 template directory must exist'
-            Test-Path $script:winscpSourceScript | Should -BeTrue -Because 'winSCP\Invoke-AppDeployToolkit.ps1 must exist'
+            Write-Information "::info::[winSCP] Step 1: Verifying prerequisites..."
+            Test-Path $script:v4Dir | Should -BeTrue -Because "V4 template directory '$script:v4Dir' must exist"
+            Write-Information "::info::[winSCP] V4 template directory '$script:v4Dir' verified." -InformationAction Continue
+            Test-Path $script:winscpSourceScript | Should -BeTrue -Because "winSCP\Invoke-AppDeployToolkit.ps1 must exist"
+            Write-Information "::info::[winSCP] winSCP\Invoke-AppDeployToolkit.ps1 verified." -InformationAction Continue
 
             # ----------------------------------------------------------------
             # Step 2 - Copy V4 template to winSCP package directory
