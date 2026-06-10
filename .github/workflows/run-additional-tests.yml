@@ -258,10 +258,14 @@ jobs:
 
         if ($validationResult.FailedCount -gt 0)
         {
+          $executedValidation = [math]::Max([int]$validationResult.PassedCount + [int]$validationResult.FailedCount + [int]$validationResult.SkippedCount, 0)
+          $notRunValidation = [math]::Max($discoveredTotal - $executedValidation, 0)
+          "pester-discovered=$discoveredTotal"               | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester-total=$discoveredTotal"                    | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester-passed=$($validationResult.PassedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester-failed=$($validationResult.FailedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester-skipped=$($validationResult.SkippedCount)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester-notrun=$notRunValidation"                  | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           throw 'Validation tests failed. WinSCP/VLC test suites were not started.'
         }
 
@@ -305,7 +309,7 @@ jobs:
         $notRun = $discoveredTotal - $executedTotal
 
         "pester-discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester-total=$executedTotal"        | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester-total=$discoveredTotal"      | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester-passed=$passed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester-failed=$failed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester-skipped=$skipped"            | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8

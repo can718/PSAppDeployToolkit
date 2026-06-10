@@ -260,15 +260,27 @@ jobs:
           )
 
           $pesterTotal = 0
+          $pesterDiscovered = 0
           $pesterPassed = 0
           $pesterFailed = 0
           $pesterSkipped = 0
+          $pesterNotRunInput = 0
+          $hasDiscoveredInput = [int]::TryParse([string]$env:PESTER_DISCOVERED, [ref]$pesterDiscovered)
           [void][int]::TryParse([string]$env:PESTER_TOTAL, [ref]$pesterTotal)
           [void][int]::TryParse([string]$env:PESTER_PASSED, [ref]$pesterPassed)
           [void][int]::TryParse([string]$env:PESTER_FAILED, [ref]$pesterFailed)
           [void][int]::TryParse([string]$env:PESTER_SKIPPED, [ref]$pesterSkipped)
+          $hasNotRunInput = [int]::TryParse([string]$env:PESTER_NOTRUN, [ref]$pesterNotRunInput)
           $pesterExecuted = [math]::Max($pesterPassed + $pesterFailed + $pesterSkipped, 0)
-          $pesterNotRun = [math]::Max($pesterTotal - $pesterExecuted, 0)
+          if ($hasDiscoveredInput -and $pesterDiscovered -gt 0) {
+            $pesterTotal = $pesterDiscovered
+          }
+          $pesterNotRun = if ($hasNotRunInput -and $pesterNotRunInput -ge 0) {
+            $pesterNotRunInput
+          }
+          else {
+            [math]::Max($pesterTotal - $pesterExecuted, 0)
+          }
 
           if ($pesterTotal -gt 0 -or $pesterExecuted -gt 0) {
             $pesterRows = @(
