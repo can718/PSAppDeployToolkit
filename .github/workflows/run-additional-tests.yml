@@ -397,7 +397,7 @@ jobs:
   notify-teams:
     name: Notify Teams
     needs: run-additional-tests
-    if: always()
+    if: ${{ always() }}
     uses: ./.github/workflows/notify_teams.yml
     with:
       job_status:     ${{ needs.run-additional-tests.result }}

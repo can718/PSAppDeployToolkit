@@ -36,6 +36,7 @@ on:
         default: 0
 jobs:
   send:
+    if: ${{ always() }}
     runs-on: windows-latest
     steps:
       - name: send msg
