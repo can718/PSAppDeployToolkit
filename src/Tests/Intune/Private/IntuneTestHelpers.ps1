@@ -320,8 +320,8 @@ function Publish-IntuneWin32App
 
         [object]$RequirementRule,
 
-        [string]$InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install',
-        [string]$UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall',
+        [string]$InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive',
+        [string]$UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive',
         [string]$Publisher = 'Autotest',
 
         [int]$MaxRetries = 12,
