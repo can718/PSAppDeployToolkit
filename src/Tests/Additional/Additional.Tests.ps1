@@ -460,7 +460,9 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             }
             else
             {
-                $filesDir = Join-Path $script:winscpPackageDir 'Files'
+                # Derive Files directory from discovered script location to handle v4 subdirectory structure
+                $scriptDir = Split-Path -Path $destScript.FullName -Parent
+                $filesDir = Join-Path -Path $scriptDir -ChildPath 'Files'
                 if (-not (Test-Path $filesDir))
                 {
                     New-Item -ItemType Directory -Path $filesDir -Force | Out-Null
@@ -905,7 +907,9 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             }
             else
             {
-                $filesDir = Join-Path $script:vlcPackageDir 'Files'
+                # Derive Files directory from discovered script location to handle v4 subdirectory structure
+                $vlcScriptDir = Split-Path -Path $destScript.FullName -Parent
+                $filesDir = Join-Path -Path $vlcScriptDir -ChildPath 'Files'
                 if (-not (Test-Path $filesDir))
                 {
                     New-Item -ItemType Directory -Path $filesDir -Force | Out-Null
