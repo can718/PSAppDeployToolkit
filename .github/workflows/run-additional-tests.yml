@@ -236,9 +236,12 @@ jobs:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
+        $workspaceRoot = '${{ github.workspace }}'
+        $additionalTestsPath = Join-Path $workspaceRoot 'src\Tests\Additional'
+
         # Discover all targeted tests first so we can report how many were not executed.
         $discoveryConfig = New-PesterConfiguration
-        $discoveryConfig.Run.Path = '.\src\Tests\Additional'
+        $discoveryConfig.Run.Path = $additionalTestsPath
         $discoveryConfig.Filter.Tag = @('Validation', 'WinSCP', 'VLC')
         $discoveryConfig.Run.SkipRun = $true
         $discoveryConfig.Run.PassThru = $true
@@ -247,7 +250,7 @@ jobs:
 
         # 1) Run Validation first as a hard gate.
         $validationConfig = New-PesterConfiguration
-        $validationConfig.Run.Path = '.\src\Tests\Additional'
+        $validationConfig.Run.Path = $additionalTestsPath
         $validationConfig.Filter.Tag = @('Validation')
         $validationConfig.Output.Verbosity = 'Detailed'
         $validationConfig.TestResult.Enabled = $true
@@ -271,18 +274,18 @@ jobs:
 
         # 2) Run WinSCP and VLC in parallel after validation succeeds.
         $tagsToRun = @('WinSCP', 'VLC')
-        $workspaceRoot = '${{ github.workspace }}'
         $parallelResults = $tagsToRun | ForEach-Object -Parallel {
-          param($tag)
+          $tag = $_
 
           Set-Location $using:workspaceRoot
           $testOutputDir = Join-Path $using:workspaceRoot 'src\Artifacts\TestOutput'
+          $additionalTestsPath = Join-Path $using:workspaceRoot 'src\Tests\Additional'
           $outputPath = Join-Path $testOutputDir ("AdditionalTests-{0}.xml" -f $tag)
 
           $env:PSADT_TEMPLATE_VALIDATION_PASSED = 'true'
 
           $config = New-PesterConfiguration
-          $config.Run.Path = '.\src\Tests\Additional'
+          $config.Run.Path = $additionalTestsPath
           $config.Filter.Tag = @($tag)
           $config.Output.Verbosity = 'Detailed'
           $config.TestResult.Enabled = $true

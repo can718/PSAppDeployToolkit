@@ -360,9 +360,6 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             $script:targetCollection = if ($env:SCCM_TARGET_COLLECTION) { $env:SCCM_TARGET_COLLECTION } else { 'All Systems' }
             $script:winscpInstallDeploySucceeded = $false
 
-            Write-Information "::debug::[winSCP] COMPUTERNAME: '$($env:COMPUTERNAME)'" -InformationAction Continue
-            Write-Information "::debug::[winSCP] Constructed UNC: '$($script:winscpContentUNC)'" -InformationAction Continue
-
             $script:siteCode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Operations Management' -Name 'Site Code' -ErrorAction SilentlyContinue).'Site Code'
             $script:siteServer = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Setup' -Name 'Provider Location' -ErrorAction SilentlyContinue).'Provider Location'
 
@@ -390,9 +387,6 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             $testInfo = $____Pester.CurrentTest
             $script:CurrentTestClass = 'winSCP Package Preparation and SCCM Deployment / Build winSCP package from V4 template and deploy into SCCM'
             $script:CurrentTestMethod = $testInfo.Name
-            Write-Information "::debug::[winSCP] PSScriptRoot=$($PSScriptRoot)" -InformationAction Continue
-            Write-Information "::debug::[winSCP] winscpSourceScript=$($script:winscpSourceScript)" -InformationAction Continue
-            Write-Information "::debug::[winSCP] winscpSourceScript exists: $(Test-Path $script:winscpSourceScript)" -InformationAction Continue
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
 
@@ -433,9 +427,6 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             # Step 2 - Copy V4 template to winSCP package directory
             # ----------------------------------------------------------------
             Write-Information "::info::[winSCP] Step 2: Copying V4 template to winSCP package directory..."
-            Write-Information "::debug::[winSCP] V4 template source: $($script:v4Dir)" -InformationAction Continue
-            Write-Information "::debug::[winSCP] V4 template exists: $(Test-Path $script:v4Dir)" -InformationAction Continue
-            Write-Information "::debug::[winSCP] winSCP package destination: $($script:winscpPackageDir)" -InformationAction Continue
             if (Test-Path $script:winscpPackageDir)
             {
                 Write-Information "::warning::[winSCP] Package directory '$script:winscpPackageDir' already exists, removing it." -InformationAction Continue
@@ -827,9 +818,6 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             $script:targetCollection = if ($env:SCCM_TARGET_COLLECTION) { $env:SCCM_TARGET_COLLECTION } else { 'All Systems' }
             $script:vlcInstallDeploySucceeded = $false
 
-            Write-Information "::debug::[VLC] COMPUTERNAME: '$($env:COMPUTERNAME)'" -InformationAction Continue
-            Write-Information "::debug::[VLC] Constructed UNC: '$($script:vlcContentUNC)'" -InformationAction Continue
-
             $script:siteCode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Operations Management' -Name 'Site Code' -ErrorAction SilentlyContinue).'Site Code'
             $script:siteServer = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Setup' -Name 'Provider Location' -ErrorAction SilentlyContinue).'Provider Location'
 
@@ -857,11 +845,6 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             $testInfo = $____Pester.CurrentTest
             $script:CurrentTestClass = 'VLC Package Preparation and SCCM Import / Build VLC package from V4 template and import into SCCM'
             $script:CurrentTestMethod = $testInfo.Name
-            Write-Information "::debug::[VLC] PSScriptRoot=$($PSScriptRoot)" -InformationAction Continue
-            Write-Information "::debug::[VLC] vlcSourceScript=$($script:vlcSourceScript)" -InformationAction Continue
-            Write-Information "::debug::[VLC] vlcSourceScript exists: $(Test-Path $script:vlcSourceScript)" -InformationAction Continue
-            Write-Information "::debug::[VLC] vlcSourceFolder=$($script:vlcSourceFolder)" -InformationAction Continue
-            Write-Information "::debug::[VLC] vlcSourceFolder exists: $(Test-Path $script:vlcSourceFolder)" -InformationAction Continue
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
         }
 
@@ -897,9 +880,6 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             # Step 2 - Copy V4 template to VLC package directory
             # ----------------------------------------------------------------
             Write-Verbose '[VLC] Step 2: Copying V4 template to VLC package directory...'
-            Write-Information "::debug::[VLC] V4 template source: $($script:v4Dir)" -InformationAction Continue
-            Write-Information "::debug::[VLC] V4 template exists: $(Test-Path $script:v4Dir)" -InformationAction Continue
-            Write-Information "::debug::[VLC] VLC package destination: $($script:vlcPackageDir)" -InformationAction Continue
             if (Test-Path $script:vlcPackageDir)
             {
                 Remove-Item $script:vlcPackageDir -Recurse -Force
