@@ -587,7 +587,7 @@ function Initialize-IntuneTestGroup
         [string]$ClientId,
 
         [Parameter(Mandatory)]
-        [SecureString]$ClientSecret
+        [string]$ClientSecret
     )
 
     $result = @{
@@ -605,7 +605,8 @@ function Initialize-IntuneTestGroup
     }
     Import-Module Microsoft.Graph.Authentication, Microsoft.Graph.Groups, Microsoft.Graph.Identity.DirectoryManagement
 
-    $credential = New-Object System.Management.Automation.PSCredential ($ClientId, $ClientSecret)
+    $secureSecret = ConvertTo-SecureString $ClientSecret -AsPlainText -Force
+    $credential = New-Object System.Management.Automation.PSCredential ($ClientId, $secureSecret)
     $deviceName = $env:COMPUTERNAME
 
     try

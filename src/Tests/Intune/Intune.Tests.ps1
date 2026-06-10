@@ -42,7 +42,7 @@ BeforeAll {
     # ---------------------------------------------------------------------------
     $script:TenantID = $env:TEST_TENANTID
     $script:ClientID = $env:TEST_CLIENTID
-    $script:ClientSecret = $env:TEST_CLIENTSECRET | ConvertTo-SecureString -AsPlainText -Force
+    $script:ClientSecret = $env:TEST_CLIENTSECRET
 
     # ---------------------------------------------------------------------------
     # Ensure IntuneWin32App module is available.
