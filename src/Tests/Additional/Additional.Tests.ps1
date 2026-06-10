@@ -421,7 +421,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             # ----------------------------------------------------------------
             # Step 2 - Copy V4 template to winSCP package directory
             # ----------------------------------------------------------------
-            Write-Verbose '[winSCP] Step 2: Copying V4 template to winSCP package directory...'
+            Write-Information "::info::[winSCP] Step 2: Copying V4 template to winSCP package directory..."
             if (Test-Path $script:winscpPackageDir)
             {
                 Write-Information "::warning::[winSCP] Package directory '$script:winscpPackageDir' already exists, removing it." -InformationAction Continue
@@ -436,7 +436,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             # ----------------------------------------------------------------
             # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with winSCP version
             # ----------------------------------------------------------------
-            Write-Verbose '[winSCP] Step 3: Replacing Invoke-AppDeployToolkit.ps1 with winSCP version...'
+            Write-Information "::info::[winSCP] Step 3: Replacing Invoke-AppDeployToolkit.ps1 with winSCP version..."
             $allDestScripts = Get-ChildItem -Path $script:winscpPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File -ErrorAction SilentlyContinue
             $destScript = $allDestScripts | Select-Object -First 1
             $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
@@ -447,7 +447,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             # ----------------------------------------------------------------
             # Step 4 - Copy WinSCP MSI into Files folder
             # ----------------------------------------------------------------
-            Write-Verbose '[winSCP] Step 4: Copying WinSCP MSI into Files folder...'
+            Write-Information "::info::[winSCP] Step 4: Copying WinSCP MSI into Files folder..."
             $msiSource = 'C:\Tools\Intune\WinSCP\WinSCP-6.5.6.msi'
             if (-not (Test-Path $msiSource))
             {
@@ -467,7 +467,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             # ----------------------------------------------------------------
             # Step 5 - Create SMB content share
             # ----------------------------------------------------------------
-            Write-Verbose '[winSCP] Step 5: Ensuring SMB content share exists...'
+            Write-Information "::info::[winSCP] Step 5: Ensuring SMB content share exists..."
             if (-not $script:cmModulePath)
             {
                 Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
