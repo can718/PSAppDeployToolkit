@@ -33,9 +33,9 @@ function Initialize-TerraForgeReporting
     )
 
     $result = @{
-        Enabled    = $false
+        Enabled = $false
         AccessToken = $null
-        TestRunId  = $env:TEST_RUN_ID
+        TestRunId = $env:TEST_RUN_ID
         ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL
     }
 
@@ -232,7 +232,7 @@ function New-IntuneTestWorkDir
     Write-Information "[$AppName] Copied runner script to '$targetScript'." -InformationAction Continue
 
     return @{
-        WorkDir  = $workDir
+        WorkDir = $workDir
         FilesDir = $filesDir
     }
 }
@@ -267,8 +267,8 @@ function New-IntuneWinPackage
     # Find the actual installer (msi/exe) to derive the display name
     $filesDir = Join-Path $WorkDir 'Files'
     $packageFile = Get-ChildItem -Path $filesDir -File |
-        Where-Object { $_.Extension -in '.msi', '.exe' } |
-        Select-Object -First 1
+    Where-Object { $_.Extension -in '.msi', '.exe' } |
+    Select-Object -First 1
 
     if (-not $packageFile)
     {
@@ -288,7 +288,7 @@ function New-IntuneWinPackage
 
     return @{
         IntuneWinPath = $newIntuneWinFile
-        DisplayName   = $displayName
+        DisplayName = $displayName
     }
 }
 
@@ -346,8 +346,8 @@ function Publish-IntuneWin32App
     {
         Start-Sleep -Seconds $RetryIntervalSeconds
         $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose |
-            Sort-Object -Property createdDateTime -Descending |
-            Select-Object -First 1
+        Sort-Object -Property createdDateTime -Descending |
+        Select-Object -First 1
         $retryCount++
     }
 
@@ -545,7 +545,7 @@ function Initialize-IntuneTestGroup
     )
 
     $result = @{
-        GroupId    = $null
+        GroupId = $null
         SkipReason = $null
     }
 
@@ -579,10 +579,10 @@ function Initialize-IntuneTestGroup
 
         # Create a fresh security group.
         $group = New-MgGroup -BodyParameter @{
-            displayName     = $testGroupName
+            displayName = $testGroupName
             securityEnabled = $true
-            mailEnabled     = $false
-            mailNickname    = [System.Guid]::NewGuid().Guid
+            mailEnabled = $false
+            mailNickname = [System.Guid]::NewGuid().Guid
         } -ErrorAction Stop
         $result.GroupId = $group.Id
         Write-Information "Created test group '$testGroupName' with ObjectId: $($result.GroupId)" -InformationAction Continue
