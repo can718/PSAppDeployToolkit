@@ -435,7 +435,8 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             }
             New-Item -Path $script:winscpPackageDir -ItemType Directory -Force | Out-Null
             Write-Information "::info::[winSCP] Package directory '$script:winscpPackageDir' created." -InformationAction Continue
-            Copy-Item -Path $script:v4Dir -Destination $script:winscpPackageDir -Recurse -Force
+            # Copy template contents (not the template folder) to avoid creating an extra nested directory.
+            Copy-Item -Path "$script:v4Dir\*" -Destination $script:winscpPackageDir -Recurse -Force
             Test-Path $script:winscpPackageDir | Should -BeTrue
 
             # ----------------------------------------------------------------
