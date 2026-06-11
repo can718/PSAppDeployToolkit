@@ -134,21 +134,70 @@ jobs:
               [Parameter(Mandatory = $true)]
               [string[]]$Headers,
               [Parameter(Mandatory = $true)]
-              [object[]]$Rows
+              [object[]]$Rows,
+              [int[]]$ColumnWidths
             )
 
-            $headerLine = '| ' + ($Headers -join ' | ') + ' |'
-            $separatorLine = '| ' + (($Headers | ForEach-Object { '---' }) -join ' | ') + ' |'
+            function Get-CellLength {
+              param(
+                [string]$Value
+              )
+
+              if ($null -eq $Value) {
+                return 0
+              }
+
+              return $Value.Replace("`r", '').Replace("`n", ' ').Length
+            }
+
+            function Pad-Cell {
+              param(
+                [string]$Value,
+                [int]$TargetLength
+              )
+
+              if ($null -eq $Value) {
+                $Value = ''
+              }
+
+              $currentLength = Get-CellLength -Value $Value
+              $padding = [math]::Max($TargetLength - $currentLength, 0)
+              if ($padding -le 0) {
+                return $Value
+              }
+
+              return ($Value + ('&nbsp;' * $padding))
+            }
+
+            $effectiveColumnWidths = @()
+            for ($i = 0; $i -lt $Headers.Count; $i++) {
+              if ($ColumnWidths -and $ColumnWidths.Count -gt $i -and $ColumnWidths[$i] -gt 0) {
+                $effectiveColumnWidths += $ColumnWidths[$i]
+              }
+              else {
+                $effectiveColumnWidths += (Get-CellLength -Value $Headers[$i])
+              }
+            }
+
+            $paddedHeaders = @()
+            for ($i = 0; $i -lt $Headers.Count; $i++) {
+              $paddedHeaders += (Pad-Cell -Value $Headers[$i] -TargetLength $effectiveColumnWidths[$i])
+            }
+
+            $headerLine = '| ' + ($paddedHeaders -join ' | ') + ' |'
+            $separatorLine = '| ' + (($effectiveColumnWidths | ForEach-Object { '-' * [math]::Max($_, 3) }) -join ' | ') + ' |'
             $rowLines = @()
             foreach ($row in $Rows) {
-              $cells = foreach ($header in $Headers) {
+              $cells = @()
+              for ($i = 0; $i -lt $Headers.Count; $i++) {
+                $header = $Headers[$i]
                 $value = [string]$row[$header]
                 if ($null -eq $value) {
                   $value = ''
                 }
 
                 $value = $value.Replace('|', '\|').Replace("`r", ' ').Replace("`n", '<br/>')
-                $value
+                $cells += (Pad-Cell -Value $value -TargetLength $effectiveColumnWidths[$i])
               }
 
               $rowLines += ('| ' + ($cells -join ' | ') + ' |')
@@ -249,17 +298,6 @@ jobs:
             @{ Item = 'Triggered by'; Value = $actorName }
           )
 
-          $sections = @(
-            @{
-              activityTitle = 'CI Info'
-              text          = (New-MarkdownTable -Headers @('Item', 'Value') -Rows $ciInfoRows)
-            },
-            @{
-              activityTitle = 'Stage: Pipeline Steps'
-              text          = (New-MarkdownTable -Headers @('Step', 'Result') -Rows $stepRows)
-            }
-          )
-
           $pesterTotal = 0
           $pesterDiscovered = 0
           $pesterPassed = 0
@@ -292,25 +330,73 @@ jobs:
               @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" },
               @{ Metric = 'Not Run'; Value = "⏸️ $pesterNotRun" }
             )
-
-            $sections += @{
-              activityTitle = 'Pester Test Results'
-              text          = (New-MarkdownTable -Headers @('Metric', 'Value') -Rows $pesterRows)
-            }
           }
           else {
-            $sections += @{
-              activityTitle = 'Pester Test Results'
-              text          = (New-MarkdownTable -Headers @('Metric', 'Value') -Rows @(
-                @{ Metric = 'Total'; Value = '0' },
-                @{ Metric = 'Passed'; Value = "✅ $pesterPassed" },
-                @{ Metric = 'Failed'; Value = "❌ $pesterFailed" },
-                @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" },
-                @{ Metric = 'Not Run'; Value = "⏸️ $pesterNotRun" },
-                @{ Metric = 'Info'; Value = if ($pesterNotRun -gt 0) { 'No test cases executed; some discovered cases were not run.' } else { 'No test case results were provided.' } }
-              ))
-            }
+            $pesterRows = @(
+              @{ Metric = 'Total'; Value = '0' },
+              @{ Metric = 'Passed'; Value = "✅ $pesterPassed" },
+              @{ Metric = 'Failed'; Value = "❌ $pesterFailed" },
+              @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" },
+              @{ Metric = 'Not Run'; Value = "⏸️ $pesterNotRun" },
+              @{ Metric = 'Info'; Value = if ($pesterNotRun -gt 0) { 'No test cases executed; some discovered cases were not run.' } else { 'No test case results were provided.' } }
+            )
           }
+
+          function Get-SharedColumnWidths {
+            param(
+              [Parameter(Mandatory = $true)]
+              [object[]]$TableSpecs,
+              [double]$Scale = 1.5
+            )
+
+            $maxFirstColumn = 0
+            $maxSecondColumn = 0
+
+            foreach ($table in $TableSpecs) {
+              $headers = [string[]]$table.Headers
+              $rows = [object[]]$table.Rows
+
+              if ($headers.Count -lt 2) {
+                continue
+              }
+
+              $maxFirstColumn = [math]::Max($maxFirstColumn, $headers[0].Replace("`r", '').Replace("`n", ' ').Length)
+              $maxSecondColumn = [math]::Max($maxSecondColumn, $headers[1].Replace("`r", '').Replace("`n", ' ').Length)
+
+              foreach ($row in $rows) {
+                $firstValue = [string]$row[$headers[0]]
+                $secondValue = [string]$row[$headers[1]]
+                $maxFirstColumn = [math]::Max($maxFirstColumn, $firstValue.Replace("`r", '').Replace("`n", ' ').Length)
+                $maxSecondColumn = [math]::Max($maxSecondColumn, $secondValue.Replace("`r", '').Replace("`n", ' ').Length)
+              }
+            }
+
+            @(
+              [int][math]::Ceiling([math]::Max($maxFirstColumn, 3) * $Scale),
+              [int][math]::Ceiling([math]::Max($maxSecondColumn, 3) * $Scale)
+            )
+          }
+
+          $sharedColumnWidths = Get-SharedColumnWidths -TableSpecs @(
+            @{ Headers = @('Item', 'Value'); Rows = $ciInfoRows },
+            @{ Headers = @('Step', 'Result'); Rows = $stepRows },
+            @{ Headers = @('Metric', 'Value'); Rows = $pesterRows }
+          ) -Scale 1.5
+
+          $sections = @(
+            @{
+              activityTitle = 'CI Info'
+              text          = (New-MarkdownTable -Headers @('Item', 'Value') -Rows $ciInfoRows -ColumnWidths $sharedColumnWidths)
+            },
+            @{
+              activityTitle = 'Stage: Pipeline Steps'
+              text          = (New-MarkdownTable -Headers @('Step', 'Result') -Rows $stepRows -ColumnWidths $sharedColumnWidths)
+            },
+            @{
+              activityTitle = 'Pester Test Results'
+              text          = (New-MarkdownTable -Headers @('Metric', 'Value') -Rows $pesterRows -ColumnWidths $sharedColumnWidths)
+            }
+          )
 
           if ($diagnostics.Count -gt 0) {
             $sections += @{
