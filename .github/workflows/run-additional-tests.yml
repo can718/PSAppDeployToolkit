@@ -407,11 +407,11 @@ jobs:
   notify-teams:
     name: Notify Teams
     needs: run-additional-tests
-    if: ${{ always() }}
+    if: ${{ always() }} # notify even if tests fail so the team can investigate
     uses: ./.github/workflows/notify_teams.yml
     with:
-      job_status:     ${{ needs.run-additional-tests.result }}
-      steps_json:     ${{ needs.run-additional-tests.outputs.steps_json }}
+      job_status:     ${{ needs.run-additional-tests.result || 'failed' }}
+      steps_json:     ${{ needs.run-additional-tests.outputs.steps_json || '{}' }}
       pester_discovered: ${{ needs.run-additional-tests.outputs.pester_discovered || '0' }}
       pester_total:   ${{ needs.run-additional-tests.outputs.pester_total   || '0' }}
       pester_passed:  ${{ needs.run-additional-tests.outputs.pester_passed  || '0' }}

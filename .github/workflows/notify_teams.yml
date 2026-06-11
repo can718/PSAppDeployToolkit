@@ -12,31 +12,31 @@ on:
         default: '{}'
       pester_discovered:
         required: false
-        type: number
-        default: 0
+        type: string
+        default: '0'
       pester_total:
         required: false
-        type: number
-        default: 0
+        type: string
+        default: '0'
       pester_passed:
         required: false
-        type: number
-        default: 0
+        type: string
+        default: '0'
       pester_failed:
         required: false
-        type: number
-        default: 0
+        type: string
+        default: '0'
       pester_skipped:
         required: false
-        type: number
-        default: 0
+        type: string
+        default: '0'
       pester_notrun:
         required: false
-        type: number
-        default: 0
+        type: string
+        default: '0'
 jobs:
   send:
-    if: ${{ always() }}
+    name: Send Notification
     runs-on: windows-latest
     steps:
       - name: send msg
