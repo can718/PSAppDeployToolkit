@@ -140,7 +140,7 @@ Describe 'Intune Tests' {
 
             # --- Step 1: Prepare working directory ---
             $env = New-IntuneTestWorkDir `
-                -AppName            $script:VlcAppFolderName `
+                -AppFolderName      $script:VlcAppFolderName `
                 -BasePath           $script:BasePath `
                 -InstallerSourceDir 'C:\Tools\Intune\vlc' `
                 -RunnerScriptPath   $runnerScript
@@ -227,7 +227,7 @@ Describe 'Intune Tests' {
 
             # --- Step 1: Prepare working directory ---
             $env = New-IntuneTestWorkDir `
-                -AppName            $script:WinScpAppFolderName `
+                -AppFolderName      $script:WinScpAppFolderName `
                 -BasePath           $script:BasePath `
                 -InstallerSourceDir 'C:\Tools\Intune\WinSCP' `
                 -RunnerScriptPath   $runnerScript
@@ -253,7 +253,6 @@ Describe 'Intune Tests' {
             $win32App = Publish-IntuneWin32App `
                 -FilePath      $package.IntuneWinPath `
                 -DisplayName   $script:WinScpIntuneDisplayName `
-                -AppName       $script:WinScpAppFolderName `
                 -DetectionRule $DetectionRule
             $win32App | Should -Not -BeNullOrEmpty
 
