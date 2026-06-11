@@ -188,7 +188,7 @@ function New-IntuneTestWorkDir
     #>
     param (
         [Parameter(Mandatory)]
-        [string]$AppName,
+        [string]$AppFolderName,
 
         [Parameter(Mandatory)]
         [string]$BasePath,
@@ -200,7 +200,7 @@ function New-IntuneTestWorkDir
         [string]$RunnerScriptPath
     )
 
-    $workDir = Join-Path $BasePath $AppName
+    $workDir = Join-Path $BasePath $AppFolderName
     New-Item -Path $workDir -ItemType Directory -Force | Out-Null
 
     # Step 1: Copy PSADT v4 template
@@ -210,7 +210,7 @@ function New-IntuneTestWorkDir
         throw "PSADT v4 template folder missing: $v4Path"
     }
     Copy-Item -Path (Join-Path $v4Path '*') -Destination $workDir -Recurse -Force
-    Write-Information "[$AppName] Copied PSADT template from '$v4Path' to '$workDir'." -InformationAction Continue
+    Write-Information "[$AppFolderName] Copied PSADT template from '$v4Path' to '$workDir'." -InformationAction Continue
 
     # Step 2: Copy installer files
     $filesDir = Join-Path $workDir 'Files'
@@ -224,12 +224,12 @@ function New-IntuneTestWorkDir
         throw "No installer file found in '$InstallerSourceDir'."
     }
     Copy-Item -Path $installerFile.FullName -Destination $filesDir -Force
-    Write-Information "[$AppName] Copied installer '$($installerFile.Name)' to '$filesDir'." -InformationAction Continue
+    Write-Information "[$AppFolderName] Copied installer '$($installerFile.Name)' to '$filesDir'." -InformationAction Continue
 
     # Step 3: Copy Invoke-AppDeployToolkit.ps1 runner script
     $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
     Copy-Item -Path $RunnerScriptPath -Destination $targetScript -Force
-    Write-Information "[$AppName] Copied runner script to '$targetScript'." -InformationAction Continue
+    Write-Information "[$AppFolderName] Copied runner script to '$targetScript'." -InformationAction Continue
 
     return @{
         WorkDir = $workDir
@@ -356,9 +356,6 @@ function Publish-IntuneWin32App
         [string]$DisplayName,
 
         [Parameter(Mandatory)]
-        [string]$AppName,
-
-        [Parameter(Mandatory)]
         [object]$DetectionRule,
 
         [object]$RequirementRule,
@@ -380,7 +377,7 @@ function Publish-IntuneWin32App
     $null = Remove-ExistingIntuneWin32App -DisplayName $DisplayName
 
     $null = Add-IntuneWin32App -FilePath $FilePath -DisplayName $DisplayName `
-        -Description "PSADT $AppName deployment" `
+        -Description "PSADT $DisplayName deployment" `
         -Publisher $Publisher -InstallExperience 'system' -RestartBehavior 'suppress' `
         -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
         -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd
@@ -515,9 +512,6 @@ function Wait-AppInstallation
     #>
     param (
         [Parameter(Mandatory)]
-        [string]$AppName,
-
-        [Parameter(Mandatory)]
         [string]$DisplayName,
 
         [Parameter(Mandatory)]
@@ -538,7 +532,7 @@ function Wait-AppInstallation
     $waited = 0
     $verified = $false
 
-    Write-Information "Polling for $AppName installation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
+    Write-Information "Polling for $DisplayName installation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
     while ($waited -lt $MaxWaitSeconds)
     {
         foreach ($root in $uninstallRoots)
@@ -550,7 +544,7 @@ function Wait-AppInstallation
                 if ($props -and $props.DisplayName -eq $DisplayName -and $props.$ValueName -eq $ExpectedValue)
                 {
                     $verified = $true
-                    Write-Information "$AppName $ExpectedValue detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
+                    Write-Information "$DisplayName detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
                     break
                 }
             }
@@ -558,12 +552,96 @@ function Wait-AppInstallation
         }
         if ($verified) { break }
 
-        Write-Information "$AppName not yet installed; waiting $PollIntervalSeconds s... ($waited / $MaxWaitSeconds s elapsed)" -InformationAction Continue
+        Write-Information "$DisplayName not yet installed; waiting $PollIntervalSeconds s... ($waited / $MaxWaitSeconds s elapsed)" -InformationAction Continue
         Start-Sleep -Seconds $PollIntervalSeconds
         $waited += $PollIntervalSeconds
     }
 
     return $verified
+}
+
+function Wait-AppUninstallation
+{
+    <#
+    .SYNOPSIS
+        Polls registry uninstall keys until a specific app version is no longer
+        present, checking both native and WOW6432Node paths.
+    .DESCRIPTION
+        Enumerates all subkeys under the Uninstall registry paths and matches
+        by DisplayName. Returns $true once the app is no longer found within
+        the timeout, $false if it is still detected after the timeout expires.
+    .OUTPUTS
+        $true if the app was confirmed removed within the timeout, $false otherwise.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$DisplayName,
+
+        [Parameter(Mandatory)]
+        [string]$ValueName,
+
+        [Parameter(Mandatory)]
+        [string]$ExpectedValue,
+
+        [int]$MaxWaitSeconds = 900,
+        [int]$PollIntervalSeconds = 60,
+        [int]$SyncIntervalSeconds = 300
+    )
+
+    $uninstallRoots = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+
+    $waited = 0
+    $removed = $false
+    $nextSyncAt = 0
+
+    Write-Information "Polling for $DisplayName uninstallation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
+    while ($waited -lt $MaxWaitSeconds)
+    {
+        $found = $false
+        foreach ($root in $uninstallRoots)
+        {
+            $subKeys = Get-ChildItem -Path $root -ErrorAction SilentlyContinue
+            foreach ($subKey in $subKeys)
+            {
+                $props = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
+                if ($props -and $props.DisplayName -eq $DisplayName -and $props.$ValueName -eq $ExpectedValue)
+                {
+                    $found = $true
+                    break
+                }
+            }
+            if ($found) { break }
+        }
+
+        if (-not $found)
+        {
+            $removed = $true
+            Write-Information "$DisplayName no longer detected in registry after $waited s." -InformationAction Continue
+            break
+        }
+
+        # Trigger MDM sync and restart IME at regular intervals to accelerate uninstall.
+        if ($waited -ge $nextSyncAt)
+        {
+            Write-Information "$DisplayName still installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
+            Invoke-MdmSync
+            $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
+            if ($imeSvc)
+            {
+                Restart-Service -Name 'IntuneManagementExtension' -Force -ErrorAction SilentlyContinue
+            }
+            $nextSyncAt = $waited + $SyncIntervalSeconds
+        }
+
+        Write-Information "$DisplayName still installed; waiting $PollIntervalSeconds s... ($waited / $MaxWaitSeconds s elapsed)" -InformationAction Continue
+        Start-Sleep -Seconds $PollIntervalSeconds
+        $waited += $PollIntervalSeconds
+    }
+
+    return $removed
 }
 
 # ---------------------------------------------------------------------------
