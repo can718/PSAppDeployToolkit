@@ -166,7 +166,19 @@ jobs:
                 return $Value
               }
 
-              return ($Value + ('&nbsp;' * $padding))
+              return ($Value + (' ' * $padding))
+            }
+
+            function Escape-CellText {
+              param(
+                [string]$Value
+              )
+
+              if ($null -eq $Value) {
+                return ''
+              }
+
+              return $Value.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;')
             }
 
             $effectiveColumnWidths = @()
@@ -179,31 +191,39 @@ jobs:
               }
             }
 
-            $paddedHeaders = @()
-            for ($i = 0; $i -lt $Headers.Count; $i++) {
-              $paddedHeaders += (Pad-Cell -Value $Headers[$i] -TargetLength $effectiveColumnWidths[$i])
-            }
+            $w1 = [math]::Max($effectiveColumnWidths[0], 3)
+            $w2 = [math]::Max($effectiveColumnWidths[1], 3)
+            $border = '+' + ('-' * ($w1 + 2)) + '+' + ('-' * ($w2 + 2)) + '+'
 
-            $headerLine = '| ' + ($paddedHeaders -join ' | ') + ' |'
-            $separatorLine = '| ' + (($effectiveColumnWidths | ForEach-Object { '-' * [math]::Max($_, 3) }) -join ' | ') + ' |'
-            $rowLines = @()
+            $headerLeft = Pad-Cell -Value (Escape-CellText -Value $Headers[0]) -TargetLength $w1
+            $headerRight = Pad-Cell -Value (Escape-CellText -Value $Headers[1]) -TargetLength $w2
+
+            $lines = @()
+            $lines += $border
+            $lines += '| ' + $headerLeft + ' | ' + $headerRight + ' |'
+            $lines += $border
             foreach ($row in $Rows) {
-              $cells = @()
-              for ($i = 0; $i -lt $Headers.Count; $i++) {
-                $header = $Headers[$i]
-                $value = [string]$row[$header]
-                if ($null -eq $value) {
-                  $value = ''
-                }
+              $leftValue = [string]$row[$Headers[0]]
+              $rightValue = [string]$row[$Headers[1]]
 
-                $value = $value.Replace('|', '\|').Replace("`r", ' ').Replace("`n", '<br/>')
-                $cells += (Pad-Cell -Value $value -TargetLength $effectiveColumnWidths[$i])
+              if ($null -eq $leftValue) {
+                $leftValue = ''
               }
 
-              $rowLines += ('| ' + ($cells -join ' | ') + ' |')
-            }
+              if ($null -eq $rightValue) {
+                $rightValue = ''
+              }
 
-            @($headerLine, $separatorLine) + $rowLines -join "`n"
+              $leftValue = Escape-CellText -Value $leftValue.Replace("`r", ' ').Replace("`n", ' ')
+              $rightValue = Escape-CellText -Value $rightValue.Replace("`r", ' ').Replace("`n", ' ')
+
+              $leftPadded = Pad-Cell -Value $leftValue -TargetLength $w1
+              $rightPadded = Pad-Cell -Value $rightValue -TargetLength $w2
+              $lines += '| ' + $leftPadded + ' | ' + $rightPadded + ' |'
+            }
+            $lines += $border
+
+            '<pre>' + ($lines -join "`n") + '</pre>'
           }
 
           $stepRows = @()
