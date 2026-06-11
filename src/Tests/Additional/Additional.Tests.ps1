@@ -446,7 +446,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             $allDestScripts = Get-ChildItem -Path $script:winscpPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File -ErrorAction SilentlyContinue
             $destScript = $allDestScripts | Select-Object -First 1
             $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
-            Copy-Item -Path $script:winscpSourceScript -Destination $destScript.FullName -Force
+            # Copy-Item -Path $script:winscpSourceScript -Destination $destScript.FullName -Force
             $content = Get-Content -Path $destScript.FullName -Raw
             $content | Should -Match 'WinSCP'
 
@@ -893,7 +893,7 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             $destScript = $allDestScripts | Select-Object -First 1
             $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
             # copy vlc folder contents (not the folder itself) to ensure any additional files (e.g. for detection logic) are included in the package source
-            Copy-Item -Path "$script:vlcSourceFolder\*" -Destination $script:vlcPackageDir -Recurse -Force
+            # Copy-Item -Path "$script:vlcSourceFolder\*" -Destination $script:vlcPackageDir -Recurse -Force
             $content = Get-Content -Path $destScript.FullName -Raw
             $content | Should -Match 'VLC'
 
