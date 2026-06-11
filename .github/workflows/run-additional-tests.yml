@@ -39,13 +39,13 @@ jobs:
     needs: discover-agent
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     outputs:
-      steps_json:     ${{ steps.collect-outputs.outputs.steps_json }}
-      pester_discovered: ${{ steps.run-pester.outputs.pester_discovered }}
-      pester_total:   ${{ steps.run-pester.outputs.pester_total }}
-      pester_passed:  ${{ steps.run-pester.outputs.pester_passed }}
-      pester_failed:  ${{ steps.run-pester.outputs.pester_failed }}
-      pester_skipped: ${{ steps.run-pester.outputs.pester_skipped }}
-      pester_notrun:  ${{ steps.run-pester.outputs.pester_notrun }}
+      steps_json:     ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
+      pester_discovered: ${{ steps.run-pester.outputs.pester_discovered || '0' }}
+      pester_total:   ${{ steps.run-pester.outputs.pester_total || '0' }}
+      pester_passed:  ${{ steps.run-pester.outputs.pester_passed || '0' }}
+      pester_failed:  ${{ steps.run-pester.outputs.pester_failed || '0' }}
+      pester_skipped: ${{ steps.run-pester.outputs.pester_skipped || '0' }}
+      pester_notrun:  ${{ steps.run-pester.outputs.pester_notrun || '0' }}
     strategy:
       fail-fast: false
     env:
