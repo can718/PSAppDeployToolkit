@@ -124,6 +124,10 @@ Describe 'Intune Tests' {
             -TFState    $script:TFState `
             -ResultId   $script:TFCurrentResultId `
             -TestResult $____Pester.CurrentTest
+
+        # Clean up any test artifacts from the client registry to ensure a clean slate for the next test.
+        Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\IntuneManagementExtension" -Recurse -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 10 # brief pause to ensure registry changes are committed before the next test starts
     }
 
     Context 'VLC - Wrap, Upload, Assign, Verify, Uninstall' {

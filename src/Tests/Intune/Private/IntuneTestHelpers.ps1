@@ -450,7 +450,7 @@ function Wait-IntuneManagementExtension
         }
 
         if ($waited -ge $MaxWaitSeconds) { break }
-        Write-Information "Waiting for IntuneManagementExtension... ($waited / $MaxWaitSeconds s elapsed)" -InformationAction Continue
+        Write-Information "Waiting for IntuneManagementExtension... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
         Start-Sleep -Seconds $PollIntervalSeconds
         $waited += $PollIntervalSeconds
     }
@@ -547,6 +547,7 @@ function Wait-AppInstallation
                 {
                     $verified = $true
                     Write-Information "'$DisplayName' detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
+                    Write-Information "[Succeed] '$DisplayName' installation verification successful." -InformationAction Continue
                     break
                 }
             }
@@ -635,6 +636,7 @@ function Wait-AppUninstallation
         {
             $removed = $true
             Write-Information "'$DisplayName' no longer detected in registry after $waited s." -InformationAction Continue
+            Write-Information "[Succeed] '$DisplayName' uninstallation verification successful." -InformationAction Continue
             break
         }
 
