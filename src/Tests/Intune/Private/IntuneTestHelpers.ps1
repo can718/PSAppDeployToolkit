@@ -521,7 +521,8 @@ function Wait-AppInstallation
         [string]$ExpectedValue,
 
         [int]$MaxWaitSeconds = 900,
-        [int]$PollIntervalSeconds = 60
+        [int]$PollIntervalSeconds = 60,
+        [int]$SyncIntervalSeconds = 180
     )
 
     $uninstallRoots = @(
@@ -531,6 +532,7 @@ function Wait-AppInstallation
 
     $waited = 0
     $verified = $false
+    $nextSyncAt = 0
 
     Write-Information "Polling for '$DisplayName' installation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
     while ($waited -lt $MaxWaitSeconds)
@@ -551,6 +553,19 @@ function Wait-AppInstallation
             if ($verified) { break }
         }
         if ($verified) { break }
+
+        # Trigger MDM sync and restart IME at regular intervals to accelerate install.
+        if ($waited -ge $nextSyncAt)
+        {
+            Write-Information "'$DisplayName' not yet installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
+            Invoke-MdmSync
+            $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
+            if ($imeSvc)
+            {
+                Restart-Service -Name 'IntuneManagementExtension' -Force -ErrorAction SilentlyContinue
+            }
+            $nextSyncAt = $waited + $SyncIntervalSeconds
+        }
 
         Write-Information "'$DisplayName' not yet installed; waiting $PollIntervalSeconds s... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
         Start-Sleep -Seconds $PollIntervalSeconds

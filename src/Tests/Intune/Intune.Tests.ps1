@@ -189,8 +189,8 @@ Describe 'Intune Tests' {
             }
 
             # --- Step 1: Look up the existing Win32 app in Intune ---
-            $win32App = Get-IntuneWin32App -DisplayName $script:VlcIntuneDisplayName -ErrorAction SilentlyContinue | `
-                Sort-Object -Property createdDateTime -Descending | `
+            $win32App = Get-IntuneWin32App -DisplayName $script:VlcIntuneDisplayName -ErrorAction SilentlyContinue |
+                Sort-Object -Property createdDateTime -Descending |
                 Select-Object -First 1
             $win32App | Should -Not -BeNullOrEmpty -Because 'VLC Win32 app must exist in Intune from the install test'
 
@@ -281,8 +281,8 @@ Describe 'Intune Tests' {
             }
 
             # --- Step 1: Look up the existing Win32 app in Intune ---
-            $win32App = Get-IntuneWin32App -DisplayName $script:WinScpIntuneDisplayName -ErrorAction SilentlyContinue | `
-                Sort-Object -Property createdDateTime -Descending | `
+            $win32App = Get-IntuneWin32App -DisplayName $script:WinScpIntuneDisplayName -ErrorAction SilentlyContinue |
+                Sort-Object -Property createdDateTime -Descending |
                 Select-Object -First 1
             $win32App | Should -Not -BeNullOrEmpty -Because 'WinSCP Win32 app must exist in Intune from the install test'
 
