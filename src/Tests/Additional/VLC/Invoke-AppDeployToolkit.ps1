@@ -25,7 +25,7 @@ Disables logging to file for the script.
 .EXAMPLE
 Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent
 #>
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseDeclaredVarsMoreThanAssignments", "", Justification = "Ignore unused variables in this script")]
 [CmdletBinding()]
 param
 (
@@ -34,10 +34,10 @@ param
     [ValidateSet('Install', 'Uninstall', 'Repair')]
     [System.String]$DeploymentType,
 
-    # Hardcoded to 'Silent' for unattended SCCM / GitHub Actions deployments.
+    # Default is 'Auto'. Don't hard-code this unless required.
     [Parameter(Mandatory = $false)]
     [ValidateSet('Auto', 'Interactive', 'NonInteractive', 'Silent')]
-    [System.String]$DeployMode = 'Silent',
+    [System.String]$DeployMode,
 
     [Parameter(Mandatory = $false)]
     [System.Management.Automation.SwitchParameter]$SuppressRebootPassThru,
@@ -51,36 +51,43 @@ param
 
 ## MARK: Variables
 $adtSession = @{
-    AppVendor                   = 'VideoLAN'
-    AppName                     = 'VLC media player'
-    AppVersion                  = '3.0.23'
-    AppArch                     = 'x64'
-    AppLang                     = 'EN'
-    AppRevision                 = '01'
-    AppSuccessExitCodes         = @(0)
-    AppRebootExitCodes          = @(1641, 3010)
-    AppProcessesToClose         = @(@{ Name = 'vlc'; Description = 'VLC media player' })
-    RequireAdmin                = $true
+    AppVendor = 'VideoLAN'
+    AppName = 'VLC media player'
+    AppVersion = '3.0.23'
+    AppArch = 'x64'
+    AppLang = 'EN'
+    AppRevision = '01'
+    AppSuccessExitCodes = @(0)
+    AppRebootExitCodes = @(1641, 3010)
+    AppProcessesToClose = @(@{ Name = 'vlc'; Description = 'VLC media player' })
+    RequireAdmin = $true
 
-    AppScriptVersion            = '1.0.0'
-    AppScriptDate               = '2026-04-01'
-    AppScriptAuthor             = 'PSAppDeployToolkit'
+    AppScriptVersion = '1.0.0'
+    AppScriptDate = '2026-04-01'
+    AppScriptAuthor = 'PSAppDeployToolkit'
 
     # Install Titles (Only set here to override defaults set by the toolkit).
-    InstallName                 = ''
-    InstallTitle                = ''
+    InstallName = ''
+    InstallTitle = ''
 
     DeployAppScriptFriendlyName = $MyInvocation.MyCommand.Name
-    DeployAppScriptParameters   = $PSBoundParameters
-    DeployAppScriptVersion      = '4.2.0'
+    DeployAppScriptParameters = $PSBoundParameters
+    DeployAppScriptVersion = '4.2.0'
 }
 
 ## MARK: Pre-Install
 $PreInstall = {
+    $saiwParams = @{
+        AllowDeferCloseProcesses = $true
+        DeferTimes = 3
+        PersistPrompt = $true
+    }
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
+        $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
     }
+    Show-ADTInstallationWelcome @saiwParams
+    Show-ADTInstallationProgress
 }
 
 ## MARK: Install
@@ -92,6 +99,7 @@ $Install = {
 $PostInstall = {
     Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
     Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
+    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Pre-Uninstall
@@ -100,6 +108,7 @@ $PreUninstall = {
     {
         Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
+    Show-ADTInstallationProgress
 }
 
 ## MARK: Uninstall
@@ -117,6 +126,7 @@ $PreRepair = {
     {
         Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
     }
+    Show-ADTInstallationProgress
 }
 
 ## MARK: Repair
@@ -129,6 +139,7 @@ $Repair = {
 $PostRepair = {
     Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
     Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
+    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Initialization

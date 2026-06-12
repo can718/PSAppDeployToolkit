@@ -350,9 +350,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
 
         BeforeAll {
             $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
-            $script:examplesRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\examples'))
-            $script:winscpSourceFolder = Join-Path $script:examplesRoot 'WinSCP'
-            $script:winscpSourceScript = Join-Path $script:winscpSourceFolder 'Invoke-AppDeployToolkit.ps1'
+            $script:winscpSourceScript = Join-Path $PSScriptRoot 'winSCP\Invoke-AppDeployToolkit.ps1'
             $script:winscpPackageDir = 'C:\PSADT\winSCP'
             $script:winscpAppName = 'WinSCP (PSADT v4 winSCP)'
             $script:winscpAppVendor = 'Martin Prikryl'
@@ -422,7 +420,6 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             Write-Information "::info::[winSCP] Step 1: Verifying prerequisites..."
             Test-Path $script:v4Dir | Should -BeTrue -Because "V4 template directory '$script:v4Dir' must exist"
             Write-Information "::info::[winSCP] V4 template directory '$script:v4Dir' verified." -InformationAction Continue
-            Test-Path $script:winscpSourceFolder | Should -BeTrue -Because "examples\WinSCP folder must exist"
             Test-Path $script:winscpSourceScript | Should -BeTrue -Because "winSCP\Invoke-AppDeployToolkit.ps1 must exist"
             Write-Information "::info::[winSCP] winSCP\Invoke-AppDeployToolkit.ps1 verified." -InformationAction Continue
 
@@ -443,13 +440,13 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             Test-Path $script:winscpPackageDir | Should -BeTrue
 
             # ----------------------------------------------------------------
-            # Step 3 - Overlay package with examples\WinSCP content
+            # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with winSCP version
             # ----------------------------------------------------------------
-            Write-Information "::info::[winSCP] Step 3: Overlaying package with examples\\WinSCP content..."
+            Write-Information "::info::[winSCP] Step 3: Replacing Invoke-AppDeployToolkit.ps1 with winSCP version..."
             $allDestScripts = Get-ChildItem -Path $script:winscpPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File -ErrorAction SilentlyContinue
             $destScript = $allDestScripts | Select-Object -First 1
             $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
-            Copy-Item -Path "$script:winscpSourceFolder\*" -Destination $script:winscpPackageDir -Recurse -Force
+            Copy-Item -Path $script:winscpSourceScript -Destination $destScript.FullName -Force
             $content = Get-Content -Path $destScript.FullName -Raw
             $content | Should -Match 'WinSCP'
 
@@ -808,9 +805,8 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
 
         BeforeAll {
             $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
-            $script:examplesRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\examples'))
-            $script:vlcSourceFolder = Join-Path $script:examplesRoot 'VLC'
-            $script:vlcSourceScript = Join-Path $script:vlcSourceFolder 'Invoke-AppDeployToolkit.ps1'
+            $script:vlcSourceScript = Join-Path $PSScriptRoot 'VLC\Invoke-AppDeployToolkit.ps1'
+            $script:vlcSourceFolder = Join-Path $PSScriptRoot 'VLC'
             $script:vlcPackageDir = 'C:\PSADT\VLC'
             $script:vlcAppName = 'VLC media player (PSADT v4 VLC)'
             $script:vlcAppVendor = 'VideoLAN'
@@ -876,7 +872,6 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
                 return
             }
             Test-Path $script:v4Dir | Should -BeTrue -Because 'V4 template directory must exist'
-            Test-Path $script:vlcSourceFolder | Should -BeTrue -Because 'examples\VLC folder must exist'
             Test-Path $script:vlcSourceScript | Should -BeTrue -Because 'VLC\Invoke-AppDeployToolkit.ps1 must exist'
 
             # ----------------------------------------------------------------
@@ -891,13 +886,13 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             Test-Path $script:vlcPackageDir | Should -BeTrue
 
             # ----------------------------------------------------------------
-            # Step 3 - Overlay package with examples\VLC content
+            # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with VLC version
             # ----------------------------------------------------------------
-            Write-Verbose '[VLC] Step 3: Overlaying package with examples\VLC content...'
+            Write-Verbose '[VLC] Step 3: Replacing Invoke-AppDeployToolkit.ps1 with VLC version...'
             $allDestScripts = Get-ChildItem -Path $script:vlcPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File -ErrorAction SilentlyContinue
             $destScript = $allDestScripts | Select-Object -First 1
             $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
-            # Copy example contents (not the parent folder) so SupportFiles and script overrides are applied.
+            # copy vlc folder contents (not the folder itself) to ensure any additional files (e.g. for detection logic) are included in the package source
             Copy-Item -Path "$script:vlcSourceFolder\*" -Destination $script:vlcPackageDir -Recurse -Force
             $content = Get-Content -Path $destScript.FullName -Raw
             $content | Should -Match 'VLC'
