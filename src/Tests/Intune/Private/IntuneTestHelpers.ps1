@@ -599,7 +599,7 @@ function Wait-AppUninstallation
         [Parameter(Mandatory)]
         [string]$ExpectedValue,
 
-        [int]$MaxWaitSeconds = 900,
+        [int]$MaxWaitSeconds = 1200,
         [int]$PollIntervalSeconds = 60,
         [int]$SyncIntervalSeconds = 180
     )

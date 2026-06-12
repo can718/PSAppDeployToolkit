@@ -340,7 +340,8 @@ Describe 'Intune Tests' {
         Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
         if ($script:GroupID)
         {
-            Remove-IntuneTestGroup -TenantId $script:TenantID -ClientId $script:ClientID -ClientSecret $script:ClientSecret -GroupID $script:GroupID
+            Remove-MgGroup -GroupId $script:GroupID -ErrorAction Stop
+            Start-Sleep -Seconds 5
         }
     }
 }
