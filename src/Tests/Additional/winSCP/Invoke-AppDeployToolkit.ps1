@@ -25,6 +25,7 @@ Disables logging to file for the script.
 .EXAMPLE
 Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseDeclaredVarsMoreThanAssignments", "", Justification = "Ignore unused variables in this script")]
 [CmdletBinding()]
 param
 (
