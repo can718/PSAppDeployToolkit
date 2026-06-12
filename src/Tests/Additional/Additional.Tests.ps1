@@ -575,7 +575,7 @@ if ($app) { Write-Host "Installed" }
                     -LogonRequirementType      WhetherOrNotUserLoggedOn `
                     -RebootBehavior            BasedOnExitCode `
                     -SlowNetworkDeploymentMode Download `
-                    -RequireUserInteraction    $true `
+                    -RequireUserInteraction `
                     -MaximumRuntimeMins        30 `
                     -EstimatedRuntimeMins      5 | Out-Null
 
@@ -1023,7 +1023,7 @@ if ($app) { Write-Host "Installed" }
                     -LogonRequirementType      WhetherOrNotUserLoggedOn `
                     -RebootBehavior            BasedOnExitCode `
                     -SlowNetworkDeploymentMode Download `
-                    -RequireUserInteraction    $true `
+                    -RequireUserInteraction `
                     -MaximumRuntimeMins        30 `
                     -EstimatedRuntimeMins      5 | Out-Null
 
