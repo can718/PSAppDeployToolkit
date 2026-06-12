@@ -531,7 +531,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
 
                 $installCmd = if (Test-Path (Join-Path $script:winscpPackageDir 'Invoke-AppDeployToolkit.exe'))
                 {
-                    'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+                    'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive'
                 }
                 else
                 {
@@ -539,7 +539,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
                 }
                 $uninstallCmd = if (Test-Path (Join-Path $script:winscpPackageDir 'Invoke-AppDeployToolkit.exe'))
                 {
-                    'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
+                    'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
                 }
                 else
                 {
@@ -979,7 +979,7 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
 
                 $installCmd = if (Test-Path (Join-Path $script:vlcPackageDir 'Invoke-AppDeployToolkit.exe'))
                 {
-                    'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+                    'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive'
                 }
                 else
                 {
@@ -987,7 +987,7 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
                 }
                 $uninstallCmd = if (Test-Path (Join-Path $script:vlcPackageDir 'Invoke-AppDeployToolkit.exe'))
                 {
-                    'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
+                    'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
                 }
                 else
                 {
