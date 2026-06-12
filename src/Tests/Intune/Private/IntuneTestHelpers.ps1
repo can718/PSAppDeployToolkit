@@ -532,7 +532,7 @@ function Wait-AppInstallation
     $waited = 0
     $verified = $false
 
-    Write-Information "Polling for $DisplayName installation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
+    Write-Information "Polling for '$DisplayName' installation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
     while ($waited -lt $MaxWaitSeconds)
     {
         foreach ($root in $uninstallRoots)
@@ -544,7 +544,7 @@ function Wait-AppInstallation
                 if ($props -and $props.DisplayName -eq $DisplayName -and $props.$ValueName -eq $ExpectedValue)
                 {
                     $verified = $true
-                    Write-Information "$DisplayName detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
+                    Write-Information "'$DisplayName' detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
                     break
                 }
             }
@@ -552,7 +552,7 @@ function Wait-AppInstallation
         }
         if ($verified) { break }
 
-        Write-Information "$DisplayName not yet installed; waiting $PollIntervalSeconds s... ($waited / $MaxWaitSeconds s elapsed)" -InformationAction Continue
+        Write-Information "'$DisplayName' not yet installed; waiting $PollIntervalSeconds s... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
         Start-Sleep -Seconds $PollIntervalSeconds
         $waited += $PollIntervalSeconds
     }
@@ -585,7 +585,7 @@ function Wait-AppUninstallation
 
         [int]$MaxWaitSeconds = 900,
         [int]$PollIntervalSeconds = 60,
-        [int]$SyncIntervalSeconds = 300
+        [int]$SyncIntervalSeconds = 180
     )
 
     $uninstallRoots = @(
@@ -597,7 +597,7 @@ function Wait-AppUninstallation
     $removed = $false
     $nextSyncAt = 0
 
-    Write-Information "Polling for $DisplayName uninstallation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
+    Write-Information "Polling for '$DisplayName' uninstallation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
     while ($waited -lt $MaxWaitSeconds)
     {
         $found = $false
@@ -619,14 +619,14 @@ function Wait-AppUninstallation
         if (-not $found)
         {
             $removed = $true
-            Write-Information "$DisplayName no longer detected in registry after $waited s." -InformationAction Continue
+            Write-Information "'$DisplayName' no longer detected in registry after $waited s." -InformationAction Continue
             break
         }
 
         # Trigger MDM sync and restart IME at regular intervals to accelerate uninstall.
         if ($waited -ge $nextSyncAt)
         {
-            Write-Information "$DisplayName still installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
+            Write-Information "'$DisplayName' still installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
             Invoke-MdmSync
             $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
             if ($imeSvc)
@@ -636,7 +636,7 @@ function Wait-AppUninstallation
             $nextSyncAt = $waited + $SyncIntervalSeconds
         }
 
-        Write-Information "$DisplayName still installed; waiting $PollIntervalSeconds s... ($waited / $MaxWaitSeconds s elapsed)" -InformationAction Continue
+        Write-Information "'$DisplayName' still installed; waiting $PollIntervalSeconds s... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
         Start-Sleep -Seconds $PollIntervalSeconds
         $waited += $PollIntervalSeconds
     }
