@@ -413,9 +413,8 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             # Step 6 - Import application into SCCM
             # ----------------------------------------------------------------
             Write-Verbose '[winSCP] Step 6: Importing winSCP application into SCCM...'
-            $script:WinSCPSiteOriginalLocation = Enter-CMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath
-            try
-            {
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                Write-Information '::info::[winSCP] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
                 $detectScript = @'
 $uninstallRoots = @(
     'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -463,10 +462,6 @@ if ($app) { Write-Host "Installed" }
                 Write-Information $deploymentSummary -InformationAction Continue
                 $script:winscpInstallDeploySucceeded = $true
             }
-            finally
-            {
-                Exit-CMSiteContext -OriginalLocation $script:WinSCPSiteOriginalLocation
-            }
         }
 
         It 'Creates uninstall deployment after winSCP install deployment succeeds' {
@@ -488,9 +483,7 @@ if ($app) { Write-Host "Installed" }
                 return
             }
 
-            $script:WinSCPSiteOriginalLocation = Enter-CMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath
-            try
-            {
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 $app = Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue
                 $app | Should -Not -BeNullOrEmpty -Because 'winSCP application must exist before creating uninstall deployment'
 
@@ -501,10 +494,6 @@ if ($app) { Write-Host "Installed" }
                 # ----------------------------------------------------------------
                 Write-Information '[winSCP] Step 9: Polling uninstall deployment status...' -InformationAction Continue
                 [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:winscpAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
-            }
-            finally
-            {
-                Exit-CMSiteContext -OriginalLocation $script:WinSCPSiteOriginalLocation
             }
         }
     }
@@ -625,9 +614,8 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             # Step 6 - Import application into SCCM
             # ----------------------------------------------------------------
             Write-Verbose '[VLC] Step 6: Importing VLC application into SCCM...'
-            $script:VLCSiteOriginalLocation = Enter-CMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath
-            try
-            {
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                Write-Information '::info::[VLC] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
                 $detectScript = @'
 $uninstallRoots = @(
     'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -675,10 +663,6 @@ if ($app) { Write-Host "Installed" }
                 Write-Information $deploymentSummary -InformationAction Continue
                 $script:vlcInstallDeploySucceeded = $true
             }
-            finally
-            {
-                Exit-CMSiteContext -OriginalLocation $script:VLCSiteOriginalLocation
-            }
         }
 
         It 'Creates uninstall deployment after VLC install deployment succeeds' {
@@ -700,9 +684,7 @@ if ($app) { Write-Host "Installed" }
                 return
             }
 
-            $script:VLCSiteOriginalLocation = Enter-CMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath
-            try
-            {
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 $app = Get-CMApplication -Name $script:vlcAppName -ErrorAction SilentlyContinue
                 $app | Should -Not -BeNullOrEmpty -Because 'VLC application must exist before creating uninstall deployment'
 
@@ -713,10 +695,6 @@ if ($app) { Write-Host "Installed" }
                 # ----------------------------------------------------------------
                 Write-Information '[VLC] Step 9: Polling uninstall deployment status...' -InformationAction Continue
                 [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:vlcAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
-            }
-            finally
-            {
-                Exit-CMSiteContext -OriginalLocation $script:VLCSiteOriginalLocation
             }
         }
     }

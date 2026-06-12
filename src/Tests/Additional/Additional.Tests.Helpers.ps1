@@ -1,4 +1,4 @@
-function script:Invoke-WinSCPSccmClientEvaluation
+﻿function script:Invoke-WinSCPSccmClientEvaluation
 {
     Write-Information "Triggering policy/application/update evaluation" -InformationAction Continue
 
@@ -463,7 +463,8 @@ function script:Enter-CMSiteContext
     {
         New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $SiteServer | Out-Null
     }
-    Set-Location ($SiteCode + ':')
+    $siteDrive = [string]::Concat($SiteCode, [char]58)
+    Set-Location -Path $siteDrive
     return $originalLocation
 }
 
@@ -476,6 +477,30 @@ function script:Exit-CMSiteContext
     if ($OriginalLocation)
     {
         Set-Location $OriginalLocation
+    }
+}
+
+function script:Invoke-PSADTInCMSiteContext
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SiteCode,
+        [Parameter(Mandatory = $true)]
+        [string]$SiteServer,
+        [Parameter(Mandatory = $true)]
+        [string]$CmModulePath,
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$ScriptBlock
+    )
+
+    $originalLocation = Enter-CMSiteContext -SiteCode $SiteCode -SiteServer $SiteServer -CmModulePath $CmModulePath
+    try
+    {
+        & $ScriptBlock
+    }
+    finally
+    {
+        Exit-CMSiteContext -OriginalLocation $originalLocation
     }
 }
 
