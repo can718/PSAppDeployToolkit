@@ -211,6 +211,19 @@ Describe 'Intune Tests' {
                 -ExpectedValue   $script:VlcRegVersionValue
             $uninstallVerified | Should -BeTrue -Because "VLC should be removed from the Uninstall registry key within the polling window after uninstallation"
         }
+
+        AfterAll {
+            # Clean up Intune Win32 app after tests.
+            Write-Information "Cleaning up Intune Win32 app for VLC..." -InformationAction Continue
+            if ($script:VlcIntuneDisplayName)
+            {
+                $win32App = Get-IntuneWin32App -DisplayName $script:VlcIntuneDisplayName -ErrorAction SilentlyContinue
+                if ($win32App)
+                {
+                    Remove-IntuneWin32App -ID $win32App.id -Verbose
+                }
+            }
+        }
     }
 
     Context 'WinSCP - Wrap, Upload, Assign, Verify, Uninstall' {
@@ -302,6 +315,28 @@ Describe 'Intune Tests' {
                 -ValueName       $script:WinScpRegVersionName `
                 -ExpectedValue   $script:WinScpRegVersionValue
             $uninstallVerified | Should -BeTrue -Because "WinSCP should be removed from the Uninstall registry key within the polling window after uninstallation"
+        }
+
+        AfterAll {
+            # Clean up Intune Win32 app after tests.
+            Write-Information "Cleaning up Intune Win32 app for WinSCP..." -InformationAction Continue
+            if ($script:WinScpIntuneDisplayName)
+            {
+                $win32App = Get-IntuneWin32App -DisplayName $script:WinScpIntuneDisplayName -ErrorAction SilentlyContinue
+                if ($win32App)
+                {
+                    Remove-IntuneWin32App -ID $win32App.id -Verbose
+                }
+            }
+        }
+    }
+
+    AfterAll {
+        # Clean up Azure AD test group.
+        Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
+        if ($script:GroupID)
+        {
+            Remove-IntuneTestGroup -TenantId $script:TenantID -ClientId $script:ClientID -ClientSecret $script:ClientSecret -GroupID $script:GroupID
         }
     }
 }
