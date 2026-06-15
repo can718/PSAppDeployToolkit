@@ -214,12 +214,22 @@ jobs:
             }
 
             $rawValue = [string]$stepsObject[$stepName]
-            $normalizedOutcome = $rawValue.Trim().ToLowerInvariant()
+            $rawValue = $rawValue.Trim()
+            
+            # Parse "outcome | time" format or just "outcome"
+            $outcome = $rawValue
+            $time = ''
+            if ($rawValue -match '^\s*(.+?)\s*\|\s*(.+?)\s*$') {
+              $outcome = $matches[1]
+              $time = $matches[2]
+            }
+            
+            $normalizedOutcome = $outcome.ToLowerInvariant()
             if ([string]::IsNullOrWhiteSpace($normalizedOutcome)) {
               $normalizedOutcome = 'unknown'
             }
 
-            $displayValue = if ($outcomeMap.ContainsKey($normalizedOutcome)) {
+            $displayStatus = if ($outcomeMap.ContainsKey($normalizedOutcome)) {
               $outcomeMap[$normalizedOutcome]
             }
             else {
@@ -227,8 +237,9 @@ jobs:
             }
 
             $stepRows += @{
-              Step   = $normalizedStepName
-              Result = $displayValue
+              'Step Name' = $normalizedStepName
+              'Status' = $displayStatus
+              'Time Consuming' = if ([string]::IsNullOrWhiteSpace($time)) { '-' } else { $time }
             }
           }
 
@@ -241,16 +252,18 @@ jobs:
 
           if ($stepRows.Count -eq 0) {
             $stepRows += @{
-              Step   = 'Pipeline Job Result'
-              Result = $jobResultDisplay
+              'Step Name' = 'Pipeline Job Result'
+              'Status' = $jobResultDisplay
+              'Time Consuming' = '-'
             }
             $stepRows += @{
-              Step   = 'Details'
-              Result = 'No step outcomes were provided.'
+              'Step Name' = 'Details'
+              'Status' = 'No step outcomes were provided.'
+              'Time Consuming' = '-'
             }
           }
 
-          $stepRows = $stepRows | Sort-Object -Property Step
+          $stepRows = $stepRows | Sort-Object -Property 'Step Name'
 
           $workflowName = ([string]$env:WORKFLOW).Trim()
           if ([string]::IsNullOrWhiteSpace($workflowName)) {
@@ -379,12 +392,19 @@ jobs:
 
           $sharedColumnWidths = Get-SharedColumnWidths -TableSpecs @(
             @{ Headers = @('Item', 'Value'); Rows = $ciInfoRows },
-            @{ Headers = @('Step', 'Result'); Rows = $stepRows },
             @{ Headers = @('Metric', 'Value'); Rows = $pesterRows }
           ) -Scale 1.5
 
+          # Calculate column widths for 3-column steps table
+          $stepColumnWidths = @(15, 25, 12)
+          foreach ($row in $stepRows) {
+            $stepColumnWidths[0] = [math]::Max($stepColumnWidths[0], $row['Step Name'].Length)
+            $stepColumnWidths[1] = [math]::Max($stepColumnWidths[1], $row['Status'].Length)
+            $stepColumnWidths[2] = [math]::Max($stepColumnWidths[2], $row['Time Consuming'].Length)
+          }
+
           $ciInfoTable = New-MarkdownTable -Headers @('Item', 'Value') -Rows $ciInfoRows -ColumnWidths $sharedColumnWidths
-          $stepsTable = New-MarkdownTable -Headers @('Step', 'Result') -Rows $stepRows -ColumnWidths $sharedColumnWidths
+          $stepsTable = New-MarkdownTable -Headers @('Step Name', 'Status', 'Time Consuming') -Rows $stepRows -ColumnWidths $stepColumnWidths
           $pesterTable = New-MarkdownTable -Headers @('Metric', 'Value') -Rows $pesterRows -ColumnWidths $sharedColumnWidths
 
           $adaptiveActions = @()

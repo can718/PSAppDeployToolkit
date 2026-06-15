@@ -42,7 +42,7 @@ jobs:
           $payloadByScenario = @{
             success = @{
               job_status = 'success'
-              steps_json = '{"Checkout":"success","Build":"success","Unit Tests":"success","Publish":"success"}'
+              steps_json = '{"Use .NET 8 SDK":"success | 0m 25s","Restore NuGet packages":"success | 0m 43s","Update package version":"success | 0m 2s","Build solution":"success | 0m 8s","Create NuGet package":"success | 0m 17s","Publish to Pipeline Artifacts":"success | 0m 2s"}'
               pester_discovered = '120'
               pester_total = '120'
               pester_passed = '118'
@@ -52,7 +52,7 @@ jobs:
             }
             failure = @{
               job_status = 'failure'
-              steps_json = '{"Checkout":"success","Build":"success","Unit Tests":"failure","Publish":"skipped"}'
+              steps_json = '{"Use .NET 8 SDK":"success | 0m 25s","Restore NuGet packages":"success | 0m 43s","Update package version":"success | 0m 2s","Build solution":"failure | 0m 12s","Unit Tests":"failure | 0m 35s","Publish":"skipped | -"}'
               pester_discovered = '120'
               pester_total = '120'
               pester_passed = '96'
@@ -62,7 +62,7 @@ jobs:
             }
             cancelled = @{
               job_status = 'cancelled'
-              steps_json = '{"Checkout":"success","Build":"cancelled","Unit Tests":"skipped","Publish":"skipped"}'
+              steps_json = '{"Use .NET 8 SDK":"success | 0m 25s","Restore NuGet packages":"success | 0m 43s","Build solution":"cancelled | 0m 8s","Unit Tests":"skipped | -","Publish":"skipped | -"}'
               pester_discovered = '120'
               pester_total = '120'
               pester_passed = '12'
@@ -72,7 +72,7 @@ jobs:
             }
             skipped = @{
               job_status = 'skipped'
-              steps_json = '{"Checkout":"success","Build":"skipped","Unit Tests":"skipped","Publish":"skipped"}'
+              steps_json = '{"Use .NET 8 SDK":"success | 0m 25s","Restore NuGet packages":"skipped | -","Build solution":"skipped | -","Unit Tests":"skipped | -","Publish":"skipped | -"}'
               pester_discovered = '120'
               pester_total = '120'
               pester_passed = '0'
