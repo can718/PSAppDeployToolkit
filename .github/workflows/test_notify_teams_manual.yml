@@ -1,0 +1,110 @@
+name: Test Notify Teams (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Test scenario used to populate sample notification data.
+        required: true
+        default: failure
+        type: choice
+        options:
+          - success
+          - failure
+          - cancelled
+          - skipped
+
+jobs:
+  prepare-test-data:
+    name: Prepare Test Data
+    runs-on: windows-latest
+    outputs:
+      job_status: ${{ steps.build.outputs.job_status }}
+      steps_json: ${{ steps.build.outputs.steps_json }}
+      pester_discovered: ${{ steps.build.outputs.pester_discovered }}
+      pester_total: ${{ steps.build.outputs.pester_total }}
+      pester_passed: ${{ steps.build.outputs.pester_passed }}
+      pester_failed: ${{ steps.build.outputs.pester_failed }}
+      pester_skipped: ${{ steps.build.outputs.pester_skipped }}
+      pester_notrun: ${{ steps.build.outputs.pester_notrun }}
+    steps:
+      - id: build
+        name: Build sample payload
+        shell: pwsh
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+        run: |
+          $scenario = ([string]$env:SCENARIO).Trim().ToLowerInvariant()
+          if ([string]::IsNullOrWhiteSpace($scenario)) {
+            $scenario = 'failure'
+          }
+
+          $payloadByScenario = @{
+            success = @{
+              job_status = 'success'
+              steps_json = '{"Checkout":"success","Build":"success","Unit Tests":"success","Publish":"success"}'
+              pester_discovered = '120'
+              pester_total = '120'
+              pester_passed = '118'
+              pester_failed = '0'
+              pester_skipped = '2'
+              pester_notrun = '0'
+            }
+            failure = @{
+              job_status = 'failure'
+              steps_json = '{"Checkout":"success","Build":"success","Unit Tests":"failure","Publish":"skipped"}'
+              pester_discovered = '120'
+              pester_total = '120'
+              pester_passed = '96'
+              pester_failed = '22'
+              pester_skipped = '1'
+              pester_notrun = '1'
+            }
+            cancelled = @{
+              job_status = 'cancelled'
+              steps_json = '{"Checkout":"success","Build":"cancelled","Unit Tests":"skipped","Publish":"skipped"}'
+              pester_discovered = '120'
+              pester_total = '120'
+              pester_passed = '12'
+              pester_failed = '0'
+              pester_skipped = '8'
+              pester_notrun = '100'
+            }
+            skipped = @{
+              job_status = 'skipped'
+              steps_json = '{"Checkout":"success","Build":"skipped","Unit Tests":"skipped","Publish":"skipped"}'
+              pester_discovered = '120'
+              pester_total = '120'
+              pester_passed = '0'
+              pester_failed = '0'
+              pester_skipped = '0'
+              pester_notrun = '120'
+            }
+          }
+
+          if (-not $payloadByScenario.ContainsKey($scenario)) {
+            $scenario = 'failure'
+          }
+
+          $payload = $payloadByScenario[$scenario]
+
+          foreach ($kv in $payload.GetEnumerator()) {
+            "$($kv.Key)=$($kv.Value)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+          Write-Host "Prepared Teams test payload for scenario: $scenario"
+
+  notify-teams:
+    name: Send Teams Test Notification
+    needs: prepare-test-data
+    uses: ./.github/workflows/notify_teams.yml
+    with:
+      job_status: ${{ needs.prepare-test-data.outputs.job_status }}
+      steps_json: ${{ needs.prepare-test-data.outputs.steps_json }}
+      pester_discovered: ${{ needs.prepare-test-data.outputs.pester_discovered }}
+      pester_total: ${{ needs.prepare-test-data.outputs.pester_total }}
+      pester_passed: ${{ needs.prepare-test-data.outputs.pester_passed }}
+      pester_failed: ${{ needs.prepare-test-data.outputs.pester_failed }}
+      pester_skipped: ${{ needs.prepare-test-data.outputs.pester_skipped }}
+      pester_notrun: ${{ needs.prepare-test-data.outputs.pester_notrun }}
+    secrets: inherit
