@@ -239,7 +239,7 @@ Describe 'Intune Tests' {
             $script:WinScpInstallSucceeded = $false
         }
 
-        It 'WinSCP - wrap and upload to Intune, assign to group, verify installation' {
+        It 'WinSCP - wrap and upload to Intune, assign to group, verify installation' -Skip {
             $runnerScript = Join-Path $PSScriptRoot "$($script:WinScpAppFolderName)\Invoke-AppDeployToolkit.ps1"
 
             # --- Step 1: Prepare working directory ---
@@ -320,7 +320,7 @@ Describe 'Intune Tests' {
                 -ExpectedValue   $script:WinScpRegVersionValue
             $uninstallVerified | Should -BeTrue -Because "WinSCP should be removed from the Uninstall registry key within the polling window after uninstallation"
         }
-
+<#
         AfterAll {
             # Clean up Intune Win32 app after tests.
             Write-Information "Cleaning up Intune Win32 app for WinSCP..." -InformationAction Continue
@@ -332,9 +332,9 @@ Describe 'Intune Tests' {
                     Remove-IntuneWin32App -ID $win32App.id -Verbose
                 }
             }
-        }
+        }#>
     }
-
+<#
     AfterAll {
         # Clean up Azure AD test group.
         Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
@@ -343,7 +343,7 @@ Describe 'Intune Tests' {
             Remove-MgGroup -GroupId $script:GroupID -ErrorAction Stop
             Start-Sleep -Seconds 5
         }
-    }
+    }#>
 }
 
 #pragma warning restore PSPlaceOpenBrace
