@@ -26,8 +26,8 @@ function script:Invoke-WinSCPPollDeploymentStatus
         [string]$AppName,
         [string]$SiteCode,
         [string]$Label = 'Deployment',
-        [int]$MaxWaitSeconds = 3600,
-        [int]$PollInterval = 180
+        [int]$MaxWaitSeconds = 1800,
+        [int]$PollInterval = 60
     )
 
     $elapsed = 0
