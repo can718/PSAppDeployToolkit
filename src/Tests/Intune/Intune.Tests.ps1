@@ -193,8 +193,8 @@ Describe 'Intune Tests' {
             }
 
             # --- Step 1: Look up the existing Win32 app in Intune ---
-            $win32App = Get-IntuneWin32App -DisplayName $script:VlcIntuneDisplayName -ErrorAction SilentlyContinue |
-                Sort-Object -Property createdDateTime -Descending |
+            $win32App = Get-IntuneWin32App -DisplayName $script:VlcIntuneDisplayName -ErrorAction SilentlyContinue | `
+                Sort-Object -Property createdDateTime -Descending | `
                 Select-Object -First 1
             $win32App | Should -Not -BeNullOrEmpty -Because 'VLC Win32 app must exist in Intune from the install test'
 
@@ -298,8 +298,8 @@ Describe 'Intune Tests' {
             }
 
             # --- Step 1: Look up the existing Win32 app in Intune ---
-            $win32App = Get-IntuneWin32App -DisplayName $script:WinScpIntuneDisplayName -ErrorAction SilentlyContinue |
-                Sort-Object -Property createdDateTime -Descending |
+            $win32App = Get-IntuneWin32App -DisplayName $script:WinScpIntuneDisplayName -ErrorAction SilentlyContinue | `
+                Sort-Object -Property createdDateTime -Descending | `
                 Select-Object -First 1
             $win32App | Should -Not -BeNullOrEmpty -Because 'WinSCP Win32 app must exist in Intune from the install test'
 
@@ -336,6 +336,111 @@ Describe 'Intune Tests' {
             }
         }#>
     }
+
+    Context 'Notepad++ - Upgrade' -Skip {
+        BeforeAll {
+            $script:NotepadAppFolderName = 'Notepad'
+            $script:NotepadRegDisplayName = 'Notepad++'
+            $script:NotepadRegVersionValue = '8.9.6.4'
+            $script:NotepadRegVersionName = 'DisplayVersion'
+            $script:NotepadInstallSucceeded = $false
+        }
+
+        It 'Notepad++ - Upgrade test with App Deploy Toolkit' {
+            $runnerScript = Join-Path $PSScriptRoot "$($script:NotepadAppFolderName)\Invoke-AppDeployToolkit.ps1"
+
+
+            # Install a lower version of Notepad++ as a prerequisite for the upgrade test.
+            $installerDir = 'C:\Tools\Intune\Notepad8.9.6.1'
+            $installerPath = Join-Path $installerDir 'npp.8.9.6.1.Installer.x64.exe'
+            if (-not (Test-Path $installerPath))
+            {
+                New-Item -Path $installerDir -ItemType Directory -Force | Out-Null
+                $downloadUrl = 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.1/npp.8.9.6.1.Installer.x64.exe'
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
+            }
+            # Silent install the lower version.
+            Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -NoNewWindow
+
+            $newVersionDir = 'C:\Tools\Intune\Notepad8.9.6.4'
+            if (-not (Test-Path $newVersionDir))
+            {
+                New-Item -Path $newVersionDir -ItemType Directory -Force | Out-Null
+            }
+            $downloadUrl = 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.4/npp.8.9.6.4.Installer.x64.exe'
+            $installerPath = Join-Path $newVersionDir 'npp.8.9.6.4.Installer.x64.exe'
+            if (-not (Test-Path $installerPath))
+            {
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
+            }
+
+            # Pre -- the machine have install lower version of Notepad++ in registry, if not skip the test
+            $lowerVersionInstalled = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++" -Name 'DisplayVersion' -ErrorAction SilentlyContinue
+            if (-not $lowerVersionInstalled -or $lowerVersionInstalled -ge $script:NotepadRegVersionValue)
+            {
+                Set-ItResult -Skipped -Because 'Notepad++ is not currently installed on the machine'
+            }
+
+            # --- Step 1: Prepare working directory ---
+            $env = New-IntuneTestWorkDir `
+                -AppFolderName      $script:NotepadAppFolderName `
+                -BasePath           $script:BasePath `
+                -InstallerSourceDir 'C:\Tools\Intune\Notepad8.9.6.4' `
+                -RunnerScriptPath   $runnerScript
+
+            # --- Step 2: Wrap into .intunewin package ---
+            $package = New-IntuneWinPackage `
+                -WorkDir              $env.WorkDir `
+                -IntuneWinAppUtilPath $script:IntuneWinAppUtil
+            $package.IntuneWinPath | Should -Not -BeNullOrEmpty
+            Test-Path $package.IntuneWinPath | Should -BeTrue
+
+            # --- Step 3: Build detection rule ---
+            $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -StringComparison .\.editorconfi `
+                -KeyPath "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++" `
+                -ValueName "DisplayVersion" -StringComparisonOperator "equal" -StringComparisonValue "8.9.6.4"
+
+            # --- Step 4: Upload to Intune ---
+            $script:NotepadIntuneDisplayName = $package.DisplayName
+            $win32App = Publish-IntuneWin32App `
+                -FilePath      $package.IntuneWinPath `
+                -DisplayName   $script:NotepadIntuneDisplayName `
+                -DetectionRule $DetectionRule
+            $win32App | Should -Not -BeNullOrEmpty
+
+            # --- Step 5: Assign to test group ---
+            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID `
+                -Intent 'required' -Notification 'showAll' -Verbose
+
+            # --- Step 6: Trigger MDM sync and wait for IME ---
+            Wait-IntuneManagementExtension
+
+            # --- Step 7: Poll for app installation on client ---
+            $installVerified = Wait-AppInstallation `
+                -DisplayName     $script:NotepadRegDisplayName `
+                -ValueName       $script:NotepadRegVersionName `
+                -ExpectedValue   $script:NotepadRegVersionValue
+            $installVerified | Should -BeTrue -Because "Notepad++ $($script:NotepadRegVersionValue) should appear in the Uninstall registry key within the polling window"
+
+            # Mark install as succeeded so the uninstall test can proceed.
+            $script:NotepadInstallSucceeded = $true
+        }
+
+        <#
+        AfterAll {
+            # Clean up Intune Win32 app after tests.
+            Write-Information "Cleaning up Intune Win32 app for Notepad++..." -InformationAction Continue
+            if ($script:NotepadIntuneDisplayName)
+            {
+                $win32App = Get-IntuneWin32App -DisplayName $script:NotepadIntuneDisplayName -ErrorAction SilentlyContinue
+                if ($win32App)
+                {
+                    Remove-IntuneWin32App -ID $win32App.id -Verbose
+                }
+            }
+        }#>
+    }
+
     <#
     AfterAll {
         # Clean up Azure AD test group.
