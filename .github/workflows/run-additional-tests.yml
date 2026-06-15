@@ -83,9 +83,23 @@ jobs:
           Write-Host "Node.js not found, installing..."
           $installer = "$env:TEMP\node-lts.msi"
           Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.19.0/node-v20.19.0-x64.msi" -OutFile $installer
-          Start-Process msiexec.exe -Wait -ArgumentList "/I $installer /quiet /norestart"
+          # Install with error checking
+          $process = Start-Process msiexec.exe -ArgumentList "/I `"$installer`" /quiet /norestart" -Wait -PassThru
+          Remove-Item $installer -Force -ErrorAction SilentlyContinue
+          if ($process.ExitCode -ne 0) {
+            throw "Node.js installation failed with exit code: $($process.ExitCode)"
+          }
           # Refresh PATH in current session
           $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+          # Explicitly add the default Node.js install directory in case PATH refresh is incomplete
+          $nodePath = "$env:ProgramFiles\nodejs"
+          if ((Test-Path $nodePath) -and ($env:PATH -notlike "*$nodePath*")) {
+            $env:PATH = "$nodePath;$env:PATH"
+          }
+          # Verify installation
+          if (-not (Test-Path "$nodePath\node.exe")) {
+            throw "Node.js executable not found at expected location: $nodePath\node.exe"
+          }
           Write-Host "Node.js installed: $(node --version)"
         } else {
           Write-Host "Node.js already installed: $(node --version)"
