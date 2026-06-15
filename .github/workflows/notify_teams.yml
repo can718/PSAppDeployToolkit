@@ -42,7 +42,7 @@ jobs:
       - name: send msg
         shell: pwsh
         env:
-          WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
+          WEBHOOK: ${{ secrets.TEAMS_WORKFLOW_WEBHOOK || secrets.TEAMS_WEBHOOK }}
           STATUS: ${{ inputs.job_status }}
           STEPS_JSON: ${{ inputs.steps_json }}
           PESTER_DISCOVERED: ${{ inputs.pester_discovered }}
@@ -62,12 +62,12 @@ jobs:
 
           $webhook = [string]$env:WEBHOOK
           if ([string]::IsNullOrWhiteSpace($webhook)) {
-            Write-Error 'Teams webhook is missing. Cannot send notification.'
+            Write-Error 'Teams Workflow webhook is missing. Cannot send notification.'
             exit 1
           }
 
           if (-not [System.Uri]::IsWellFormedUriString($webhook, [System.UriKind]::Absolute)) {
-            Write-Error 'Teams webhook is not a valid absolute URL. Cannot send notification.'
+            Write-Error 'Teams Workflow webhook is not a valid absolute URL. Cannot send notification.'
             exit 1
           }
 
@@ -383,49 +383,119 @@ jobs:
             @{ Headers = @('Metric', 'Value'); Rows = $pesterRows }
           ) -Scale 1.5
 
-          $sections = @(
+          $ciInfoTable = New-MarkdownTable -Headers @('Item', 'Value') -Rows $ciInfoRows -ColumnWidths $sharedColumnWidths
+          $stepsTable = New-MarkdownTable -Headers @('Step', 'Result') -Rows $stepRows -ColumnWidths $sharedColumnWidths
+          $pesterTable = New-MarkdownTable -Headers @('Metric', 'Value') -Rows $pesterRows -ColumnWidths $sharedColumnWidths
+
+          $adaptiveActions = @()
+          if ($runUrl) {
+            $adaptiveActions += @{
+              type  = 'Action.OpenUrl'
+              title = 'View Workflow Run'
+              url   = $runUrl
+            }
+          }
+
+          $statusColor = switch ($statusKey) {
+            'success' { 'Good' }
+            'failure' { 'Attention' }
+            'cancelled' { 'Warning' }
+            'skipped' { 'Warning' }
+            default { 'Warning' }
+          }
+
+          $cardBody = @(
             @{
-              activityTitle = 'CI Info'
-              text          = (New-MarkdownTable -Headers @('Item', 'Value') -Rows $ciInfoRows -ColumnWidths $sharedColumnWidths)
+              type   = 'TextBlock'
+              size   = 'Large'
+              weight = 'Bolder'
+              text   = "Pipeline: $workflowName"
+              wrap   = $true
             },
             @{
-              activityTitle = 'Stage: Pipeline Steps'
-              text          = (New-MarkdownTable -Headers @('Step', 'Result') -Rows $stepRows -ColumnWidths $sharedColumnWidths)
+              type   = 'TextBlock'
+              color  = $statusColor
+              weight = 'Bolder'
+              text   = "Status: $($statusMeta.Icon) $statusLabel"
+              wrap   = $true
             },
             @{
-              activityTitle = 'Pester Test Results'
-              text          = (New-MarkdownTable -Headers @('Metric', 'Value') -Rows $pesterRows -ColumnWidths $sharedColumnWidths)
+              type = 'TextBlock'
+              text = "Branch: $branchName | Commit: $shortSha"
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = "Message: $commitTitle"
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = "Triggered by: $actorName"
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = 'CI Info'
+              weight = 'Bolder'
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = $ciInfoTable
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = 'Pipeline Steps'
+              weight = 'Bolder'
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = $stepsTable
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = 'Pester Test Results'
+              weight = 'Bolder'
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = $pesterTable
+              wrap = $true
             }
           )
 
           if ($diagnostics.Count -gt 0) {
-            $sections += @{
-              activityTitle = 'Notification Diagnostics'
-              facts         = @(
-                @{ name = 'Warnings'; value = ($diagnostics -join '; ') }
-              )
-            }
-          }
-
-          $actions = @()
-          if ($runUrl) {
-            $actions += @{
-              '@type'  = 'OpenUri'
-              name     = '🔗 View Workflow Run'
-              targets  = @(
-                @{ os = 'default'; uri = $runUrl }
-              )
+            $cardBody += @{
+              type   = 'TextBlock'
+              text   = "Diagnostics: $($diagnostics -join '; ')"
+              wrap   = $true
+              isSubtle = $true
             }
           }
 
           $payload = @{
-            '@type'           = 'MessageCard'
-            '@context'        = 'http://schema.org/extensions'
-            themeColor        = $statusMeta.Color
-            title             = "🚀 Pipeline: $workflowName"
-            text              = "Pipeline Status: **$($statusMeta.Icon) $statusLabel**`n`nBranch: ``$branchName`` · Commit: ``$shortSha`` `n`nMessage: $commitTitle`n`nTriggered by: $actorName"
-            sections          = $sections
-            potentialAction   = $actions
+            type        = 'message'
+            attachments = @(
+              @{
+                contentType = 'application/vnd.microsoft.card.adaptive'
+                contentUrl  = $null
+                content     = @{
+                  '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'
+                  type      = 'AdaptiveCard'
+                  version   = '1.4'
+                  body      = $cardBody
+                  actions   = $adaptiveActions
+                  msteams   = @{
+                    width = 'Full'
+                  }
+                }
+              }
+            )
           }
 
           $payloadJson = $payload | ConvertTo-Json -Depth 10 -Compress
