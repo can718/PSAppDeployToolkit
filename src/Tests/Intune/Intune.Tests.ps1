@@ -310,6 +310,8 @@ Describe 'Intune Tests' {
             Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID `
                 -Intent 'uninstall' -Notification 'showAll' -Verbose
 
+            Start-Sleep -Seconds 5 # brief pause to allow the uninstall intent assignment to register before triggering sync
+
             # --- Step 4: Trigger MDM sync and wait for IME ---
             Wait-IntuneManagementExtension
 
@@ -320,7 +322,7 @@ Describe 'Intune Tests' {
                 -ExpectedValue   $script:WinScpRegVersionValue
             $uninstallVerified | Should -BeTrue -Because "WinSCP should be removed from the Uninstall registry key within the polling window after uninstallation"
         }
-<#
+        <#
         AfterAll {
             # Clean up Intune Win32 app after tests.
             Write-Information "Cleaning up Intune Win32 app for WinSCP..." -InformationAction Continue
@@ -334,7 +336,7 @@ Describe 'Intune Tests' {
             }
         }#>
     }
-<#
+    <#
     AfterAll {
         # Clean up Azure AD test group.
         Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
