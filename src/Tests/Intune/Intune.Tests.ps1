@@ -130,7 +130,7 @@ Describe 'Intune Tests' {
         Start-Sleep -Seconds 10 # brief pause to ensure registry changes are committed before the next test starts
     }
 
-    Context 'VLC - Wrap, Upload, Assign, Verify, Uninstall' {
+    Context 'VLC - Wrap, Upload, Assign, Verify, Uninstall' -Skip {
         BeforeAll {
             $script:VlcAppFolderName = 'VLC'
             $script:VlcRegDisplayName = 'VLC media player'
@@ -239,7 +239,7 @@ Describe 'Intune Tests' {
             $script:WinScpInstallSucceeded = $false
         }
 
-        It 'WinSCP - wrap and upload to Intune, assign to group, verify installation' -Skip {
+        It 'WinSCP - wrap and upload to Intune, assign to group, verify installation' {
             $runnerScript = Join-Path $PSScriptRoot "$($script:WinScpAppFolderName)\Invoke-AppDeployToolkit.ps1"
 
             # --- Step 1: Prepare working directory ---
