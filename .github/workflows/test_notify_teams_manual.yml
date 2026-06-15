@@ -27,6 +27,7 @@ jobs:
       pester_failed: ${{ steps.build.outputs.pester_failed }}
       pester_skipped: ${{ steps.build.outputs.pester_skipped }}
       pester_notrun: ${{ steps.build.outputs.pester_notrun }}
+      cases_json: ${{ steps.build.outputs.cases_json }}
     steps:
       - id: build
         name: Build sample payload
@@ -43,42 +44,46 @@ jobs:
             success = @{
               job_status = 'success'
               steps_json = '{"Use .NET 8 SDK":"success | 0m 25s","Restore NuGet packages":"success | 0m 43s","Update package version":"success | 0m 2s","Build solution":"success | 0m 8s","Create NuGet package":"success | 0m 17s","Publish to Pipeline Artifacts":"success | 0m 2s"}'
-              pester_discovered = '120'
-              pester_total = '120'
-              pester_passed = '118'
+              pester_discovered = '5'
+              pester_total = '5'
+              pester_passed = '5'
               pester_failed = '0'
-              pester_skipped = '2'
+              pester_skipped = '0'
               pester_notrun = '0'
+              cases_json = '{"Template environment variables, directories, and contents are valid":"success | 0m 5s","Builds winSCP package and deploys into SCCM":"success | 1m 23s","Creates uninstall deployment after winSCP install deployment succeeds":"success | 0m 43s","Builds VLC package and deploys into SCCM":"success | 2m 15s","Creates uninstall deployment after VLC install deployment succeeds":"success | 0m 38s"}'
             }
             failure = @{
               job_status = 'failure'
               steps_json = '{"Use .NET 8 SDK":"success | 0m 25s","Restore NuGet packages":"success | 0m 43s","Update package version":"success | 0m 2s","Build solution":"failure | 0m 12s","Unit Tests":"failure | 0m 35s","Publish":"skipped | -"}'
-              pester_discovered = '120'
-              pester_total = '120'
-              pester_passed = '96'
-              pester_failed = '22'
+              pester_discovered = '5'
+              pester_total = '5'
+              pester_passed = '2'
+              pester_failed = '2'
               pester_skipped = '1'
-              pester_notrun = '1'
+              pester_notrun = '0'
+              cases_json = '{"Template environment variables, directories, and contents are valid":"success | 0m 5s","Builds winSCP package and deploys into SCCM":"failure | 0m 8s","Creates uninstall deployment after winSCP install deployment succeeds":"skipped | -","Builds VLC package and deploys into SCCM":"failure | 1m 4s","Creates uninstall deployment after VLC install deployment succeeds":"skipped | -"}'
             }
             cancelled = @{
               job_status = 'cancelled'
               steps_json = '{"Use .NET 8 SDK":"success | 0m 25s","Restore NuGet packages":"success | 0m 43s","Build solution":"cancelled | 0m 8s","Unit Tests":"skipped | -","Publish":"skipped | -"}'
-              pester_discovered = '120'
-              pester_total = '120'
-              pester_passed = '12'
+              pester_discovered = '5'
+              pester_total = '5'
+              pester_passed = '1'
               pester_failed = '0'
-              pester_skipped = '8'
-              pester_notrun = '100'
+              pester_skipped = '4'
+              pester_notrun = '0'
+              cases_json = '{"Template environment variables, directories, and contents are valid":"success | 0m 5s","Builds winSCP package and deploys into SCCM":"skipped | -","Creates uninstall deployment after winSCP install deployment succeeds":"skipped | -","Builds VLC package and deploys into SCCM":"skipped | -","Creates uninstall deployment after VLC install deployment succeeds":"skipped | -"}'
             }
             skipped = @{
               job_status = 'skipped'
               steps_json = '{"Use .NET 8 SDK":"success | 0m 25s","Restore NuGet packages":"skipped | -","Build solution":"skipped | -","Unit Tests":"skipped | -","Publish":"skipped | -"}'
-              pester_discovered = '120'
-              pester_total = '120'
+              pester_discovered = '5'
+              pester_total = '5'
               pester_passed = '0'
               pester_failed = '0'
               pester_skipped = '0'
-              pester_notrun = '120'
+              pester_notrun = '5'
+              cases_json = '{}'
             }
           }
 
@@ -107,4 +112,5 @@ jobs:
       pester_failed: ${{ needs.prepare-test-data.outputs.pester_failed }}
       pester_skipped: ${{ needs.prepare-test-data.outputs.pester_skipped }}
       pester_notrun: ${{ needs.prepare-test-data.outputs.pester_notrun }}
+      cases_json: ${{ needs.prepare-test-data.outputs.cases_json }}
     secrets: inherit

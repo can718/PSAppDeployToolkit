@@ -46,6 +46,7 @@ jobs:
       pester_failed:  ${{ steps.run-pester.outputs.pester_failed || '0' }}
       pester_skipped: ${{ steps.run-pester.outputs.pester_skipped || '0' }}
       pester_notrun:  ${{ steps.run-pester.outputs.pester_notrun || '0' }}
+      cases_json:     ${{ steps.collect-cases.outputs.cases_json || '{}' }}
     strategy:
       fail-fast: false
     env:
@@ -363,6 +364,58 @@ jobs:
           throw "One or more Additional test suites failed. Failed count: $failed"
         }
 
+    - name: Collect test case results from XML
+      id: collect-cases
+      if: always()
+      shell: pwsh
+      run: |
+        $caseEntries = [ordered]@{}
+        $xmlFiles = Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -ErrorAction SilentlyContinue | Sort-Object Name
+        foreach ($xmlFile in $xmlFiles) {
+          try {
+            [xml]$xml = Get-Content $xmlFile.FullName -Raw -Encoding UTF8
+            $testCases = $xml.SelectNodes('//test-case')
+            foreach ($tc in $testCases) {
+              # Prefer description (the It-block text); fall back to last dot-segment of name
+              $caseName = if ($tc.description -and ([string]$tc.description).Trim()) {
+                ([string]$tc.description).Trim()
+              }
+              else {
+                (([string]$tc.name) -split '\.')[-1].Trim()
+              }
+              if ([string]::IsNullOrWhiteSpace($caseName)) { $caseName = '(unnamed)' }
+
+              $result = ([string]$tc.result).ToLower()
+              $outcome = switch ($result) {
+                'passed'  { 'success' }
+                'failed'  { 'failure' }
+                'skipped' { 'skipped' }
+                default   { 'unknown' }
+              }
+              $durationSec = 0.0
+              [void][double]::TryParse(
+                [string]$tc.duration,
+                [System.Globalization.NumberStyles]::Float,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [ref]$durationSec
+              )
+              $mins = [int]($durationSec / 60)
+              $secs = [int]($durationSec % 60)
+              $durationStr = "${mins}m ${secs}s"
+
+              if (-not $caseEntries.Contains($caseName)) {
+                $caseEntries[$caseName] = "$outcome | $durationStr"
+              }
+            }
+          }
+          catch {
+            Write-Warning "Failed to parse $($xmlFile.Name): $($_.Exception.Message)"
+          }
+        }
+        $casesJson = if ($caseEntries.Count -gt 0) { $caseEntries | ConvertTo-Json -Compress } else { '{}' }
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_json=$casesJson`n", [System.Text.Encoding]::UTF8)
+        Write-Host "Collected $($caseEntries.Count) test case result(s)."
+
     - name: Upload additional test results
       id: upload-artifacts
       if: always()
@@ -432,4 +485,5 @@ jobs:
       pester_failed:  ${{ needs.run-additional-tests.outputs.pester_failed  || '0' }}
       pester_skipped: ${{ needs.run-additional-tests.outputs.pester_skipped || '0' }}
       pester_notrun:  ${{ needs.run-additional-tests.outputs.pester_notrun  || '0' }}
+      cases_json:     ${{ needs.run-additional-tests.outputs.cases_json     || '{}' }}
     secrets: inherit

@@ -34,6 +34,11 @@ on:
         required: false
         type: string
         default: '0'
+      cases_json:
+        description: 'JSON object mapping test case title to outcome, e.g. {"MyTest":"success | 0m 5s"}'
+        required: false
+        type: string
+        default: '{}'
 jobs:
   send:
     name: Send Notification
@@ -51,6 +56,7 @@ jobs:
           PESTER_FAILED: ${{ inputs.pester_failed }}
           PESTER_SKIPPED: ${{ inputs.pester_skipped }}
           PESTER_NOTRUN: ${{ inputs.pester_notrun }}
+          CASES_JSON: ${{ inputs.cases_json }}
           BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
@@ -213,6 +219,14 @@ jobs:
               $normalizedStepName = '(unnamed step)'
             }
 
+            # Truncate step name to 20 characters if too long, add ellipsis if truncated
+            if ($normalizedStepName.Length -gt 20) {
+              $displayStepName = $normalizedStepName.Substring(0, 17) + '...'
+            }
+            else {
+              $displayStepName = $normalizedStepName
+            }
+
             $rawValue = [string]$stepsObject[$stepName]
             $rawValue = $rawValue.Trim()
             
@@ -237,7 +251,7 @@ jobs:
             }
 
             $stepRows += @{
-              'Step Name' = $normalizedStepName
+              'Step Name' = $displayStepName
               'Status' = $displayStatus
               'Time Consuming' = if ([string]::IsNullOrWhiteSpace($time)) { '-' } else { $time }
             }
@@ -355,6 +369,67 @@ jobs:
             )
           }
 
+          $casesJsonRaw = if ([string]::IsNullOrWhiteSpace($env:CASES_JSON)) {
+            '{}'
+          }
+          else {
+            $env:CASES_JSON.Replace("`r", '')
+          }
+
+          try {
+            $casesObject = $casesJsonRaw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+            if ($casesObject -isnot [hashtable]) {
+              $casesObject = @{}
+            }
+          }
+          catch {
+            $casesObject = @{}
+            [void]$diagnostics.Add("cases_json parse failed: $($_.Exception.Message)")
+          }
+
+          $caseRows = @()
+          foreach ($caseName in $casesObject.Keys) {
+            $normalizedCaseName = ([string]$caseName).Trim()
+            if ([string]::IsNullOrWhiteSpace($normalizedCaseName)) {
+              $normalizedCaseName = '(unnamed case)'
+            }
+
+            if ($normalizedCaseName.Length -gt 35) {
+              $displayCaseName = $normalizedCaseName.Substring(0, 32) + '...'
+            }
+            else {
+              $displayCaseName = $normalizedCaseName
+            }
+
+            $rawCaseValue = ([string]$casesObject[$caseName]).Trim()
+            $caseOutcome = $rawCaseValue
+            $caseTime = ''
+            if ($rawCaseValue -match '^\s*(.+?)\s*\|\s*(.+?)\s*$') {
+              $caseOutcome = $matches[1]
+              $caseTime = $matches[2]
+            }
+
+            $normalizedCaseOutcome = $caseOutcome.ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($normalizedCaseOutcome)) {
+              $normalizedCaseOutcome = 'unknown'
+            }
+
+            $displayCaseStatus = if ($outcomeMap.ContainsKey($normalizedCaseOutcome)) {
+              $outcomeMap[$normalizedCaseOutcome]
+            }
+            else {
+              "⚠️ $normalizedCaseOutcome"
+            }
+
+            $caseRows += @{
+              'Step Name'      = $displayCaseName
+              'Status'         = $displayCaseStatus
+              'Time Consuming' = if ([string]::IsNullOrWhiteSpace($caseTime)) { '-' } else { $caseTime }
+            }
+          }
+
+          $caseRows = $caseRows | Sort-Object -Property 'Step Name'
+
           function Get-SharedColumnWidths {
             param(
               [Parameter(Mandatory = $true)]
@@ -406,6 +481,19 @@ jobs:
           $ciInfoTable = New-MarkdownTable -Headers @('Item', 'Value') -Rows $ciInfoRows -ColumnWidths $sharedColumnWidths
           $stepsTable = New-MarkdownTable -Headers @('Step Name', 'Status', 'Time Consuming') -Rows $stepRows -ColumnWidths $stepColumnWidths
           $pesterTable = New-MarkdownTable -Headers @('Metric', 'Value') -Rows $pesterRows -ColumnWidths $sharedColumnWidths
+
+          $caseColumnWidths = @(15, 25, 12)
+          foreach ($row in $caseRows) {
+            $caseColumnWidths[0] = [math]::Max($caseColumnWidths[0], $row['Step Name'].Length)
+            $caseColumnWidths[1] = [math]::Max($caseColumnWidths[1], $row['Status'].Length)
+            $caseColumnWidths[2] = [math]::Max($caseColumnWidths[2], $row['Time Consuming'].Length)
+          }
+          $casesTable = if ($caseRows.Count -gt 0) {
+            New-MarkdownTable -Headers @('Step Name', 'Status', 'Time Consuming') -Rows $caseRows -ColumnWidths $caseColumnWidths
+          }
+          else {
+            $null
+          }
 
           $adaptiveActions = @()
           if ($runUrl) {
@@ -488,6 +576,20 @@ jobs:
               wrap = $true
             }
           )
+
+          if ($casesTable) {
+            $cardBody += @{
+              type   = 'TextBlock'
+              text   = 'Test Cases'
+              weight = 'Bolder'
+              wrap   = $true
+            }
+            $cardBody += @{
+              type = 'TextBlock'
+              text = $casesTable
+              wrap = $true
+            }
+          }
 
           if ($diagnostics.Count -gt 0) {
             $cardBody += @{
