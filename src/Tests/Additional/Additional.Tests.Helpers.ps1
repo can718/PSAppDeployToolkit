@@ -461,7 +461,10 @@ function script:Enter-CMSiteContext
     $originalLocation = Get-Location
     if (-not (Get-PSDrive -Name $SiteCode -ErrorAction SilentlyContinue))
     {
-        New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $SiteServer | Out-Null
+        # -Scope Global is required: without it, the PSDrive is scoped to this
+        # function and is automatically removed when Enter-CMSiteContext returns,
+        # causing all subsequent SCCM cmdlets to fail with 'Cannot find drive'.
+        New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $SiteServer -Scope Global | Out-Null
     }
     $siteDrive = [string]::Concat($SiteCode, [char]58)
     Set-Location -Path $siteDrive
@@ -471,12 +474,18 @@ function script:Enter-CMSiteContext
 function script:Exit-CMSiteContext
 {
     param (
-        [object]$OriginalLocation
+        [object]$OriginalLocation,
+        [string]$SiteCode
     )
 
     if ($OriginalLocation)
     {
         Set-Location $OriginalLocation
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($SiteCode))
+    {
+        Remove-PSDrive -Name $SiteCode -Scope Global -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -500,7 +509,7 @@ function script:Invoke-PSADTInCMSiteContext
     }
     finally
     {
-        Exit-CMSiteContext -OriginalLocation $originalLocation
+        Exit-CMSiteContext -OriginalLocation $originalLocation -SiteCode $SiteCode
     }
 }
 
