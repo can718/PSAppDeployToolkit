@@ -56,12 +56,13 @@ jobs:
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       TERRAFORGE_CONFIG_NAME: "Lite (CM2509 Github)-Agent"
     steps:
+    - name: Initialize Workflow Timers
+      id: init-timers
+      shell: pwsh
+      run: |
+        Write-Host "Workflow timing initialized."
+
     - name: Check out repository
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
-      env:
-        GIT_CONFIG_COUNT: 1
-        GIT_CONFIG_KEY_0: core.autocrlf
-        GIT_CONFIG_VALUE_0: 'false'
 
     - name: Set Test Run Start
       id: set-test-run-start
@@ -198,20 +199,33 @@ jobs:
       id: build
       shell: pwsh
       run: |
+        $buildStart = Get-Date
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
             Invoke-ADTModuleBuild -Steps 'Prerequisites', 'Clean', 'Dependencies', 'DotNet', 'Build'
         }
+        $buildEnd = Get-Date
+        $duration = $buildEnd - $buildStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        "build_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Generate artifact templates
       id: exports
       shell: pwsh
       run: |
+        $exportsStart = Get-Date
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
+        $exportsEnd = Get-Date
+        $duration = $exportsEnd - $exportsStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        "exports_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Prepare PSADT templates for deployment test
       id: template-prep
       shell: pwsh
       run: |
+        $templateStart = Get-Date
         $v3Src = '.\src\Artifacts\Template_v3'
         $v4Src = '.\src\Artifacts\Template_v4'
 
@@ -240,6 +254,12 @@ jobs:
 
         "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        
+        $templateEnd = Get-Date
+        $duration = $templateEnd - $templateStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        "template_prep_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     # Add your new test cases below this line
     - name: Run Additional Tests
@@ -250,6 +270,7 @@ jobs:
         PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
+        $pesterStart = Get-Date
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
         $workspaceRoot = '${{ github.workspace }}'
         $additionalTestsPath = Join-Path $workspaceRoot 'src\Tests\Additional'
@@ -363,6 +384,12 @@ jobs:
         {
           throw "One or more Additional test suites failed. Failed count: $failed"
         }
+        
+        $pesterEnd = Get-Date
+        $duration = $pesterEnd - $pesterStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        "run_pester_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Collect test case results from XML
       id: collect-cases
@@ -452,16 +479,34 @@ jobs:
       shell: pwsh
       run: |
         $steps = [ordered]@{
-          'Build'                       = '${{ steps.build.outcome }}'
-          'Generate Artifact Templates' = '${{ steps.exports.outcome }}'
-          'Prepare Templates'           = '${{ steps.template-prep.outcome }}'
-          'Run Pester Tests'            = '${{ steps.run-pester.outcome }}'
-          'Upload Test Results'         = '${{ steps.upload-artifacts.outcome }}'
-          'Complete Test Run'           = '${{ steps.complete-test-run.outcome }}'
-          'Upload to Blob Storage'      = '${{ steps.upload-to-blob.outcome }}'
+          'Build'                       = @{ outcome = '${{ steps.build.outcome }}'; duration = $env:build_duration }
+          'Generate Artifact Templates' = @{ outcome = '${{ steps.exports.outcome }}'; duration = $env:exports_duration }
+          'Prepare Templates'           = @{ outcome = '${{ steps.template-prep.outcome }}'; duration = $env:template_prep_duration }
+          'Run Pester Tests'            = @{ outcome = '${{ steps.run-pester.outcome }}'; duration = $env:run_pester_duration }
+          'Upload Test Results'         = @{ outcome = '${{ steps.upload-artifacts.outcome }}'; duration = '-' }
+          'Complete Test Run'           = @{ outcome = '${{ steps.complete-test-run.outcome }}'; duration = '-' }
+          'Upload to Blob Storage'      = @{ outcome = '${{ steps.upload-to-blob.outcome }}'; duration = '-' }
         }
+        
+        # Build steps JSON with outcome and duration
+        $stepsJson = [ordered]@{}
+        foreach ($stepName in $steps.Keys) {
+          $outcome = $steps[$stepName].outcome
+          $duration = $steps[$stepName].duration
+          
+          if ([string]::IsNullOrWhiteSpace($duration) -or $duration -eq '$null') {
+            $duration = '-'
+          }
+          
+          if ($duration -eq '-') {
+            $stepsJson[$stepName] = $outcome
+          } else {
+            $stepsJson[$stepName] = "$outcome | $duration"
+          }
+        }
+        
         # Use AppendAllText with LF (not CRLF) so the value is not corrupted when consumed on Linux runners
-        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($steps | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($stepsJson | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
 
     - name: Reset Azure Session VM
       id: reset-sessionvm
