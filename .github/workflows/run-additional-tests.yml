@@ -553,28 +553,112 @@ jobs:
       id: collect-outputs
       if: always()
       shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
+        # ── Fetch actual step durations from the GitHub Jobs API ──────────────
+        # This ensures Teams timings match what GitHub Actions UI shows.
+        $apiStepTimings = @{}
+        try {
+          $apiHeaders = @{
+            Authorization            = "Bearer $env:GH_TOKEN"
+            Accept                   = 'application/vnd.github+json'
+            'X-GitHub-Api-Version'   = '2022-11-28'
+          }
+          $jobsUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/jobs?per_page=100"
+          $jobsData = Invoke-RestMethod -Uri $jobsUrl -Headers $apiHeaders -ErrorAction Stop
+
+          # Identify this job by looking for the "Collect step outcomes" step (unique to this job)
+          $thisJob = $jobsData.jobs |
+                     Where-Object { $_.steps | Where-Object { $_.name -eq 'Collect step outcomes' } } |
+                     Select-Object -First 1
+
+          if ($thisJob) {
+            foreach ($apiStep in $thisJob.steps) {
+              if ($apiStep.started_at -and $apiStep.completed_at) {
+                $started   = [datetime]::Parse($apiStep.started_at,  $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                $completed = [datetime]::Parse($apiStep.completed_at, $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                $sec = ($completed - $started).TotalSeconds
+                $mins = [int]($sec / 60)
+                $secs = [int]($sec % 60)
+                if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+                $apiStepTimings[$apiStep.name] = "${mins}m ${secs}s"
+              }
+            }
+            Write-Host "Fetched timings for $($apiStepTimings.Count) step(s) from GitHub API."
+          }
+          else {
+            Write-Warning 'Could not locate this job in the GitHub API response; falling back to env-based timings.'
+          }
+        }
+        catch {
+          Write-Warning "GitHub API call failed; falling back to env-based timings. Error: $_"
+        }
+
+        # Map each Teams display name to the corresponding GitHub Actions step name pattern
+        $displayToApiPattern = [ordered]@{
+          'Initialize Workflow Timers'  = 'Initialize Workflow Timers'
+          'Check out repository'        = 'Check out repository'
+          'Set Test Run Start'          = 'Set Test Run Start'
+          'Install Node.js'             = 'Install Node.js*'
+          'Install 7-Zip'               = 'Install 7-Zip*'
+          'Display the path'            = 'Display the path'
+          'Version Display'             = 'Version Display'
+          'Install .NET 10 SDK'         = 'Install .NET 10 SDK*'
+          'Cache NuGet packages'        = 'Cache NuGet packages'
+          'Cache PowerShell modules'    = 'Cache PowerShell modules'
+          'Install PowerShell modules'  = 'Install PowerShell modules'
+          'Configure NuGet source'      = 'Configure NuGet source'
+          'Build'                       = 'Build*'
+          'Generate Artifact Templates' = 'Generate artifact templates'
+          'Prepare Templates'           = 'Prepare PSADT*'
+          'Run Pester Tests'            = 'Run Additional Tests'
+          'Collect test case results'   = 'Collect test case results*'
+          'Upload Test Results'         = 'Upload additional test results'
+          'Complete Test Run'           = 'Complete Test Run'
+          'Upload to Blob Storage'      = 'Upload Test Results to Azure*'
+        }
+
+        function Get-ApiDuration {
+          param([string]$DisplayName)
+          $pattern = $displayToApiPattern[$DisplayName]
+          if (-not $pattern) { return $null }
+          foreach ($key in $apiStepTimings.Keys) {
+            if ($key -like $pattern) { return $apiStepTimings[$key] }
+          }
+          return $null
+        }
+
+        # Return the first non-blank value; fall back to '-' if all are blank/null
+        function Resolve-Duration {
+          param([string[]]$Candidates)
+          foreach ($v in $Candidates) {
+            if (-not [string]::IsNullOrWhiteSpace($v)) { return $v }
+          }
+          return '-'
+        }
+
         $steps = [ordered]@{
-          'Initialize Workflow Timers'  = @{ outcome = '${{ steps.init-timers.outcome }}'; duration = '-' }
-          'Check out repository'        = @{ outcome = '${{ steps.checkout-repository.outcome }}'; duration = '-' }
-          'Set Test Run Start'          = @{ outcome = '${{ steps.set-test-run-start.outcome }}'; duration = '-' }
-          'Install Node.js'             = @{ outcome = '${{ steps.install-node.outcome }}'; duration = '-' }
-          'Install 7-Zip'               = @{ outcome = '${{ steps.install-7zip.outcome }}'; duration = '-' }
-          'Display the path'            = @{ outcome = '${{ steps.display-path.outcome }}'; duration = '-' }
-          'Version Display'             = @{ outcome = '${{ steps.version-display.outcome }}'; duration = '-' }
-          'Install .NET 10 SDK'         = @{ outcome = '${{ steps.setup-dotnet.outcome }}'; duration = '-' }
-          'Cache NuGet packages'        = @{ outcome = '${{ steps.cache-nuget.outcome }}'; duration = '-' }
-          'Cache PowerShell modules'    = @{ outcome = '${{ steps.psmodule-cache.outcome }}'; duration = '-' }
-          'Install PowerShell modules'  = @{ outcome = '${{ steps.install-psmodules.outcome }}'; duration = '-' }
-          'Configure NuGet source'      = @{ outcome = '${{ steps.configure-nuget.outcome }}'; duration = '-' }
-          'Build'                       = @{ outcome = '${{ steps.build.outcome }}'; duration = $env:build_duration }
-          'Generate Artifact Templates' = @{ outcome = '${{ steps.exports.outcome }}'; duration = $env:exports_duration }
-          'Prepare Templates'           = @{ outcome = '${{ steps.template-prep.outcome }}'; duration = $env:template_prep_duration }
-          'Run Pester Tests'            = @{ outcome = '${{ steps.run-pester.outcome }}'; duration = $env:run_pester_duration }
-          'Collect test case results'   = @{ outcome = '${{ steps.collect-cases.outcome }}'; duration = '-' }
-          'Upload Test Results'         = @{ outcome = '${{ steps.upload-artifacts.outcome }}'; duration = '-' }
-          'Complete Test Run'           = @{ outcome = '${{ steps.complete-test-run.outcome }}'; duration = '-' }
-          'Upload to Blob Storage'      = @{ outcome = '${{ steps.upload-to-blob.outcome }}'; duration = '-' }
+          'Initialize Workflow Timers'  = @{ outcome = '${{ steps.init-timers.outcome }}';         duration = (Resolve-Duration (Get-ApiDuration 'Initialize Workflow Timers')) }
+          'Check out repository'        = @{ outcome = '${{ steps.checkout-repository.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Check out repository')) }
+          'Set Test Run Start'          = @{ outcome = '${{ steps.set-test-run-start.outcome }}';  duration = (Resolve-Duration (Get-ApiDuration 'Set Test Run Start')) }
+          'Install Node.js'             = @{ outcome = '${{ steps.install-node.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Install Node.js')) }
+          'Install 7-Zip'               = @{ outcome = '${{ steps.install-7zip.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Install 7-Zip')) }
+          'Display the path'            = @{ outcome = '${{ steps.display-path.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Display the path')) }
+          'Version Display'             = @{ outcome = '${{ steps.version-display.outcome }}';     duration = (Resolve-Duration (Get-ApiDuration 'Version Display')) }
+          'Install .NET 10 SDK'         = @{ outcome = '${{ steps.setup-dotnet.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Install .NET 10 SDK')) }
+          'Cache NuGet packages'        = @{ outcome = '${{ steps.cache-nuget.outcome }}';         duration = (Resolve-Duration (Get-ApiDuration 'Cache NuGet packages')) }
+          'Cache PowerShell modules'    = @{ outcome = '${{ steps.psmodule-cache.outcome }}';      duration = (Resolve-Duration (Get-ApiDuration 'Cache PowerShell modules')) }
+          'Install PowerShell modules'  = @{ outcome = '${{ steps.install-psmodules.outcome }}';   duration = (Resolve-Duration (Get-ApiDuration 'Install PowerShell modules')) }
+          'Configure NuGet source'      = @{ outcome = '${{ steps.configure-nuget.outcome }}';     duration = (Resolve-Duration (Get-ApiDuration 'Configure NuGet source')) }
+          'Build'                       = @{ outcome = '${{ steps.build.outcome }}';               duration = (Resolve-Duration @((Get-ApiDuration 'Build'),                       $env:build_duration)) }
+          'Generate Artifact Templates' = @{ outcome = '${{ steps.exports.outcome }}';             duration = (Resolve-Duration @((Get-ApiDuration 'Generate Artifact Templates'),  $env:exports_duration)) }
+          'Prepare Templates'           = @{ outcome = '${{ steps.template-prep.outcome }}';       duration = (Resolve-Duration @((Get-ApiDuration 'Prepare Templates'),            $env:template_prep_duration)) }
+          'Run Pester Tests'            = @{ outcome = '${{ steps.run-pester.outcome }}';          duration = (Resolve-Duration @((Get-ApiDuration 'Run Pester Tests'),            $env:run_pester_duration)) }
+          'Collect test case results'   = @{ outcome = '${{ steps.collect-cases.outcome }}';       duration = (Resolve-Duration (Get-ApiDuration 'Collect test case results')) }
+          'Upload Test Results'         = @{ outcome = '${{ steps.upload-artifacts.outcome }}';    duration = (Resolve-Duration (Get-ApiDuration 'Upload Test Results')) }
+          'Complete Test Run'           = @{ outcome = '${{ steps.complete-test-run.outcome }}';   duration = (Resolve-Duration (Get-ApiDuration 'Complete Test Run')) }
+          'Upload to Blob Storage'      = @{ outcome = '${{ steps.upload-to-blob.outcome }}';      duration = (Resolve-Duration (Get-ApiDuration 'Upload to Blob Storage')) }
         }
         
         # Build steps JSON with outcome and duration
