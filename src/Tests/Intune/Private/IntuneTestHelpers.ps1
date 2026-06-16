@@ -544,7 +544,8 @@ function Wait-AppInstallation
             foreach ($subKey in $subKeys)
             {
                 $props = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
-                if ($props -and $props.DisplayName -eq $DisplayName -and $props.$ValueName -eq $ExpectedValue)
+                $displayNameMatched = $props -and (($props.DisplayName -eq $DisplayName) -or ($props.DisplayName -like "$DisplayName*"))
+                if ($displayNameMatched -and $props.$ValueName -eq $ExpectedValue)
                 {
                     $verified = $true
                     Write-Information "'$DisplayName' detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
@@ -625,7 +626,8 @@ function Wait-AppUninstallation
             foreach ($subKey in $subKeys)
             {
                 $props = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
-                if ($props -and $props.DisplayName -eq $DisplayName -and $props.$ValueName -eq $ExpectedValue)
+                $displayNameMatched = $props -and (($props.DisplayName -eq $DisplayName) -or ($props.DisplayName -like "$DisplayName*"))
+                if ($displayNameMatched -and $props.$ValueName -eq $ExpectedValue)
                 {
                     $found = $true
                     break

@@ -396,7 +396,7 @@ Describe 'Intune Tests' {
             Test-Path $package.IntuneWinPath | Should -BeTrue
 
             # --- Step 3: Build detection rule ---
-            $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -StringComparison .\.editorconfi `
+            $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++" `
                 -ValueName "DisplayVersion" -StringComparisonOperator "equal" -StringComparisonValue "8.9.6.4"
 
@@ -475,7 +475,7 @@ Describe 'Intune Tests' {
                 }
                 @{
                     Name              = 'Notepad++'
-                    AppFolderName     = 'Notepad'
+                    AppFolderName     = 'Notepad++'
                     InstallerSourceDir = 'C:\Tools\Intune\Notepad8.9.6.4'
                     RegDisplayName    = 'Notepad++'
                     RegVersionValue   = '8.9.6.4'
@@ -490,6 +490,8 @@ Describe 'Intune Tests' {
                             Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.1/npp.8.9.6.1.Installer.x64.exe' -OutFile $installerPath -UseBasicParsing
                         }
                         Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -NoNewWindow
+                        if (Test-Path "$env:ProgramFiles\Notepad++\notepad++.exe") { Start-Process -FilePath "$env:ProgramFiles\Notepad++\notepad++.exe" }
+
                         # Download new version installer.
                         $newDir = 'C:\Tools\Intune\Notepad8.9.6.4'
                         $newPath = Join-Path $newDir 'npp.8.9.6.4.Installer.x64.exe'
@@ -592,6 +594,7 @@ Describe 'Intune Tests' {
 
             # Collect results by job name to ensure correct app-to-result mapping.
             $failedApps = @()
+            $succeededApps = @()
             foreach ($appName in $script:UploadedApps.Keys)
             {
                 $jobName = "Poll-$appName"
@@ -603,10 +606,14 @@ Describe 'Intune Tests' {
                 }
                 else
                 {
+                    $succeededApps += $appName
                     $script:ParallelInstallResults[$appName] = $true
                 }
             }
             $jobs | Remove-Job -Force
+
+            Write-Information "[Parallel Install] Succeeded apps: $($succeededApps -join ', ')" -InformationAction Continue
+            Write-Information "[Parallel Install] Failed apps: $($failedApps -join ', ')" -InformationAction Continue
 
             $failedApps | Should -BeNullOrEmpty -Because "All apps should install successfully. Failed: $($failedApps -join ', ')"
         }
@@ -644,6 +651,7 @@ Describe 'Intune Tests' {
 
             # Collect results by job name to ensure correct app-to-result mapping.
             $failedApps = @()
+            $succeededApps = @()
             foreach ($appName in $script:ParallelInstallResults.Keys)
             {
                 $jobName = "Uninstall-$appName"
@@ -653,8 +661,15 @@ Describe 'Intune Tests' {
                     Write-Information "[$appName] Uninstallation poll result: $jobResult" -InformationAction Continue
                     $failedApps += $appName
                 }
+                else
+                {
+                    $succeededApps += $appName
+                }
             }
             $jobs | Remove-Job -Force
+
+            Write-Information "[Parallel Uninstall] Succeeded apps: $($succeededApps -join ', ')" -InformationAction Continue
+            Write-Information "[Parallel Uninstall] Failed apps: $($failedApps -join ', ')" -InformationAction Continue
 
             $failedApps | Should -BeNullOrEmpty -Because "All apps should uninstall successfully. Failed: $($failedApps -join ', ')"
         }
