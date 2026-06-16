@@ -135,35 +135,96 @@ jobs:
             unknown   = '⚠️ unknown'
           }
 
-          function New-MarkdownTable {
+          function New-WorkflowColumnSet {
             param(
               [Parameter(Mandatory = $true)]
-              [string[]]$Headers,
+              [string]$StepName,
               [Parameter(Mandatory = $true)]
-              [object[]]$Rows,
-              [int[]]$ColumnWidths
+              [string]$Status,
+              [Parameter(Mandatory = $true)]
+              [string]$Duration,
+              [bool]$IsHeader = $false
             )
 
-            $headerLine = '| ' + ($Headers -join ' | ') + ' |'
-            $separatorLine = '| ' + (($Headers | ForEach-Object { '---' }) -join ' | ') + ' |'
-            $rowLines = @()
-            foreach ($row in $Rows) {
-              $cells = @()
-              for ($i = 0; $i -lt $Headers.Count; $i++) {
-                $header = $Headers[$i]
-                $value = [string]$row[$header]
-                if ($null -eq $value) {
-                  $value = ''
+            $safeStepName = ([string]$StepName).Replace("`r", ' ').Replace("`n", ' ')
+            $safeStatus = ([string]$Status).Replace("`r", ' ').Replace("`n", ' ')
+            $safeDuration = ([string]$Duration).Replace("`r", ' ').Replace("`n", ' ')
+
+            @{
+              type = 'ColumnSet'
+              spacing = if ($IsHeader) { 'Medium' } else { 'Small' }
+              separator = -not $IsHeader
+              columns = @(
+                @{
+                  type = 'Column'
+                  width = '3'
+                  items = @(
+                    @{
+                      type = 'TextBlock'
+                      text = $safeStepName
+                      weight = if ($IsHeader) { 'Bolder' } else { 'Default' }
+                      wrap = $true
+                    }
+                  )
+                },
+                @{
+                  type = 'Column'
+                  width = '2'
+                  items = @(
+                    @{
+                      type = 'TextBlock'
+                      text = $safeStatus
+                      weight = if ($IsHeader) { 'Bolder' } else { 'Default' }
+                      wrap = $true
+                    }
+                  )
+                },
+                @{
+                  type = 'Column'
+                  width = '1'
+                  items = @(
+                    @{
+                      type = 'TextBlock'
+                      text = $safeDuration
+                      horizontalAlignment = 'Right'
+                      weight = if ($IsHeader) { 'Bolder' } else { 'Default' }
+                      wrap = $false
+                    }
+                  )
                 }
+              )
+            }
+          }
 
-                $value = $value.Replace('|', '\|').Replace("`r", ' ').Replace("`n", '<br/>')
-                $cells += $value
-              }
+          function New-WorkflowStagePanel {
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$Title,
+              [Parameter(Mandatory = $true)]
+              [object[]]$Rows
+            )
 
-              $rowLines += ('| ' + ($cells -join ' | ') + ' |')
+            $panelItems = @(
+              @{
+                type = 'TextBlock'
+                text = $Title
+                weight = 'Bolder'
+                wrap = $true
+              },
+              (New-WorkflowColumnSet -StepName 'Step Name' -Status 'Status' -Duration 'Time Consuming' -IsHeader $true)
+            )
+
+            foreach ($row in $Rows) {
+              $panelItems += (New-WorkflowColumnSet -StepName ([string]$row['Step Name']) -Status ([string]$row['Status']) -Duration ([string]$row['Time Consuming']))
             }
 
-            @($headerLine, $separatorLine) + $rowLines -join "`n"
+            @{
+              type = 'Container'
+              style = 'emphasis'
+              bleed = $true
+              spacing = 'Medium'
+              items = $panelItems
+            }
           }
 
           $stepRows = @()
@@ -401,11 +462,11 @@ jobs:
             }
           }
 
-          $ciTable = New-MarkdownTable -Headers $stageHeaders -Rows $ciStageRows
-          $stepsTable = New-MarkdownTable -Headers $stageHeaders -Rows $stepRows
-          $pesterTable = New-MarkdownTable -Headers $stageHeaders -Rows $pesterStageRows
-          $casesTable = if ($caseRows.Count -gt 0) {
-            New-MarkdownTable -Headers $stageHeaders -Rows $caseRows
+          $ciPanel = New-WorkflowStagePanel -Title 'Stage: Pipeline Info' -Rows $ciStageRows
+          $stepsPanel = New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $stepRows
+          $pesterPanel = New-WorkflowStagePanel -Title 'Stage: Pester Test Results' -Rows $pesterStageRows
+          $casesPanel = if ($caseRows.Count -gt 0) {
+            New-WorkflowStagePanel -Title 'Stage: Test Cases' -Rows $caseRows
           }
           else {
             $null
@@ -445,6 +506,18 @@ jobs:
             },
             @{
               type = 'TextBlock'
+              text = 'Pester Test Results (Summary)'
+              weight = 'Bolder'
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = $pesterSummary
+              wrap = $true
+              color = if ($pesterFailed -gt 0) { 'Attention' } else { 'Good' }
+            },
+            @{
+              type = 'TextBlock'
               text = "Branch: $branchName | Commit: $shortSha"
               wrap = $true
             },
@@ -459,62 +532,23 @@ jobs:
               wrap = $true
             },
             @{
-              type = 'TextBlock'
-              text = 'Stage: Pipeline Info'
-              weight = 'Bolder'
-              wrap = $true
+              type = 'Container'
+              items = @($ciPanel)
             },
             @{
-              type = 'TextBlock'
-              text = $ciTable
-              wrap = $true
+              type = 'Container'
+              items = @($pesterPanel)
             },
             @{
-              type = 'TextBlock'
-              text = 'Pester Test Results (Summary)'
-              weight = 'Bolder'
-              wrap = $true
-            },
-            @{
-              type = 'TextBlock'
-              text = $pesterSummary
-              wrap = $true
-            },
-            @{
-              type = 'TextBlock'
-              text = 'Stage: Pester Test Results'
-              weight = 'Bolder'
-              wrap = $true
-            },
-            @{
-              type = 'TextBlock'
-              text = $pesterTable
-              wrap = $true
-            },
-            @{
-              type = 'TextBlock'
-              text = 'Stage: Pipeline Steps'
-              weight = 'Bolder'
-              wrap = $true
-            },
-            @{
-              type = 'TextBlock'
-              text = $stepsTable
-              wrap = $true
+              type = 'Container'
+              items = @($stepsPanel)
             }
           )
 
-          if ($casesTable) {
+          if ($casesPanel) {
             $cardBody += @{
-              type = 'TextBlock'
-              text = 'Stage: Test Cases'
-              weight = 'Bolder'
-              wrap = $true
-            }
-            $cardBody += @{
-              type = 'TextBlock'
-              text = $casesTable
-              wrap = $true
+              type = 'Container'
+              items = @($casesPanel)
             }
           }
 
