@@ -135,6 +135,20 @@ jobs:
             unknown   = '⚠️ unknown'
           }
 
+          function Get-WorkflowDurationDisplay {
+            param(
+              [AllowEmptyString()]
+              [string]$Duration
+            )
+
+            $normalizedDuration = ([string]$Duration).Replace("`r", ' ').Replace("`n", ' ').Trim()
+            if ([string]::IsNullOrWhiteSpace($normalizedDuration) -or $normalizedDuration -eq '-') {
+              return 'Not reported'
+            }
+
+            return $normalizedDuration
+          }
+
           function New-WorkflowColumnSet {
             param(
               [Parameter(Mandatory = $true)]
@@ -148,7 +162,7 @@ jobs:
 
             $safeStepName = ([string]$StepName).Replace("`r", ' ').Replace("`n", ' ')
             $safeStatus = ([string]$Status).Replace("`r", ' ').Replace("`n", ' ')
-            $safeDuration = ([string]$Duration).Replace("`r", ' ').Replace("`n", ' ')
+            $safeDuration = Get-WorkflowDurationDisplay -Duration $Duration
 
             @{
               type = 'ColumnSet'
@@ -188,7 +202,7 @@ jobs:
                       text = $safeDuration
                       horizontalAlignment = 'Right'
                       weight = if ($IsHeader) { 'Bolder' } else { 'Default' }
-                      wrap = $false
+                      wrap = $true
                     }
                   )
                 }

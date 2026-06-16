@@ -402,31 +402,75 @@ jobs:
       shell: pwsh
       run: |
         $caseEntries = [ordered]@{}
+        function Get-XmlAttributeValue {
+          param(
+            [Parameter(Mandatory = $true)]
+            [System.Xml.XmlNode]$Node,
+            [Parameter(Mandatory = $true)]
+            [string]$Name
+          )
+
+          if ($Node -and $Node.Attributes) {
+            $attribute = $Node.Attributes[$Name]
+            if ($attribute) {
+              return [string]$attribute.Value
+            }
+          }
+
+          return ''
+        }
         $xmlFiles = Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -ErrorAction SilentlyContinue | Sort-Object Name
         foreach ($xmlFile in $xmlFiles) {
           try {
             [xml]$xml = Get-Content $xmlFile.FullName -Raw -Encoding UTF8
-            $testCases = $xml.SelectNodes('//test-case')
+            $testCases = $xml.SelectNodes('/test-results/test-suite/results//test-case')
             foreach ($tc in $testCases) {
+              $caseDescription = (Get-XmlAttributeValue -Node $tc -Name 'description').Trim()
+              $caseNodeName = (Get-XmlAttributeValue -Node $tc -Name 'name').Trim()
               # Prefer description (the It-block text); fall back to last dot-segment of name
-              $caseName = if ($tc.description -and ([string]$tc.description).Trim()) {
-                ([string]$tc.description).Trim()
+              $caseName = if (-not [string]::IsNullOrWhiteSpace($caseDescription)) {
+                $caseDescription
               }
               else {
-                (([string]$tc.name) -split '\.')[-1].Trim()
+                ($caseNodeName -split '\.')[-1].Trim()
               }
               if ([string]::IsNullOrWhiteSpace($caseName)) { $caseName = '(unnamed)' }
 
-              $result = ([string]$tc.result).ToLower()
-              $outcome = switch ($result) {
-                'passed'  { 'success' }
-                'failed'  { 'failure' }
-                'skipped' { 'skipped' }
-                default   { 'unknown' }
+              $result = (Get-XmlAttributeValue -Node $tc -Name 'result').Trim().ToLowerInvariant()
+              $executed = (Get-XmlAttributeValue -Node $tc -Name 'executed').Trim().ToLowerInvariant()
+              $success = (Get-XmlAttributeValue -Node $tc -Name 'success').Trim().ToLowerInvariant()
+              $outcome = if (-not [string]::IsNullOrWhiteSpace($result)) {
+                switch ($result) {
+                  'passed'       { 'success' }
+                  'success'      { 'success' }
+                  'failed'       { 'failure' }
+                  'failure'      { 'failure' }
+                  'skipped'      { 'skipped' }
+                  'inconclusive' { 'unknown' }
+                  default        { 'unknown' }
+                }
               }
+              elseif ($executed -eq 'false') {
+                'skipped'
+              }
+              elseif ($success -eq 'true') {
+                'success'
+              }
+              elseif ($success -eq 'false') {
+                'failure'
+              }
+              else {
+                'unknown'
+              }
+
+              $durationText = (Get-XmlAttributeValue -Node $tc -Name 'duration').Trim()
+              if ([string]::IsNullOrWhiteSpace($durationText)) {
+                $durationText = (Get-XmlAttributeValue -Node $tc -Name 'time').Trim()
+              }
+
               $durationSec = 0.0
               [void][double]::TryParse(
-                [string]$tc.duration,
+                $durationText,
                 [System.Globalization.NumberStyles]::Float,
                 [System.Globalization.CultureInfo]::InvariantCulture,
                 [ref]$durationSec
