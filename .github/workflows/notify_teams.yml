@@ -464,7 +464,7 @@ jobs:
             @{
               'Step Name'      = [string]$ciRow['Item']
               'Status'         = [string]$ciRow['Value']
-              'Time Consuming' = '-'
+              'Time Consuming' = 'N/A'
             }
           }
 
@@ -472,7 +472,7 @@ jobs:
             @{
               'Step Name'      = [string]$metricRow['Metric']
               'Status'         = [string]$metricRow['Value']
-              'Time Consuming' = '-'
+              'Time Consuming' = 'N/A'
             }
           }
 

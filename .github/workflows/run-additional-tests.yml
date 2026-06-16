@@ -477,6 +477,7 @@ jobs:
               )
               $mins = [int]($durationSec / 60)
               $secs = [int]($durationSec % 60)
+              if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
               $durationStr = "${mins}m ${secs}s"
 
               if (-not $caseEntries.Contains($caseName)) {
