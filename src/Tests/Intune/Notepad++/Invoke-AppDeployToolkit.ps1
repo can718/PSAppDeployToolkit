@@ -108,7 +108,7 @@ $PostInstall = {
 $PreUninstall = {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        Show-ADTInstallationWelcome @saiwParams
+        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 10
     }
     Show-ADTInstallationProgress
 }
@@ -126,7 +126,7 @@ $PostUninstall = {
 $PreRepair = {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        Show-ADTInstallationWelcome @saiwParams
+        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 10
     }
     Show-ADTInstallationProgress
 }

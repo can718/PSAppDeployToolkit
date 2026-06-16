@@ -631,9 +631,9 @@ Describe 'Intune Tests' {
                     -Intent 'uninstall' -Notification 'showAll' -Verbose
             }
 
-            Start-Sleep -Seconds 10
-
             Invoke-MdmSync
+
+            Start-Sleep -Seconds 8
 
             # Single sync for all uninstalls.
             Wait-IntuneManagementExtension
