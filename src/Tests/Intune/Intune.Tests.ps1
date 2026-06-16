@@ -1,5 +1,6 @@
 ﻿#pragma warning disable PSPlaceOpenBrace
-#pragma warning disable PSUseUsingScopeModifierInNewRunspaces
+[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseUsingScopeModifierInNewRunspaces', '')]
+param()
 
 # ---------------------------------------------------------------------------
 # Intune Win32 App Integration Tests
@@ -575,6 +576,10 @@ Describe 'Intune Tests' {
 
         It 'Single MDM sync, then parallel poll for all installations' {
             $script:UploadedApps | Should -Not -BeNullOrEmpty -Because 'Upload step must succeed first'
+
+            Invoke-MdmSync
+
+            Start-Sleep -Seconds 8
 
             # Trigger a single MDM sync for all assigned apps.
             Wait-IntuneManagementExtension
