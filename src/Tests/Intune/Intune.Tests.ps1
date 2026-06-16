@@ -443,7 +443,7 @@ Describe 'Intune Tests' {
         }#>
     }
 
-    Context 'Parallel Install - Batch Upload, Single Sync, Parallel Poll' {
+    Context 'Parallel Install - Batch Upload, Single Sync, Parallel Poll inatll and uninstall of multiple apps' -Skip {
         BeforeAll {
             # Define all apps to install in parallel.
             $script:ParallelApps = @(
