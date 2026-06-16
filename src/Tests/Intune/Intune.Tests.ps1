@@ -588,24 +588,25 @@ Describe 'Intune Tests' {
             }
 
             Write-Information "Waiting for $($jobs.Count) parallel installation polls..." -InformationAction Continue
-            $results = $jobs | Wait-Job | Receive-Job
-            $jobs | Remove-Job -Force
+            $jobs | Wait-Job | Out-Null
 
-            # Verify all installations succeeded.
+            # Collect results by job name to ensure correct app-to-result mapping.
             $failedApps = @()
-            $idx = 0
             foreach ($appName in $script:UploadedApps.Keys)
             {
-                if ($results[$idx] -ne $true)
+                $jobName = "Poll-$appName"
+                $jobResult = Get-Job -Name $jobName -ErrorAction SilentlyContinue | Receive-Job
+                if ($jobResult -ne $true)
                 {
+                    Write-Information "[$appName] Installation poll result: $jobResult" -InformationAction Continue
                     $failedApps += $appName
                 }
                 else
                 {
                     $script:ParallelInstallResults[$appName] = $true
                 }
-                $idx++
             }
+            $jobs | Remove-Job -Force
 
             $failedApps | Should -BeNullOrEmpty -Because "All apps should install successfully. Failed: $($failedApps -join ', ')"
         }
@@ -639,19 +640,21 @@ Describe 'Intune Tests' {
             }
 
             Write-Information "Waiting for $($jobs.Count) parallel uninstallation polls..." -InformationAction Continue
-            $results = $jobs | Wait-Job | Receive-Job
-            $jobs | Remove-Job -Force
+            $jobs | Wait-Job | Out-Null
 
+            # Collect results by job name to ensure correct app-to-result mapping.
             $failedApps = @()
-            $idx = 0
             foreach ($appName in $script:ParallelInstallResults.Keys)
             {
-                if ($results[$idx] -ne $true)
+                $jobName = "Uninstall-$appName"
+                $jobResult = Get-Job -Name $jobName -ErrorAction SilentlyContinue | Receive-Job
+                if ($jobResult -ne $true)
                 {
+                    Write-Information "[$appName] Uninstallation poll result: $jobResult" -InformationAction Continue
                     $failedApps += $appName
                 }
-                $idx++
             }
+            $jobs | Remove-Job -Force
 
             $failedApps | Should -BeNullOrEmpty -Because "All apps should uninstall successfully. Failed: $($failedApps -join ', ')"
         }
