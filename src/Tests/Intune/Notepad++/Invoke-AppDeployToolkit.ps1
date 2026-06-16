@@ -115,7 +115,7 @@ $PreUninstall = {
 
 ## MARK: Uninstall
 $Uninstall = {
-    Uninstall-ADTApplication -Name 'Notepad++' -NameMatch 'Exact' -ArgumentList '/S'
+    Uninstall-ADTApplication -Name 'Notepad++ (64-bit x64)' -NameMatch 'Exact' -ArgumentList '/S'
 }
 
 ## MARK: Post-Uninstall
@@ -133,7 +133,7 @@ $PreRepair = {
 
 ## MARK: Repair
 $Repair = {
-    Uninstall-ADTApplication -Name 'Notepad++' -NameMatch 'Exact' -ArgumentList '/S'
+    Uninstall-ADTApplication -Name 'Notepad++ (64-bit x64)' -NameMatch 'Exact' -ArgumentList '/S'
     Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.x64.exe"
 }
 

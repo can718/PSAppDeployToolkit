@@ -193,8 +193,8 @@ Describe 'Intune Tests' {
             }
 
             # --- Step 1: Look up the existing Win32 app in Intune ---
-            $win32App = Get-IntuneWin32App -DisplayName $script:VlcIntuneDisplayName -ErrorAction SilentlyContinue | `
-                Sort-Object -Property createdDateTime -Descending | `
+            $win32App = Get-IntuneWin32App -DisplayName $script:VlcIntuneDisplayName -ErrorAction SilentlyContinue |
+                Sort-Object -Property createdDateTime -Descending |
                 Select-Object -First 1
             $win32App | Should -Not -BeNullOrEmpty -Because 'VLC Win32 app must exist in Intune from the install test'
 
@@ -298,8 +298,8 @@ Describe 'Intune Tests' {
             }
 
             # --- Step 1: Look up the existing Win32 app in Intune ---
-            $win32App = Get-IntuneWin32App -DisplayName $script:WinScpIntuneDisplayName -ErrorAction SilentlyContinue | `
-                Sort-Object -Property createdDateTime -Descending | `
+            $win32App = Get-IntuneWin32App -DisplayName $script:WinScpIntuneDisplayName -ErrorAction SilentlyContinue |
+                Sort-Object -Property createdDateTime -Descending |
                 Select-Object -First 1
             $win32App | Should -Not -BeNullOrEmpty -Because 'WinSCP Win32 app must exist in Intune from the install test'
 
@@ -612,8 +612,8 @@ Describe 'Intune Tests' {
             }
             $jobs | Remove-Job -Force
 
-            Write-Information "[Parallel Install] Succeeded apps: $($succeededApps -join ', ')" -InformationAction Continue
-            Write-Information "[Parallel Install] Failed apps: $($failedApps -join ', ')" -InformationAction Continue
+            Write-Information "[Parallel Install] Succeeded: $(if ($succeededApps) { $succeededApps -join ', ' } else { 'none' })" -InformationAction Continue
+            Write-Information "[Parallel Install] Failed: $(if ($failedApps) { $failedApps -join ', ' } else { 'none' })" -InformationAction Continue
 
             $failedApps | Should -BeNullOrEmpty -Because "All apps should install successfully. Failed: $($failedApps -join ', ')"
         }
@@ -668,15 +668,15 @@ Describe 'Intune Tests' {
             }
             $jobs | Remove-Job -Force
 
-            Write-Information "[Parallel Uninstall] Succeeded apps: $($succeededApps -join ', ')" -InformationAction Continue
-            Write-Information "[Parallel Uninstall] Failed apps: $($failedApps -join ', ')" -InformationAction Continue
+            Write-Information "[Parallel Uninstall] Succeeded: $(if ($succeededApps) { $succeededApps -join ', ' } else { 'none' })" -InformationAction Continue
+            Write-Information "[Parallel Uninstall] Failed: $(if ($failedApps) { $failedApps -join ', ' } else { 'none' })" -InformationAction Continue
 
             $failedApps | Should -BeNullOrEmpty -Because "All apps should uninstall successfully. Failed: $($failedApps -join ', ')"
         }
 
         AfterAll {
             # Clean up all uploaded Intune apps.
-            if (!$script:UploadedApps)
+            if ($script:UploadedApps)
             {
                 foreach ($appName in $script:UploadedApps.Keys)
                 {
@@ -684,6 +684,14 @@ Describe 'Intune Tests' {
                     Write-Information "Cleaning up Intune Win32 app '$($appInfo.DisplayName)'..." -InformationAction Continue
                     Remove-IntuneWin32App -ID $appInfo.Win32AppId -ErrorAction SilentlyContinue -Verbose
                 }
+            }
+
+            # Clean up Azure AD test group.
+            Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
+            if ($script:GroupID)
+            {
+                Remove-MgGroup -GroupId $script:GroupID -ErrorAction Stop
+                Start-Sleep -Seconds 5
             }
         }
     }
