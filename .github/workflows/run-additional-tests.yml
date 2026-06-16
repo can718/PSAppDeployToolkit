@@ -63,6 +63,11 @@ jobs:
         Write-Host "Workflow timing initialized."
 
     - name: Check out repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+      env:
+        GIT_CONFIG_COUNT: 1
+        GIT_CONFIG_KEY_0: core.autocrlf
+        GIT_CONFIG_VALUE_0: 'false'
 
     - name: Set Test Run Start
       id: set-test-run-start
