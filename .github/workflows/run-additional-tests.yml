@@ -221,6 +221,7 @@ jobs:
         $duration = $buildEnd - $buildStart
         $mins = [int]($duration.TotalSeconds / 60)
         $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
         "build_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Generate artifact templates
@@ -233,6 +234,7 @@ jobs:
         $duration = $exportsEnd - $exportsStart
         $mins = [int]($duration.TotalSeconds / 60)
         $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
         "exports_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Prepare PSADT templates for deployment test
@@ -273,6 +275,7 @@ jobs:
         $duration = $templateEnd - $templateStart
         $mins = [int]($duration.TotalSeconds / 60)
         $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
         "template_prep_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     # Add your new test cases below this line
@@ -403,6 +406,7 @@ jobs:
         $duration = $pesterEnd - $pesterStart
         $mins = [int]($duration.TotalSeconds / 60)
         $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
         "run_pester_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Collect test case results from XML

@@ -276,7 +276,7 @@ jobs:
             $stepRows += @{
               'Step Name' = $displayStepName
               'Status' = $displayStatus
-              'Time Consuming' = if ([string]::IsNullOrWhiteSpace($time)) { '-' } else { $time }
+              'Time Consuming' = if ([string]::IsNullOrWhiteSpace($time)) { 'N/A' } else { $time }
             }
           }
 
@@ -285,19 +285,6 @@ jobs:
           }
           else {
             "⚠️ $statusKey"
-          }
-
-          if ($stepRows.Count -eq 0) {
-            $stepRows += @{
-              'Step Name' = 'Pipeline Job Result'
-              'Status' = $jobResultDisplay
-              'Time Consuming' = '-'
-            }
-            $stepRows += @{
-              'Step Name' = 'Details'
-              'Status' = 'No step outcomes were provided.'
-              'Time Consuming' = '-'
-            }
           }
 
           $stepRows = $stepRows | Sort-Object -Property 'Step Name'
@@ -382,14 +369,7 @@ jobs:
             )
           }
           else {
-            $pesterRows = @(
-              @{ Metric = 'Total'; Value = '0' },
-              @{ Metric = 'Passed'; Value = "✅ $pesterPassed" },
-              @{ Metric = 'Failed'; Value = "❌ $pesterFailed" },
-              @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" },
-              @{ Metric = 'Not Run'; Value = "⏸️ $pesterNotRun" },
-              @{ Metric = 'Info'; Value = if ($pesterNotRun -gt 0) { 'No test cases executed; some discovered cases were not run.' } else { 'No test case results were provided.' } }
-            )
+            $pesterRows = @()
           }
 
           $pesterSummary = if ($pesterTotal -gt 0 -or $pesterExecuted -gt 0) {
@@ -477,14 +457,26 @@ jobs:
           }
 
           $ciPanel = New-WorkflowStagePanel -Title 'Stage: Pipeline Info' -Rows $ciStageRows
-          $stepsPanel = New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $stepRows
-          $pesterPanel = New-WorkflowStagePanel -Title 'Stage: Pester Test Results' -Rows $pesterStageRows
+          $stepsPanel = if ($stepRows.Count -gt 0) {
+            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $stepRows
+          }
+          else {
+            $null
+          }
+          $pesterPanel = if ($pesterStageRows.Count -gt 0) {
+            New-WorkflowStagePanel -Title 'Stage: Pester Test Results' -Rows $pesterStageRows
+          }
+          else {
+            $null
+          }
           $casesPanel = if ($caseRows.Count -gt 0) {
             New-WorkflowStagePanel -Title 'Stage: Test Cases' -Rows $caseRows
           }
           else {
             $null
           }
+
+          $hasAnyDetailData = ($stepRows.Count -gt 0) -or ($pesterStageRows.Count -gt 0) -or ($caseRows.Count -gt 0)
 
           $adaptiveActions = @()
           if ($runUrl) {
@@ -548,18 +540,34 @@ jobs:
             @{
               type = 'Container'
               items = @($ciPanel)
-            },
-            @{
-              type = 'Container'
-              items = @($pesterPanel)
-            },
-            @{
-              type = 'Container'
-              items = @($stepsPanel)
             }
           )
 
-          if ($casesPanel) {
+          if ($hasAnyDetailData) {
+            if ($pesterPanel) {
+              $cardBody += @{
+                type = 'Container'
+                items = @($pesterPanel)
+              }
+            }
+
+            if ($stepsPanel) {
+              $cardBody += @{
+                type = 'Container'
+                items = @($stepsPanel)
+              }
+            }
+          }
+          else {
+            $cardBody += @{
+              type = 'TextBlock'
+              text = 'No result data was retrieved. The workflow may have been skipped or did not reach this stage. Please open the pipeline run for details.'
+              wrap = $true
+              color = 'Warning'
+            }
+          }
+
+          if ($casesPanel -and $hasAnyDetailData) {
             $cardBody += @{
               type = 'Container'
               items = @($casesPanel)
