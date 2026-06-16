@@ -658,7 +658,7 @@ Describe 'Intune Tests' {
 
         AfterAll {
             # Clean up all uploaded Intune apps.
-            if ($script:UploadedApps)
+            if (!$script:UploadedApps)
             {
                 foreach ($appName in $script:UploadedApps.Keys)
                 {

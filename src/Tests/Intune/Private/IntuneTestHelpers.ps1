@@ -522,7 +522,7 @@ function Wait-AppInstallation
 
         [int]$MaxWaitSeconds = 900,
         [int]$PollIntervalSeconds = 60,
-        [int]$SyncIntervalSeconds = 180
+        [int]$SyncIntervalSeconds = 300
     )
 
     $uninstallRoots = @(
@@ -601,7 +601,7 @@ function Wait-AppUninstallation
 
         [int]$MaxWaitSeconds = 1200,
         [int]$PollIntervalSeconds = 60,
-        [int]$SyncIntervalSeconds = 180
+        [int]$SyncIntervalSeconds = 300
     )
 
     $uninstallRoots = @(
