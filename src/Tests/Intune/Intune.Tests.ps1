@@ -1,4 +1,5 @@
 ﻿#pragma warning disable PSPlaceOpenBrace
+#pragma warning disable PSUseUsingScopeModifierInNewRunspaces
 
 # ---------------------------------------------------------------------------
 # Intune Win32 App Integration Tests
@@ -630,7 +631,9 @@ Describe 'Intune Tests' {
                     -Intent 'uninstall' -Notification 'showAll' -Verbose
             }
 
-            Start-Sleep -Seconds 5
+            Start-Sleep -Seconds 10
+
+            Invoke-MdmSync
 
             # Single sync for all uninstalls.
             Wait-IntuneManagementExtension
