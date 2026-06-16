@@ -583,7 +583,7 @@ Describe 'Intune Tests' {
                 Start-ThreadJob -Name "Poll-$appName" -ScriptBlock {
                     param($DisplayName, $ValueName, $ExpectedValue, $HelperPath)
                     . $HelperPath
-                    Wait-AppInstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue
+                    Wait-AppInstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
                 } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'Private\IntuneTestHelpers.ps1')
             }
 
@@ -634,7 +634,7 @@ Describe 'Intune Tests' {
                 Start-ThreadJob -Name "Uninstall-$appName" -ScriptBlock {
                     param($DisplayName, $ValueName, $ExpectedValue, $HelperPath)
                     . $HelperPath
-                    Wait-AppUninstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue
+                    Wait-AppUninstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
                 } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'Private\IntuneTestHelpers.ps1')
             }
 

@@ -522,7 +522,8 @@ function Wait-AppInstallation
 
         [int]$MaxWaitSeconds = 900,
         [int]$PollIntervalSeconds = 60,
-        [int]$SyncIntervalSeconds = 300
+        [int]$SyncIntervalSeconds = 300,
+        [switch]$SkipImeRestartAndSync
     )
 
     $uninstallRoots = @(
@@ -556,7 +557,7 @@ function Wait-AppInstallation
         if ($verified) { break }
 
         # Trigger MDM sync and restart IME at regular intervals to accelerate install.
-        if ($waited -ge $nextSyncAt)
+        if (-not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt)
         {
             Write-Information "'$DisplayName' not yet installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
             Invoke-MdmSync
@@ -601,7 +602,8 @@ function Wait-AppUninstallation
 
         [int]$MaxWaitSeconds = 1200,
         [int]$PollIntervalSeconds = 60,
-        [int]$SyncIntervalSeconds = 300
+        [int]$SyncIntervalSeconds = 300,
+        [switch]$SkipImeRestartAndSync
     )
 
     $uninstallRoots = @(
@@ -641,7 +643,7 @@ function Wait-AppUninstallation
         }
 
         # Trigger MDM sync and restart IME at regular intervals to accelerate uninstall.
-        if ($waited -ge $nextSyncAt)
+        if (-not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt)
         {
             Write-Information "'$DisplayName' still installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
             Invoke-MdmSync
