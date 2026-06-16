@@ -581,7 +581,7 @@ jobs:
             )
           }
 
-          $payloadJson = $payload | ConvertTo-Json -Depth 10 -Compress
+          $payloadJson = $payload | ConvertTo-Json -Depth 20 -Compress
 
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
