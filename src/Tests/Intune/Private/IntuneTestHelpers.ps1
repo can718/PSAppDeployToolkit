@@ -1,5 +1,8 @@
 ﻿#pragma warning disable PSPlaceOpenBrace
 
+[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '')]
+param()
+
 <#
 .SYNOPSIS
     Shared helper functions for Intune integration tests.
