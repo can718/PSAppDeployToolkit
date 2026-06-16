@@ -144,54 +144,8 @@ jobs:
               [int[]]$ColumnWidths
             )
 
-            function Get-CellLength {
-              param(
-                [string]$Value
-              )
-
-              if ($null -eq $Value) {
-                return 0
-              }
-
-              return $Value.Replace("`r", '').Replace("`n", ' ').Length
-            }
-
-            function Pad-Cell {
-              param(
-                [string]$Value,
-                [int]$TargetLength
-              )
-
-              if ($null -eq $Value) {
-                $Value = ''
-              }
-
-              $currentLength = Get-CellLength -Value $Value
-              $padding = [math]::Max($TargetLength - $currentLength, 0)
-              if ($padding -le 0) {
-                return $Value
-              }
-
-              return ($Value + ('&nbsp;' * $padding))
-            }
-
-            $effectiveColumnWidths = @()
-            for ($i = 0; $i -lt $Headers.Count; $i++) {
-              if ($ColumnWidths -and $ColumnWidths.Count -gt $i -and $ColumnWidths[$i] -gt 0) {
-                $effectiveColumnWidths += $ColumnWidths[$i]
-              }
-              else {
-                $effectiveColumnWidths += (Get-CellLength -Value $Headers[$i])
-              }
-            }
-
-            $paddedHeaders = @()
-            for ($i = 0; $i -lt $Headers.Count; $i++) {
-              $paddedHeaders += (Pad-Cell -Value $Headers[$i] -TargetLength $effectiveColumnWidths[$i])
-            }
-
-            $headerLine = '| ' + ($paddedHeaders -join ' | ') + ' |'
-            $separatorLine = '| ' + (($effectiveColumnWidths | ForEach-Object { '-' * [math]::Max($_, 3) }) -join ' | ') + ' |'
+            $headerLine = '| ' + ($Headers -join ' | ') + ' |'
+            $separatorLine = '| ' + (($Headers | ForEach-Object { '---' }) -join ' | ') + ' |'
             $rowLines = @()
             foreach ($row in $Rows) {
               $cells = @()
@@ -202,13 +156,8 @@ jobs:
                   $value = ''
                 }
 
-                # Check if this is a module header row (isBold = $true)
-                if ($row['isBold'] -eq $true) {
-                  $value = "**$value**"
-                }
-
                 $value = $value.Replace('|', '\|').Replace("`r", ' ').Replace("`n", '<br/>')
-                $cells += (Pad-Cell -Value $value -TargetLength $effectiveColumnWidths[$i])
+                $cells += $value
               }
 
               $rowLines += ('| ' + ($cells -join ' | ') + ' |')
@@ -224,13 +173,7 @@ jobs:
               $normalizedStepName = '(unnamed step)'
             }
 
-            # Truncate step name to 80 characters if too long, add ellipsis if truncated
-            if ($normalizedStepName.Length -gt 80) {
-              $displayStepName = $normalizedStepName.Substring(0, 77) + '...'
-            }
-            else {
-              $displayStepName = $normalizedStepName
-            }
+            $displayStepName = $normalizedStepName
 
             $rawValue = [string]$stepsObject[$stepName]
             $rawValue = $rawValue.Trim()
@@ -283,20 +226,6 @@ jobs:
           }
 
           $stepRows = $stepRows | Sort-Object -Property 'Step Name'
-
-          # Generate Pester Test Results summary
-          $pesterSummary = ''
-          if ($pesterTotal -gt 0 -or $pesterExecuted -gt 0) {
-            $pesterSummary = "Total: **$pesterTotal** | Executed: **$pesterExecuted** | ✅ Passed: **$pesterPassed** | ❌ Failed: **$pesterFailed** | ⏭️ Skipped: **$pesterSkipped** | ⏸️ Not Run: **$pesterNotRun**"
-          }
-          else {
-            if ($pesterNotRun -gt 0) {
-              $pesterSummary = "No test cases executed; some discovered cases were not run."
-            }
-            else {
-              $pesterSummary = "No test case results were provided."
-            }
-          }
 
           $workflowName = ([string]$env:WORKFLOW).Trim()
           if ([string]::IsNullOrWhiteSpace($workflowName)) {
@@ -388,6 +317,16 @@ jobs:
             )
           }
 
+          $pesterSummary = if ($pesterTotal -gt 0 -or $pesterExecuted -gt 0) {
+            "Total: **$pesterTotal** | Executed: **$pesterExecuted** | ✅ Passed: **$pesterPassed** | ❌ Failed: **$pesterFailed** | ⏭️ Skipped: **$pesterSkipped** | ⏸️ Not Run: **$pesterNotRun**"
+          }
+          elseif ($pesterNotRun -gt 0) {
+            'No test cases executed; some discovered cases were not run.'
+          }
+          else {
+            'No test case results were provided.'
+          }
+
           $casesJsonRaw = if ([string]::IsNullOrWhiteSpace($env:CASES_JSON)) {
             '{}'
           }
@@ -413,12 +352,7 @@ jobs:
               $normalizedCaseName = '(unnamed case)'
             }
 
-            if ($normalizedCaseName.Length -gt 120) {
-              $displayCaseName = $normalizedCaseName.Substring(0, 117) + '...'
-            }
-            else {
-              $displayCaseName = $normalizedCaseName
-            }
+            $displayCaseName = $normalizedCaseName
 
             $rawCaseValue = ([string]$casesObject[$caseName]).Trim()
             $caseOutcome = $rawCaseValue
@@ -449,131 +383,29 @@ jobs:
 
           $caseRows = $caseRows | Sort-Object -Property 'Step Name'
 
-          function Get-SharedColumnWidths {
-            param(
-              [Parameter(Mandatory = $true)]
-              [object[]]$TableSpecs,
-              [double]$Scale = 1.5
-            )
+          $stageHeaders = @('Step Name', 'Status', 'Time Consuming')
 
-            $maxFirstColumn = 0
-            $maxSecondColumn = 0
-
-            foreach ($table in $TableSpecs) {
-              $headers = [string[]]$table.Headers
-              $rows = [object[]]$table.Rows
-
-              if ($headers.Count -lt 2) {
-                continue
-              }
-
-              $maxFirstColumn = [math]::Max($maxFirstColumn, $headers[0].Replace("`r", '').Replace("`n", ' ').Length)
-              $maxSecondColumn = [math]::Max($maxSecondColumn, $headers[1].Replace("`r", '').Replace("`n", ' ').Length)
-
-              foreach ($row in $rows) {
-                $firstValue = [string]$row[$headers[0]]
-                $secondValue = [string]$row[$headers[1]]
-                $maxFirstColumn = [math]::Max($maxFirstColumn, $firstValue.Replace("`r", '').Replace("`n", ' ').Length)
-                $maxSecondColumn = [math]::Max($maxSecondColumn, $secondValue.Replace("`r", '').Replace("`n", ' ').Length)
-              }
-            }
-
-            @(
-              [int][math]::Ceiling([math]::Max($maxFirstColumn, 3) * $Scale),
-              [int][math]::Ceiling([math]::Max($maxSecondColumn, 3) * $Scale)
-            )
-          }
-
-          $sharedColumnWidths = Get-SharedColumnWidths -TableSpecs @(
-            @{ Headers = @('Item', 'Value'); Rows = $ciInfoRows },
-            @{ Headers = @('Metric', 'Value'); Rows = $pesterRows }
-          ) -Scale 1.5
-
-          # Calculate column widths for 3-column steps table - increased initial widths
-          $stepColumnWidths = @(85, 25, 15)
-          foreach ($row in $stepRows) {
-            $stepColumnWidths[0] = [math]::Max($stepColumnWidths[0], $row['Step Name'].Length)
-            $stepColumnWidths[1] = [math]::Max($stepColumnWidths[1], $row['Status'].Length)
-            $stepColumnWidths[2] = [math]::Max($stepColumnWidths[2], $row['Time Consuming'].Length)
-          }
-
-          $ciInfoTable = New-MarkdownTable -Headers @('Item', 'Value') -Rows $ciInfoRows -ColumnWidths $sharedColumnWidths
-          $stepsTable = New-MarkdownTable -Headers @('Step Name', 'Status', 'Time Consuming') -Rows $stepRows -ColumnWidths $stepColumnWidths
-
-          # Build unified table with all sections
-          $unifiedRows = @()
-
-          # Add CI Info section
-          $unifiedRows += @{
-            'Name' = '**CI Info**'
-            'Status' = ''
-            'Time Consuming' = ''
-            'isBold' = $true
-          }
-          foreach ($ciRow in $ciInfoRows) {
-            $unifiedRows += @{
-              'Name' = $ciRow['Item']
-              'Status' = $ciRow['Value']
-              'Time Consuming' = ''
+          $ciStageRows = foreach ($ciRow in $ciInfoRows) {
+            @{
+              'Step Name'      = [string]$ciRow['Item']
+              'Status'         = [string]$ciRow['Value']
+              'Time Consuming' = '-'
             }
           }
 
-          # Add Pipeline Steps section
-          $unifiedRows += @{
-            'Name' = '**Pipeline Steps**'
-            'Status' = ''
-            'Time Consuming' = ''
-            'isBold' = $true
-          }
-          foreach ($stepRow in $stepRows) {
-            $unifiedRows += @{
-              'Name' = $stepRow['Step Name']
-              'Status' = $stepRow['Status']
-              'Time Consuming' = $stepRow['Time Consuming']
+          $pesterStageRows = foreach ($metricRow in $pesterRows) {
+            @{
+              'Step Name'      = [string]$metricRow['Metric']
+              'Status'         = [string]$metricRow['Value']
+              'Time Consuming' = '-'
             }
           }
 
-          # Add Test Cases section if cases exist
-          if ($caseRows.Count -gt 0) {
-            $unifiedRows += @{
-              'Name' = '**Test Cases**'
-              'Status' = ''
-              'Time Consuming' = ''
-              'isBold' = $true
-            }
-            foreach ($caseRow in $caseRows) {
-              $unifiedRows += @{
-                'Name' = $caseRow['Step Name']
-                'Status' = $caseRow['Status']
-                'Time Consuming' = $caseRow['Time Consuming']
-              }
-            }
-          }
-
-          # Calculate column widths for unified table
-          $unifiedColumnWidths = @(85, 25, 15)
-          foreach ($row in $unifiedRows) {
-            if ($row['Name']) {
-              $unifiedColumnWidths[0] = [math]::Max($unifiedColumnWidths[0], $row['Name'].Length)
-            }
-            if ($row['Status']) {
-              $unifiedColumnWidths[1] = [math]::Max($unifiedColumnWidths[1], $row['Status'].Length)
-            }
-            if ($row['Time Consuming']) {
-              $unifiedColumnWidths[2] = [math]::Max($unifiedColumnWidths[2], $row['Time Consuming'].Length)
-            }
-          }
-
-          $unifiedTable = New-MarkdownTable -Headers @('Name', 'Status', 'Time Consuming') -Rows $unifiedRows -ColumnWidths $unifiedColumnWidths
-
-          $caseColumnWidths = @(85, 25, 15)
-          foreach ($row in $caseRows) {
-            $caseColumnWidths[0] = [math]::Max($caseColumnWidths[0], $row['Step Name'].Length)
-            $caseColumnWidths[1] = [math]::Max($caseColumnWidths[1], $row['Status'].Length)
-            $caseColumnWidths[2] = [math]::Max($caseColumnWidths[2], $row['Time Consuming'].Length)
-          }
+          $ciTable = New-MarkdownTable -Headers $stageHeaders -Rows $ciStageRows
+          $stepsTable = New-MarkdownTable -Headers $stageHeaders -Rows $stepRows
+          $pesterTable = New-MarkdownTable -Headers $stageHeaders -Rows $pesterStageRows
           $casesTable = if ($caseRows.Count -gt 0) {
-            New-MarkdownTable -Headers @('Step Name', 'Status', 'Time Consuming') -Rows $caseRows -ColumnWidths $caseColumnWidths
+            New-MarkdownTable -Headers $stageHeaders -Rows $caseRows
           }
           else {
             $null
@@ -623,12 +455,23 @@ jobs:
             },
             @{
               type = 'TextBlock'
-              text = "Triggered by: $actorName"
+              text = "Trigger For: $actorName"
               wrap = $true
             },
             @{
               type = 'TextBlock'
-              text = 'Pester Test Results'
+              text = 'Stage: Pipeline Info'
+              weight = 'Bolder'
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = $ciTable
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = 'Pester Test Results (Summary)'
               weight = 'Bolder'
               wrap = $true
             },
@@ -639,16 +482,41 @@ jobs:
             },
             @{
               type = 'TextBlock'
-              text = 'Details'
+              text = 'Stage: Pester Test Results'
               weight = 'Bolder'
               wrap = $true
             },
             @{
               type = 'TextBlock'
-              text = $unifiedTable
+              text = $pesterTable
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = 'Stage: Pipeline Steps'
+              weight = 'Bolder'
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = $stepsTable
               wrap = $true
             }
           )
+
+          if ($casesTable) {
+            $cardBody += @{
+              type = 'TextBlock'
+              text = 'Stage: Test Cases'
+              weight = 'Bolder'
+              wrap = $true
+            }
+            $cardBody += @{
+              type = 'TextBlock'
+              text = $casesTable
+              wrap = $true
+            }
+          }
 
           if ($diagnostics.Count -gt 0) {
             $cardBody += @{
