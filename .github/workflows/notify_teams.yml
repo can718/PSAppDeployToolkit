@@ -39,6 +39,11 @@ on:
         required: false
         type: string
         default: '{}'
+      notification_source:
+        description: 'Label to identify notification origin, e.g. Intune Tests or SCCM Tests'
+        required: false
+        type: string
+        default: ''
 jobs:
   send:
     name: Send Notification
@@ -57,6 +62,7 @@ jobs:
           PESTER_SKIPPED: ${{ inputs.pester_skipped }}
           PESTER_NOTRUN: ${{ inputs.pester_notrun }}
           CASES_JSON: ${{ inputs.cases_json }}
+          NOTIFICATION_SOURCE: ${{ inputs.notification_source }}
           BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
@@ -294,6 +300,14 @@ jobs:
             $workflowName = '(unknown workflow)'
           }
 
+          $notificationSource = ([string]$env:NOTIFICATION_SOURCE).Trim()
+          $sourceLabel = if ([string]::IsNullOrWhiteSpace($notificationSource)) { 'General' } else { $notificationSource }
+          $sourceIcon = switch -Regex ($sourceLabel.ToLowerInvariant()) {
+            'intune'     { '📱' }
+            'sccm tests' { '🧪' }
+            default      { '🏷️' }
+          }
+
           $branchName = ([string]$env:BRANCH).Trim()
           if ([string]::IsNullOrWhiteSpace($branchName)) {
             $branchName = '(unknown branch)'
@@ -328,6 +342,7 @@ jobs:
           }
 
           $ciInfoRows = @(
+            @{ Item = 'Notification Source'; Value = "$sourceIcon $sourceLabel" },
             @{ Item = 'Workflow'; Value = $workflowName },
             @{ Item = 'Branch'; Value = $branchName },
             @{ Item = 'Commit'; Value = $shortSha },
@@ -500,7 +515,7 @@ jobs:
               type   = 'TextBlock'
               size   = 'Large'
               weight = 'Bolder'
-              text   = "Pipeline: $workflowName"
+              text   = "Pipeline: $workflowName [$sourceLabel]"
               wrap   = $true
             },
             @{

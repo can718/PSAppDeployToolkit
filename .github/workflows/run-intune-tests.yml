@@ -520,12 +520,13 @@ jobs:
         Invoke-TFResetSessionVM
 
   notify-teams:
-    name: Notify Teams
+    name: Notify Teams (Intune)
     needs: run-intune-tests
     if: ${{ always() }}
     uses: ./.github/workflows/notify_teams.yml
     with:
       job_status:        ${{ needs.run-intune-tests.result || 'failed' }}
+      notification_source: 'Intune Tests'
       steps_json:        ${{ needs.run-intune-tests.outputs.steps_json || '{}' }}
       pester_discovered: ${{ needs.run-intune-tests.outputs.pester_discovered || '0' }}
       pester_total:      ${{ needs.run-intune-tests.outputs.pester_total || '0' }}
