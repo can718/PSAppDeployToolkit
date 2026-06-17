@@ -40,6 +40,15 @@ jobs:
     name: Run Intune Tests
     needs: discover-agent
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
+    outputs:
+      steps_json:        ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
+      pester_discovered: ${{ steps.run-pester.outputs.pester_discovered || '0' }}
+      pester_total:      ${{ steps.run-pester.outputs.pester_total || '0' }}
+      pester_passed:     ${{ steps.run-pester.outputs.pester_passed || '0' }}
+      pester_failed:     ${{ steps.run-pester.outputs.pester_failed || '0' }}
+      pester_skipped:    ${{ steps.run-pester.outputs.pester_skipped || '0' }}
+      pester_notrun:     ${{ steps.run-pester.outputs.pester_notrun || '0' }}
+      cases_json:        ${{ steps.collect-cases.outputs.cases_json || '{}' }}
     strategy:
       fail-fast: false
     env:
@@ -54,6 +63,7 @@ jobs:
       TEST_CLIENTSECRET: ${{ secrets.TEST_CLIENTSECRET }}
     steps:
     - name: Check out repository
+      id: checkout-repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
       env:
         GIT_CONFIG_COUNT: 1
@@ -80,6 +90,7 @@ jobs:
             -Title "PSADT Intune Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
 
     - name: Download Test Results from Azure Blob Storage and enroll envronment for next test run
+      id: download-test-assets
       if: always()
       shell: pwsh
       run: |
@@ -94,6 +105,7 @@ jobs:
         Invoke-TFDownloadTestAssets -LocalDestinationDir "C:\Tools\PSADT\AutoEnroll"
 
     - name: Check runner environment
+      id: check-runner-environment
       shell: pwsh
       run: |
         Write-Host "========== Runner Info =========="
@@ -127,6 +139,7 @@ jobs:
         Get-ChildItem Env: | Where-Object { $_.Name -match 'GITHUB|RUNNER|DOTNET|NUGET|PATH' } | Sort-Object Name | Format-Table Name, Value -AutoSize
 
     - name: Install Node.js (required for GitHub Actions on self-hosted runner)
+      id: install-node
       shell: pwsh
       run: |
         if (-not (Get-Command node -ErrorAction Ignore)) {
@@ -141,6 +154,7 @@ jobs:
         }
 
     - name: Install 7-Zip (required for build packaging on self-hosted runner)
+      id: install-7zip
       shell: pwsh
       run: |
         # Check if 7-Zip is already installed via registry
@@ -179,19 +193,23 @@ jobs:
         }
 
     - name: Display the path
+      id: display-path
       shell: pwsh
       run: echo ${env:PATH}
 
     - name: Version Display
+      id: version-display
       shell: pwsh
       run: $PSVersionTable
 
     - name: Install .NET 10 SDK (required for net10.0 build target)
+      id: setup-dotnet
       uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # https://github.com/actions/setup-dotnet/releases/tag/v4.3.1
       with:
         dotnet-version: '10.0.x'
 
     - name: Cache NuGet packages
+      id: cache-nuget
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # https://github.com/actions/cache/releases/tag/v5.0.5
       with:
         path: ${{ env.NUGET_PACKAGES }}
@@ -207,6 +225,7 @@ jobs:
         key: ${{ runner.os }}-psmodule-PSScriptAnalyzer-1.25.0-Pester-5.7.1-platyPS-0.14.2-Alt3.Docusaurus.Powershell-1.0.37
 
     - name: Install PowerShell modules
+      id: install-psmodules
       if: steps.psmodule-cache.outputs.cache-hit != 'true'
       shell: pwsh
       run: |
@@ -220,6 +239,7 @@ jobs:
         Install-Module -Name Alt3.Docusaurus.Powershell -RequiredVersion 1.0.37 -Force -Scope CurrentUser
 
     - name: Configure NuGet source
+      id: configure-nuget
       shell: pwsh
       run: |
         dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org 2>&1 | Out-Null
@@ -227,6 +247,7 @@ jobs:
         dotnet nuget list source
 
     - name: Build (minimal - Prerequisites, Clean, Dependencies, DotNet, Build)
+      id: build
       shell: pwsh
       run: |
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
@@ -274,6 +295,7 @@ jobs:
 
     # Add your new Intune test cases below this line
     - name: Run Intune Tests
+      id: run-pester
       shell: pwsh
       env:
         PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
@@ -281,15 +303,143 @@ jobs:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
+
+        $discoveryConfig = New-PesterConfiguration
+        $discoveryConfig.Run.Path = '.\src\Tests\Intune'
+        $discoveryConfig.Run.SkipRun = $true
+        $discoveryConfig.Run.PassThru = $true
+        $discoveryResult = Invoke-Pester -Configuration $discoveryConfig
+        $discoveredTotal = [int]$discoveryResult.TotalCount
+
         $config = New-PesterConfiguration
         $config.Run.Path = '.\src\Tests\Intune'
         $config.Output.Verbosity = 'Detailed'
         $config.TestResult.Enabled = $true
         $config.TestResult.OutputPath = '.\src\Artifacts\TestOutput\IntuneTests.xml'
         $config.TestResult.OutputFormat = 'NUnitXml'
-        Invoke-Pester -Configuration $config
+        $config.Run.PassThru = $true
+        $result = Invoke-Pester -Configuration $config
+
+        $executedTotal = [int]$result.TotalCount
+        $passed = [int]$result.PassedCount
+        $failed = [int]$result.FailedCount
+        $skipped = [int]$result.SkippedCount
+        $notRun = [math]::Max($discoveredTotal - $executedTotal, 0)
+
+        "pester_discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_total=$discoveredTotal"      | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_passed=$passed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_failed=$failed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_skipped=$skipped"            | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_notrun=$notRun"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+        if ($failed -gt 0) {
+          throw "One or more Intune tests failed. Failed count: $failed"
+        }
+
+    - name: Collect test case results from XML
+      id: collect-cases
+      if: always()
+      shell: pwsh
+      run: |
+        $caseEntries = [ordered]@{}
+
+        function Get-XmlAttributeValue {
+          param(
+            [Parameter(Mandatory = $true)]
+            [System.Xml.XmlNode]$Node,
+            [Parameter(Mandatory = $true)]
+            [string]$Name
+          )
+
+          if ($Node -and $Node.Attributes) {
+            $attribute = $Node.Attributes[$Name]
+            if ($attribute) {
+              return [string]$attribute.Value
+            }
+          }
+
+          return ''
+        }
+
+        $xmlFiles = Get-ChildItem -Path '.\src\Artifacts\TestOutput\IntuneTests*.xml' -ErrorAction SilentlyContinue | Sort-Object Name
+        foreach ($xmlFile in $xmlFiles) {
+          try {
+            [xml]$xml = Get-Content $xmlFile.FullName -Raw -Encoding UTF8
+            $testCases = $xml.SelectNodes('/test-results/test-suite/results//test-case')
+
+            foreach ($tc in $testCases) {
+              $caseDescription = (Get-XmlAttributeValue -Node $tc -Name 'description').Trim()
+              $caseNodeName = (Get-XmlAttributeValue -Node $tc -Name 'name').Trim()
+              $caseName = if (-not [string]::IsNullOrWhiteSpace($caseDescription)) {
+                $caseDescription
+              }
+              else {
+                ($caseNodeName -split '\.')[-1].Trim()
+              }
+              if ([string]::IsNullOrWhiteSpace($caseName)) { $caseName = '(unnamed)' }
+
+              $result = (Get-XmlAttributeValue -Node $tc -Name 'result').Trim().ToLowerInvariant()
+              $executed = (Get-XmlAttributeValue -Node $tc -Name 'executed').Trim().ToLowerInvariant()
+              $success = (Get-XmlAttributeValue -Node $tc -Name 'success').Trim().ToLowerInvariant()
+
+              $outcome = if (-not [string]::IsNullOrWhiteSpace($result)) {
+                switch ($result) {
+                  'passed'       { 'success' }
+                  'success'      { 'success' }
+                  'failed'       { 'failure' }
+                  'failure'      { 'failure' }
+                  'skipped'      { 'skipped' }
+                  'inconclusive' { 'unknown' }
+                  default        { 'unknown' }
+                }
+              }
+              elseif ($executed -eq 'false') {
+                'skipped'
+              }
+              elseif ($success -eq 'true') {
+                'success'
+              }
+              elseif ($success -eq 'false') {
+                'failure'
+              }
+              else {
+                'unknown'
+              }
+
+              $durationText = (Get-XmlAttributeValue -Node $tc -Name 'duration').Trim()
+              if ([string]::IsNullOrWhiteSpace($durationText)) {
+                $durationText = (Get-XmlAttributeValue -Node $tc -Name 'time').Trim()
+              }
+
+              $durationSec = 0.0
+              [void][double]::TryParse(
+                $durationText,
+                [System.Globalization.NumberStyles]::Float,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [ref]$durationSec
+              )
+              $mins = [int]($durationSec / 60)
+              $secs = [int]($durationSec % 60)
+              if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+              $durationStr = "${mins}m ${secs}s"
+
+              if (-not $caseEntries.Contains($caseName)) {
+                $caseEntries[$caseName] = "$outcome | $durationStr"
+              }
+            }
+          }
+          catch {
+            Write-Warning "Failed to parse $($xmlFile.Name): $($_.Exception.Message)"
+          }
+        }
+
+        $casesJson = if ($caseEntries.Count -gt 0) { $caseEntries | ConvertTo-Json -Compress } else { '{}' }
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_json=$casesJson`n", [System.Text.Encoding]::UTF8)
+        Write-Host "Collected $($caseEntries.Count) test case result(s)."
 
     - name: Upload Intune test results
+      id: upload-artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # https://github.com/actions/upload-artifact/releases/tag/v7.0.1
       with:
@@ -299,6 +449,7 @@ jobs:
         overwrite: true
 
     - name: Complete Test Run
+      id: complete-test-run
       if: always()
       shell: pwsh
       env:
@@ -312,6 +463,7 @@ jobs:
         Invoke-TFCompleteTestRun
 
     - name: Upload Test Results to Azure Blob Storage
+      id: upload-to-blob
       if: always()
       shell: pwsh
       env:
@@ -324,7 +476,39 @@ jobs:
         . $tfHelper
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml'
 
+    - name: Collect step outcomes
+      id: collect-outputs
+      if: always()
+      shell: pwsh
+      run: |
+        $steps = [ordered]@{
+          'Check out repository'                  = '${{ steps.checkout-repository.outcome }}'
+          'Set Test Run Start'                    = '${{ steps.set-test-run-start.outcome }}'
+          'Download Test Assets'                  = '${{ steps.download-test-assets.outcome }}'
+          'Check runner environment'              = '${{ steps.check-runner-environment.outcome }}'
+          'Install Node.js'                       = '${{ steps.install-node.outcome }}'
+          'Install 7-Zip'                         = '${{ steps.install-7zip.outcome }}'
+          'Display the path'                      = '${{ steps.display-path.outcome }}'
+          'Version Display'                       = '${{ steps.version-display.outcome }}'
+          'Install .NET 10 SDK'                   = '${{ steps.setup-dotnet.outcome }}'
+          'Cache NuGet packages'                  = '${{ steps.cache-nuget.outcome }}'
+          'Cache PowerShell modules'              = '${{ steps.psmodule-cache.outcome }}'
+          'Install PowerShell modules'            = '${{ steps.install-psmodules.outcome }}'
+          'Configure NuGet source'                = '${{ steps.configure-nuget.outcome }}'
+          'Build'                                 = '${{ steps.build.outcome }}'
+          'Generate Artifact Templates'           = '${{ steps.exports.outcome }}'
+          'Prepare Templates'                     = '${{ steps.template-prep.outcome }}'
+          'Run Pester Tests'                      = '${{ steps.run-pester.outcome }}'
+          'Collect test case results'             = '${{ steps.collect-cases.outcome }}'
+          'Upload Test Results'                   = '${{ steps.upload-artifacts.outcome }}'
+          'Complete Test Run'                     = '${{ steps.complete-test-run.outcome }}'
+          'Upload to Blob Storage'                = '${{ steps.upload-to-blob.outcome }}'
+        }
+
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($steps | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
+
     - name: Reset Azure Session VM
+      id: reset-sessionvm
       if: always()
       shell: pwsh
       run: |
@@ -334,3 +518,20 @@ jobs:
         }
         . $tfHelper
         Invoke-TFResetSessionVM
+
+  notify-teams:
+    name: Notify Teams
+    needs: run-intune-tests
+    if: ${{ always() }}
+    uses: ./.github/workflows/notify_teams.yml
+    with:
+      job_status:        ${{ needs.run-intune-tests.result || 'failed' }}
+      steps_json:        ${{ needs.run-intune-tests.outputs.steps_json || '{}' }}
+      pester_discovered: ${{ needs.run-intune-tests.outputs.pester_discovered || '0' }}
+      pester_total:      ${{ needs.run-intune-tests.outputs.pester_total || '0' }}
+      pester_passed:     ${{ needs.run-intune-tests.outputs.pester_passed || '0' }}
+      pester_failed:     ${{ needs.run-intune-tests.outputs.pester_failed || '0' }}
+      pester_skipped:    ${{ needs.run-intune-tests.outputs.pester_skipped || '0' }}
+      pester_notrun:     ${{ needs.run-intune-tests.outputs.pester_notrun || '0' }}
+      cases_json:        ${{ needs.run-intune-tests.outputs.cases_json || '{}' }}
+    secrets: inherit
