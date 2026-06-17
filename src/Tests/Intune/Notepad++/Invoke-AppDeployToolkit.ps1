@@ -52,15 +52,15 @@ param
 
 ## MARK: Variables
 $adtSession = @{
-    AppVendor = 'VideoLAN'
-    AppName = 'VLC media player'
-    AppVersion = '3.0.23'
+    AppVendor = 'Don HO don.h@free.fr'
+    AppName = 'Notepad++'
+    AppVersion = '8.9.6.4'
     AppArch = 'x64'
     AppLang = 'EN'
     AppRevision = '01'
     AppSuccessExitCodes = @(0)
     AppRebootExitCodes = @(1641, 3010)
-    AppProcessesToClose = @(@{ Name = 'vlc'; Description = 'VLC media player' })
+    AppProcessesToClose = @(@{ Name = 'notepad++'; Description = 'Notepad++' })
     RequireAdmin = $true
 
     AppScriptVersion = '1.0.0'
@@ -79,11 +79,10 @@ $adtSession = @{
 ## MARK: Pre-Install
 $PreInstall = {
     $saiwParams = @{
-        AllowDefer = $true
-        DeferTimes = 2
-        # PersistPrompt = $true
-        ForceCountdown = 8
-        CheckDiskSpace = $true
+        #AllowDeferCloseProcesses = $true
+        #DeferTimes = 3
+        #PersistPrompt = $true
+        CloseProcessesCountdown = 10
     }
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
@@ -95,7 +94,7 @@ $PreInstall = {
 
 ## MARK: Install
 $Install = {
-    Start-ADTProcess -FilePath "vlc-$($adtSession.AppVersion)-win64.exe" -ArgumentList '/L=1033 /S'
+    Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.x64.exe" -ArgumentList '/S'
 }
 
 ## MARK: Post-Install
@@ -109,14 +108,14 @@ $PostInstall = {
 $PreUninstall = {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
+        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 10
     }
     Show-ADTInstallationProgress
 }
 
 ## MARK: Uninstall
 $Uninstall = {
-    Uninstall-ADTApplication -Name 'VLC media player' -NameMatch 'Exact' -ArgumentList '/S'
+    Uninstall-ADTApplication -Name 'Notepad++ (64-bit x64)' -NameMatch 'Exact' -ArgumentList '/S'
 }
 
 ## MARK: Post-Uninstall
@@ -127,22 +126,22 @@ $PostUninstall = {
 $PreRepair = {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
+        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 10
     }
     Show-ADTInstallationProgress
 }
 
 ## MARK: Repair
 $Repair = {
-    Uninstall-ADTApplication -Name 'VLC media player' -NameMatch 'Exact' -ArgumentList '/S'
-    Start-ADTProcess -FilePath "vlc-$($adtSession.AppVersion)-win64.exe" -ArgumentList '/L=1033 /S'
+    Uninstall-ADTApplication -Name 'Notepad++ (64-bit x64)' -NameMatch 'Exact' -ArgumentList '/S'
+    Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.x64.exe"
 }
 
 ## MARK: Post-Repair
 $PostRepair = {
-    Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
+    #Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
     # Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
-    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait -Timeout 5
+    Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Initialization

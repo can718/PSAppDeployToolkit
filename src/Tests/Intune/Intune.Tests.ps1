@@ -1,156 +1,54 @@
 ﻿#pragma warning disable PSPlaceOpenBrace
+[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseUsingScopeModifierInNewRunspaces', '')]
+param()
 
 # ---------------------------------------------------------------------------
-# TerraForge test run reporting helper
-# Loaded once per session; silently skipped if env vars are not set
+# Intune Win32 App Integration Tests
+#
+# Test lifecycle:
+#   1. Global BeforeAll   - load helpers, TerraForge reporting, IntuneWin32App module
+#   2. Context BeforeAll  - create Azure AD test group, resolve IntuneWinAppUtil
+#   3. Per-test BeforeEach - TerraForge reporting, Intune Graph auth, skip guard
+#   4. It block           - prepare -> wrap -> upload -> assign -> sync -> verify
+#   5. Per-test AfterEach - TerraForge result update
 # ---------------------------------------------------------------------------
+
 BeforeAll {
+    # Resolve script root for relative paths.
     $script:_tfScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
-    Write-Information "[TerraForge] PSScriptRoot='$PSScriptRoot' MyCommand='$($MyInvocation.MyCommand.Path)' ScriptRoot='$($script:_tfScriptRoot)'" -InformationAction Continue
-    $script:_tfHelperPath = [System.IO.Path]::GetFullPath((Join-Path $script:_tfScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
-    Write-Information "[TerraForge] Helper script path: $($script:_tfHelperPath)  Exists=$(Test-Path $script:_tfHelperPath)" -InformationAction Continue
-    if (Test-Path $script:_tfHelperPath)
+
+    # Load shared helper functions.
+    . (Join-Path $script:_tfScriptRoot 'Private\IntuneTestHelpers.ps1')
+
+    # Load TerraForge helper script at script scope so exported functions
+    # remain available in later Pester blocks (BeforeEach/AfterEach).
+    $script:TerraForgeHelperPath = [System.IO.Path]::GetFullPath((Join-Path $script:_tfScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
+    if (Test-Path $script:TerraForgeHelperPath)
     {
-        try { . $script:_tfHelperPath }
-        catch { Write-Warning "[TerraForge] Failed to load helper script: $($_.Exception.Message)" }
+        . $script:TerraForgeHelperPath
+    }
+    else
+    {
+        Write-Warning "[TerraForge] Helper script not found at: $script:TerraForgeHelperPath"
     }
 
     Write-Information "[Pester] Version: $((Get-Module Pester).Version)" -InformationAction Continue
-    $script:TFReportingEnabled = $false
-    $script:TFAccessToken = $null
-    $script:TFTestRunId = $env:TEST_RUN_ID
-    $script:TFApiBaseUrl = $env:TERRAFORGE_API_BASE_URL
-    # Authenticate to Intune Graph
+
+    # ---------------------------------------------------------------------------
+    # Initialize TerraForge reporting (no-op when env vars are not set).
+    # ---------------------------------------------------------------------------
+    $script:TFState = Initialize-TerraForgeReporting -ScriptRoot $script:_tfScriptRoot
+
+    # ---------------------------------------------------------------------------
+    # Store credentials from environment for Intune Graph authentication.
+    # ---------------------------------------------------------------------------
     $script:TenantID = $env:TEST_TENANTID
     $script:ClientID = $env:TEST_CLIENTID
     $script:ClientSecret = $env:TEST_CLIENTSECRET
-    $script:templateFolder = "C:\Tools\GitHubAgent\actions-runner\_work\PSAppDeployToolkit\PSAppDeployToolkit\src\Artifacts\TestTemplates"
 
-    if ($script:TFTestRunId -and $script:TFApiBaseUrl)
-    {
-        if (Get-Command 'Get-TerraForgeAuthToken' -ErrorAction SilentlyContinue)
-        {
-            try
-            {
-                $script:TFAccessToken = Get-TerraForgeAuthToken `
-                    -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
-                    -KeyVaultName            $env:INFRA_KEYVAULT `
-                    -ApiKeySecretName        $env:TERRAFORGE_API_KEY_SECRET `
-                    -ApiBaseUrl              $script:TFApiBaseUrl
-                $script:TFReportingEnabled = $true
-                Write-Information "[TerraForge] Reporting enabled for TestRunId: $script:TFTestRunId" -InformationAction Continue
-            }
-            catch
-            {
-                Write-Warning "[TerraForge] Could not obtain access token, reporting disabled: $($_.Exception.Message)"
-            }
-        }
-        else
-        {
-            Write-Warning "[TerraForge] Helper script not found or failed to load (path: $($script:_tfHelperPath)) -- reporting disabled."
-        }
-    }
-
-    function script:Invoke-TFReportTestCase
-    {
-        <#
-            Creates a test run result entry before the test executes.
-            Stores the returned ID in $script:TFCurrentResultId for AfterEach to update.
-        #>
-        param (
-            [string]$TestClass,
-            [string]$TestMethod
-        )
-        $script:TFCurrentResultId = $null
-        if (-not $script:TFReportingEnabled) { return }
-
-        if ([string]::IsNullOrWhiteSpace($TestMethod))
-        {
-            Write-Warning "[TerraForge] Skipping result entry creation: could not resolve test name."
-            return
-        }
-
-        try
-        {
-            $result = New-TestRunResults `
-                -ApiBaseUrl  $script:TFApiBaseUrl `
-                -AccessToken $script:TFAccessToken `
-                -TestRunId   $script:TFTestRunId `
-                -TestClass   $TestClass `
-                -SessionId   $env:TEST_SESSION_ID `
-                -ProductName $TestMethod `
-                -MachineId   $env:COMPUTERNAME
-            $script:TFCurrentResultId = $result.Id
-            Write-Information "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod" -InformationAction Continue
-        }
-        catch
-        {
-            Write-Warning "[TerraForge] Failed to create result entry for '$TestMethod': $($_.Exception.Message)"
-        }
-    }
-
-    function script:Invoke-TFUpdateTestCase
-    {
-        <#
-            Updates the test run result after the test completes.
-            Result codes: 2 = Passed, 0 = Failed, 4 = Skipped
-            NOTE: Called from AfterEach where Pester has not yet written back
-            Test.Passed/Result, so we derive the outcome from ErrorRecord count
-            and the Skipped flag instead.
-        #>
-        param (
-            [object]$TestResult
-        )
-        if (-not $script:TFReportingEnabled -or -not $script:TFCurrentResultId) { return }
-
-        try
-        {
-            $resultCode = if ($TestResult.Skipped)
-            {
-                $null   # Skipped
-            }
-            elseif ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0)
-            {
-                0   # Failed
-            }
-            else
-            {
-                2   # Passed
-            }
-            $errorMsg = if ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0)
-            {
-                $TestResult.ErrorRecord[0].Exception.Message
-            }
-            else
-            {
-                $null
-            }
-
-            Update-TestRunResults `
-                -ApiBaseUrl       $script:TFApiBaseUrl `
-                -AccessToken      $script:TFAccessToken `
-                -TestRunResultId  $script:TFCurrentResultId `
-                -Result           $resultCode `
-                -ErrorMessage     $errorMsg
-            Write-Verbose "[TerraForge] Updated result Id=$($script:TFCurrentResultId) -> code=$resultCode"
-        }
-        catch
-        {
-            Write-Warning "[TerraForge] Failed to update result Id=$($script:TFCurrentResultId): $($_.Exception.Message)"
-        }
-    }
-
-    function script:Get-IntuneWinAppUtilPath
-    {
-        $toolPath = 'C:\Tools\Intune\IntuneWinAppUtil.exe'
-        if (Test-Path $toolPath)
-        {
-            return $toolPath
-        }
-
-        return $null
-    }
-
+    # ---------------------------------------------------------------------------
+    # Ensure IntuneWin32App module is available.
+    # ---------------------------------------------------------------------------
     if (-not (Get-Module -Name 'IntuneWin32App' -ListAvailable))
     {
         Install-Module -Name 'IntuneWin32App' -AcceptLicense -Force -Scope CurrentUser
@@ -159,454 +57,663 @@ BeforeAll {
 }
 
 Describe 'Intune Tests' {
-    Context 'Win32 App Wrap and Upload' {
+    BeforeAll {
+        # Prepare a clean workspace root.
+        $script:BasePath = 'C:\PSADT'
+        if (Test-Path $script:BasePath)
+        {
+            Remove-Item -Path $script:BasePath -Recurse -Force
+        }
+        New-Item -Path $script:BasePath -ItemType Directory -Force | Out-Null
+
+        # Resolve IntuneWinAppUtil.exe.
+        $script:IntuneWinAppUtil = Get-IntuneWinAppUtilPath
+        $script:Win32WrapAndUploadSkipReason = if (-not $script:IntuneWinAppUtil)
+        {
+            'IntuneWinAppUtil.exe not found at C:\Tools\Intune\IntuneWinAppUtil.exe'
+        }
+        else
+        {
+            $null
+        }
+
+        # Create Azure AD test group and add the current device.
+        $groupResult = Initialize-IntuneTestGroup `
+            -TenantId     $script:TenantID `
+            -ClientId     $script:ClientID `
+            -ClientSecret $script:ClientSecret
+        $script:GroupID = $groupResult.GroupId
+
+        if ($groupResult.SkipReason)
+        {
+            $script:Win32WrapAndUploadSkipReason = if ($script:Win32WrapAndUploadSkipReason)
+            {
+                "$($script:Win32WrapAndUploadSkipReason); $($groupResult.SkipReason)"
+            }
+            else
+            {
+                $groupResult.SkipReason
+            }
+        }
+    }
+
+    BeforeEach {
+        # TerraForge: create a result entry for this test.
+        $testInfo = $____Pester.CurrentTest
+        $script:CurrentTestClass = 'Intune Tests / Win32 App Wrap and Upload'
+        $script:CurrentTestMethod = $testInfo.Name
+        $script:TFCurrentResultId = Invoke-TFReportTestCase `
+            -TFState   $script:TFState `
+            -TestClass $script:CurrentTestClass `
+            -TestMethod $script:CurrentTestMethod
+
+        # Ensure Intune Graph session is active.
+        if ($(Test-AccessToken) -eq $false)
+        {
+            Write-Information "Connecting to MS Intune Graph..."
+            Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $script:ClientSecret
+        }
+
+        # Skip guard: skip the entire test if prerequisites are missing.
+        if ($script:Win32WrapAndUploadSkipReason)
+        {
+            Set-ItResult -Skipped -Because $script:Win32WrapAndUploadSkipReason
+        }
+    }
+
+    AfterEach {
+        Invoke-TFUpdateTestCase `
+            -TFState    $script:TFState `
+            -ResultId   $script:TFCurrentResultId `
+            -TestResult $____Pester.CurrentTest
+
+        # Clean up any test artifacts from the client registry to ensure a clean slate for the next test.
+        Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\IntuneManagementExtension" -Recurse -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 10 # brief pause to ensure registry changes are committed before the next test starts
+    }
+
+    Context 'VLC - Wrap, Upload, Assign, Verify, Uninstall' -Skip {
         BeforeAll {
-            # Generate PSADT template to C:\PSADT
-            $templateDest = 'C:\PSADT'
-            if (Test-Path $templateDest)
-            {
-                Remove-Item -Path $templateDest -Recurse -Force
-            }
-            New-Item -Path $templateDest -ItemType Directory -Force | Out-Null
-
-            # Resolve IntuneWinAppUtil.exe from the default local install path.
-            $script:IntuneWinAppUtil = Get-IntuneWinAppUtilPath
-            $script:Win32WrapAndUploadSkipReason = if (-not $script:IntuneWinAppUtil)
-            {
-                'IntuneWinAppUtil.exe not found at C:\Tools\Intune\IntuneWinAppUtil.exe'
-            }
-            else
-            {
-                $null
-            }
-
-            # Ensure required Microsoft Graph modules are installed and imported.
-            # Wildcard check is intentionally avoided because it would match any
-            # unrelated Microsoft.Graph.* module that may already be present.
-            $requiredGraphModules = @('Microsoft.Graph.Authentication', 'Microsoft.Graph.Groups', 'Microsoft.Graph.Identity.DirectoryManagement')
-            $missingGraphModules = $requiredGraphModules | Where-Object { -not (Get-Module -Name $_ -ListAvailable) }
-            if ($missingGraphModules)
-            {
-                Write-Information "Installing missing Graph modules: $($missingGraphModules -join ', ')" -InformationAction Continue
-                Install-Module -Name $missingGraphModules -Force -Scope CurrentUser
-            }
-            Import-Module Microsoft.Graph.Authentication, Microsoft.Graph.Groups, Microsoft.Graph.Identity.DirectoryManagement
-
-            # Connect to Microsoft Graph using client-secret credential.
-            # Required application permissions on the app registration (admin-consented):
-            #   Group.ReadWrite.All, GroupMember.ReadWrite.All, Device.Read.All
-            $secureSecret = ConvertTo-SecureString $script:ClientSecret -AsPlainText -Force
-            $clientSecretCredential = New-Object System.Management.Automation.PSCredential ($script:ClientID, $secureSecret)
-            $deviceName = $env:COMPUTERNAME
-            try
-            {
-                Connect-MgGraph -TenantId $script:TenantID -ClientSecretCredential $clientSecretCredential -NoWelcome -ErrorAction Stop
-
-                # If 'PSADT Test Group' already exists, delete it to start clean.
-                $testGroupName = "PSADT Test Group $deviceName"
-                $existingGroups = Get-MgGroup -Filter "displayName eq '$testGroupName'" -ErrorAction Stop
-                foreach ($existingGroup in $existingGroups)
-                {
-                    Write-Information "Removing existing group '$testGroupName' (Id: $($existingGroup.Id))" -InformationAction Continue
-                    Remove-MgGroup -GroupId $existingGroup.Id -ErrorAction Stop
-                    Start-Sleep -Seconds 5
-                }
-
-                # Create a fresh test group and store its ObjectId for assignment tests.
-                $group = New-MgGroup -BodyParameter @{
-                    displayName = $testGroupName
-                    securityEnabled = $true
-                    mailEnabled = $false
-                    mailNickname = [System.Guid]::NewGuid().Guid
-                } -ErrorAction Stop
-                $script:GroupID = $group.Id
-                Write-Information "Created test group '$testGroupName' with ObjectId: $($script:GroupID)" -InformationAction Continue
-
-                # Poll until the group is visible in the backend before adding members.
-                $maxWaitSeconds = 20
-                $waited = 0
-                while ($waited -lt $maxWaitSeconds)
-                {
-                    $confirmedGroup = Get-MgGroup -GroupId $script:GroupID -ErrorAction SilentlyContinue
-                    if ($confirmedGroup)
-                    {
-                        break
-                    }
-                    Write-Information "Waiting for group to propagate... ($waited s)" -InformationAction Continue
-                    Start-Sleep -Seconds 5
-                    $waited += 5
-                }
-                if ($waited -ge $maxWaitSeconds)
-                {
-                    throw "Group '$testGroupName' did not propagate within $maxWaitSeconds seconds."
-                }
-
-                # Add the current test client device to the group to enable assignment tests.
-                $device = Get-MgDevice -Filter "displayName eq '$deviceName'" -ErrorAction Stop | Select-Object -First 1
-                if (-not $device)
-                {
-                    Write-Information "Unable to find a Microsoft Graph device with displayName '$deviceName'." -InformationAction Continue
-                }
-                else
-                {
-                    # Retry adding the member to handle Graph eventual-consistency: the group may be
-                    # readable but the write replicas that back member-add can still return ResourceNotFound.
-                    $addMaxRetries = 6
-                    $addRetry = 0
-                    while ($true)
-                    {
-                        try
-                        {
-                            New-MgGroupMember -GroupId $script:GroupID -DirectoryObjectId $device.Id -ErrorAction Stop
-                            break
-                        }
-                        catch
-                        {
-                            $addRetry++
-                            if ($addRetry -ge $addMaxRetries -or $_.Exception.Message -notmatch 'ResourceNotFound')
-                            {
-                                throw
-                            }
-                            Write-Information "Member add failed (ResourceNotFound), retrying... ($addRetry/$addMaxRetries)" -InformationAction Continue
-                            Start-Sleep -Seconds 5
-                        }
-                    }
-                    Write-Information "Added device '$deviceName' (Id: $($device.Id)) to group '$testGroupName'." -InformationAction Continue
-                }
-            }
-            catch
-            {
-                # Group creation or member assignment failed (e.g. missing Group.ReadWrite.All app permission).
-                # Mark group-assignment steps as skipped rather than failing the whole BeforeAll.
-                $script:Win32WrapAndUploadSkipReason = if ($script:Win32WrapAndUploadSkipReason)
-                {
-                    "$script:Win32WrapAndUploadSkipReason; Azure AD group setup failed: $($_.Exception.Message)"
-                }
-                else
-                {
-                    "Azure AD group setup failed: $($_.Exception.Message)"
-                }
-                Write-Warning "[Intune] Skipping group-assignment tests: $($_.Exception.Message)"
-            }
+            $script:VlcAppFolderName = 'VLC'
+            $script:VlcRegDisplayName = 'VLC media player'
+            $script:VlcRegVersionValue = '3.0.23'
+            $script:VlcRegVersionName = 'DisplayVersion'
+            $script:VlcInstallSucceeded = $false
         }
 
-        BeforeEach {
-            $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'Intune Tests / Win32 App Wrap and Upload'
-            $script:CurrentTestMethod = $testInfo.Name
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+        It 'VLC - wrap and upload to Intune, assign to group, verify installation' {
+            $runnerScript = Join-Path $PSScriptRoot "VLC\Invoke-AppDeployToolkit.ps1"
 
-            if ($(Test-AccessToken) -eq $false)
-            {
-                Write-Host "First use Connect-MSIntuneGraph to access Microsoft Graph." -ForegroundColor Yellow
+            # --- Step 1: Prepare working directory ---
+            $env = New-IntuneTestWorkDir `
+                -AppFolderName      $script:VlcAppFolderName `
+                -BasePath           $script:BasePath `
+                -InstallerSourceDir 'C:\Tools\Intune\vlc' `
+                -RunnerScriptPath   $runnerScript
 
-                # Authenticate to Microsoft Graph
-                $ClientSecret = $script:ClientSecret
-                Connect-MSIntuneGraph -TenantID $script:TenantID -ClientID $script:ClientID -ClientSecret $ClientSecret
-            }
+            # --- Step 2: Wrap into .intunewin package ---
+            $package = New-IntuneWinPackage `
+                -WorkDir              $env.WorkDir `
+                -IntuneWinAppUtilPath $script:IntuneWinAppUtil
+            $package.IntuneWinPath | Should -Not -BeNullOrEmpty
+            Test-Path $package.IntuneWinPath | Should -BeTrue
 
-            if ($script:Win32WrapAndUploadSkipReason)
-            {
-                Set-ItResult -Skipped -Because $script:Win32WrapAndUploadSkipReason
-            }
-        }
-
-        AfterEach {
-            Invoke-TFUpdateTestCase -TestResult $____Pester.CurrentTest
-        }
-
-        It 'VLC - wrap and upload to Intune' {
-            #$appDownloadUrl = 'https://get.videolan.org/vlc/3.0.23/win64/vlc-3.0.23-win64.exe'
-            $appName = 'VLC'
-            $workDir = Join-Path 'C:\PSADT' $appName
-            New-Item -Path $workDir -ItemType Directory -Force | Out-Null
-
-            # Copy template to app working directory: like C:\PSADT\VLC\*
-            $v4Path = $env:PSADT_TEMPLATE_V4_DIR
-            if (-not (Test-Path $v4Path))
-            {
-                throw "v4 folder missing : $v4Path"
-            }
-            Copy-Item -Path (Join-Path $v4Path '*') -Destination $workDir -Recurse -Force
-
-            # Download the app installer to Files folder
-            $filesDir = Join-Path $workDir 'Files'
-            if (-not (Test-Path $filesDir)) { New-Item -Path $filesDir -ItemType Directory -Force | Out-Null }
-            $installerDir = 'C:\Tools\Intune\vlc'
-            Copy-Item -Path (Get-ChildItem -Path $installerDir -File | Select-Object -First 1).FullName -Destination $filesDir -Force
-            #$installerFile = Join-Path $filesDir (Split-Path $appDownloadUrl -Leaf)
-            #Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
-
-            # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
-            $runnerScript = Join-Path $PSScriptRoot '.\VLC\Invoke-AppDeployToolkit.ps1'
-            $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
-            Copy-Item -Path $runnerScript -Destination $targetScript -Force
-
-            # Wrap with IntuneWinAppUtil
-            $setupFile = 'Invoke-AppDeployToolkit.exe'
-            & $script:IntuneWinAppUtil -c $workDir -s $setupFile -o $workDir
-            $intunewinFile = Join-Path $workDir 'Invoke-AppDeployToolkit.intunewin'
-            Test-Path $intunewinFile | Should -BeTrue
-
-            # Rename .intunewin and move to WIN32APP folder
-            $FileDir = Split-Path $intunewinFile -Parent
-            $PackageFile = Get-ChildItem -Path "$FileDir\Files" -File |
-            Where-Object { $_.Extension -in '.msi', '.exe' } |
-            Select-Object -First 1
-
-            if (-not $PackageFile)
-            {
-                Write-Host "Can't find msi/exe files in the source folder."
-                return
-            }
-            $DisplayName = $PackageFile.BaseName
-
-            $NewFileName = "$DisplayName.intunewin"
-            $NewIntuneWinFile = Join-Path -Path $FileDir -ChildPath $NewFileName
-            if (Test-Path $intunewinFile)
-            {
-                Rename-Item -Path $intunewinFile -NewName $NewFileName -Force
-                Write-Host "Renamed to $NewIntuneWinFile" -ForegroundColor Green
-            }
-            else
-            {
-                Write-Host "Original intunewin file does not exist." -ForegroundColor Blue
-            }
-            Test-Path $NewIntuneWinFile | Should -BeTrue
-
-            # Upload to Intune
-            $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture 'x64x86' -MinimumSupportedWindowsRelease 'W10_1607'
+            # --- Step 3: Upload to Intune ---
             $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
                 -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '3.0.23'
-            $InstallCmd   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
-            $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
 
-            Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $DisplayName -Description "PSADT $appName deployment" `
-                -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
-                -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
-                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd
-
-            # Intune Graph API has eventual consistency; retry until the app is visible
-            $win32App = $null
-            $retryCount = 0
-            $maxRetries = 12
-            while (-not $win32App -and $retryCount -lt $maxRetries)
-            {
-                Start-Sleep -Seconds 10
-                $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
-                $retryCount++
-            }
-            $win32App
+            $script:VlcIntuneDisplayName = $package.DisplayName
+            $win32App = Publish-IntuneWin32App `
+                -FilePath      $package.IntuneWinPath `
+                -DisplayName   $script:VlcIntuneDisplayName `
+                -DetectionRule $DetectionRule
             $win32App | Should -Not -BeNullOrEmpty
 
-            # Assign to group
-            Add-IntuneWin32AppAssignmentGroup -Include -ID $($win32App.id) -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
+            # --- Step 4: Assign to test group ---
+            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID `
+                -Intent 'required' -Notification 'showAll' -Verbose
 
-            # ---------------------------------------------------------------
-            # Trigger MDM sync and ensure IME sidecar is running so the device
-            # picks up the new assignment without waiting for the default sync interval.
-            # ---------------------------------------------------------------
-            # Restart IntuneManagementExtension if present.
-            # If not found, trigger MDM sync up to 3 times and wait up to 15 minutes for IME to be installed.
-            $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
-            if ($imeSvc)
-            {
-                Write-Information "Restarting service 'IntuneManagementExtension' (current state: $($imeSvc.Status))..." -InformationAction Continue
-                Restart-Service -Name 'IntuneManagementExtension' -Force -ErrorAction SilentlyContinue
-                $imeSvc.Refresh()
-                Write-Information "Service 'IntuneManagementExtension' state after restart: $($imeSvc.Status)" -InformationAction Continue
-            }
-            else
-            {
-                Write-Information "IntuneManagementExtension not found; will trigger MDM sync and wait up to 15 minutes for it to be installed..." -InformationAction Continue
-                $imeMaxWaitSeconds = 900   # 15 minutes
-                $imePollInterval   = 30
-                $imeWaited         = 0
-                $imeInstalled      = $false
-                $maxSyncs          = 3
-                $syncCount         = 0
-                # Trigger sync intervals: 0 s, 300 s (5 min), 600 s (10 min)
-                $syncAtSeconds     = @(0, 300, 600)
+            # --- Step 5: Trigger MDM sync and wait for IME ---
+            Wait-IntuneManagementExtension
 
-                while ($imeWaited -le $imeMaxWaitSeconds)
-                {
-                    # Trigger an MDM sync at the scheduled intervals.
-                    if ($syncCount -lt $maxSyncs -and $imeWaited -ge $syncAtSeconds[$syncCount])
-                    {
-                        Write-Information "Triggering MDM full sync (attempt $($syncCount + 1)/$maxSyncs) at $imeWaited s..." -InformationAction Continue
-                        try
-                        {
-                            # Locate the MDM enrollment ID (EnrollmentType 6 = Azure AD / Intune).
-                            $enrollmentId = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Enrollments' -ErrorAction SilentlyContinue |
-                                Where-Object { (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).EnrollmentType -eq 6 } |
-                                Select-Object -First 1).PSChildName
-                            if ($enrollmentId)
-                            {
-                                $taskPath = "\Microsoft\Windows\EnterpriseMgmt\$enrollmentId\"
-                                $syncTasks = Get-ScheduledTask -TaskPath $taskPath -ErrorAction SilentlyContinue
-                                foreach ($task in $syncTasks)
-                                {
-                                    Start-ScheduledTask -TaskPath $task.TaskPath -TaskName $task.TaskName -ErrorAction SilentlyContinue
-                                }
-                                Write-Information "MDM sync tasks triggered for enrollment: $enrollmentId" -InformationAction Continue
-                            }
-                            else
-                            {
-                                Write-Information "No MDM enrollment (EnrollmentType=6) found; cannot trigger sync." -InformationAction Continue
-                            }
-                        }
-                        catch
-                        {
-                            Write-Information "MDM sync trigger failed: $($_.Exception.Message)" -InformationAction Continue
-                        }
-                        $syncCount++
-                    }
+            # --- Step 6: Poll for app installation on client ---
+            $installVerified = Wait-AppInstallation `
+                -DisplayName     $script:VlcRegDisplayName `
+                -ValueName       $script:VlcRegVersionName `
+                -ExpectedValue   $script:VlcRegVersionValue
+            $installVerified | Should -BeTrue -Because "VLC $($script:VlcRegVersionValue) should appear in the Uninstall registry key within the polling window"
 
-                    $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
-                    if ($imeSvc)
-                    {
-                        $imeInstalled = $true
-                        Write-Information "IntuneManagementExtension installed after $imeWaited s." -InformationAction Continue
-                        break
-                    }
-
-                    if ($imeWaited -ge $imeMaxWaitSeconds) { break }
-                    Write-Information "Waiting for IntuneManagementExtension... ($imeWaited / $imeMaxWaitSeconds s elapsed)" -InformationAction Continue
-                    Start-Sleep -Seconds $imePollInterval
-                    $imeWaited += $imePollInterval
-                }
-
-                if (-not $imeInstalled)
-                {
-                    throw "IntuneManagementExtension was not installed within $($imeMaxWaitSeconds / 60) minutes after $maxSyncs MDM sync attempts."
-                }
-            }
-
-            # ---------------------------------------------------------------
-            # Wait for Intune to push and install the Win32 app on this client.
-            # IME polls roughly every 60 s; allow up to 30 minutes total.
-            # ---------------------------------------------------------------
-            $installMaxWaitSeconds = 900
-            $installPollInterval = 60
-            $installWaited = 0
-            $installVerified = $false
-
-            # Detection: check the same registry key used by the detection rule above.
-            $detectionKeyPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player'
-            $detectionValue = 'DisplayVersion'
-            $detectionExpected = '3.0.23'
-
-            Write-Information "Polling for VLC installation (timeout: $($installMaxWaitSeconds / 60) min)..." -InformationAction Continue
-            while ($installWaited -lt $installMaxWaitSeconds)
-            {
-                $regVal = Get-ItemProperty -Path $detectionKeyPath -Name $detectionValue -ErrorAction SilentlyContinue
-                if ($regVal -and $regVal.$detectionValue -eq $detectionExpected)
-                {
-                    $installVerified = $true
-                    Write-Information "VLC $detectionExpected detected in registry after $installWaited s." -InformationAction Continue
-                    break
-                }
-                Write-Information "VLC not yet installed; waiting $installPollInterval s... ($installWaited / $installMaxWaitSeconds s elapsed)" -InformationAction Continue
-                Start-Sleep -Seconds $installPollInterval
-                $installWaited += $installPollInterval
-            }
-
-            $installVerified | Should -BeTrue -Because "VLC $detectionExpected should appear in the Uninstall registry key within the polling window"
+            # Mark install as succeeded so the uninstall test can proceed.
+            $script:VlcInstallSucceeded = $true
         }
 
-        It 'WinSCP - wrap and upload to Intune' -Skip {
-            # TODO: Set your WinSCP download URL here
-            $appDownloadUrl = 'https://winscp.net/download/WinSCP-6.5.6.msi/download'  # <-- Fill in WinSCP download URL
-            $appName = 'WinSCP'
-            $workDir = Join-Path 'C:\PSADT' $appName
-            New-Item -Path $workDir -ItemType Directory -Force | Out-Null
-
-            # Copy template to app working directory
-            $templateFolder = Get-ChildItem -Path 'C:\PSADT' -Directory | Where-Object { $_.Name -like 'PSAppDeployToolkit*' } | Select-Object -First 1
-            if (-not $templateFolder)
+        It 'VLC - Uninstall' {
+            if (-not $script:VlcInstallSucceeded)
             {
-                throw 'PSADT template folder not found under C:\PSADT'
+                Set-ItResult -Skipped -Because 'VLC install test did not succeed'
             }
-            Copy-Item -Path $templateFolder.FullName -Destination $workDir -Recurse -Force
 
-            # Download the app installer to Files folder
-            $filesDir = Join-Path $workDir 'Files'
-            if (-not (Test-Path $filesDir)) { New-Item -Path $filesDir -ItemType Directory -Force | Out-Null }
-            $installerFile = Join-Path $filesDir (Split-Path $appDownloadUrl -Leaf)
-            Invoke-WebRequest -Uri $appDownloadUrl -OutFile $installerFile -UseBasicParsing
+            # --- Step 1: Look up the existing Win32 app in Intune ---
+            $win32App = Get-IntuneWin32App -DisplayName $script:VlcIntuneDisplayName -ErrorAction SilentlyContinue |
+                Sort-Object -Property createdDateTime -Descending |
+                Select-Object -First 1
+            $win32App | Should -Not -BeNullOrEmpty -Because 'VLC Win32 app must exist in Intune from the install test'
 
-            # Replace Invoke-AppDeployToolkit.ps1 with the app-specific one from examples
-            $runnerScript = Join-Path $PSScriptRoot '..\..\..\examples\WinSCP\Invoke-AppDeployToolkit.ps1'
-            $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
-            Copy-Item -Path $runnerScript -Destination $targetScript -Force
+            # --- Step 2: Remove existing app assignment ---
+            Remove-IntuneWin32AppAssignmentGroup -ID $win32App.id -GroupID $script:GroupID
 
-            # Wrap with IntuneWinAppUtil
-            $setupFile = 'Invoke-AppDeployToolkit.exe'
-            & $script:IntuneWinAppUtil -c $workDir -s $setupFile -o $workDir -q
-            $intunewinFile = Join-Path $workDir 'Invoke-AppDeployToolkit.intunewin'
-            Test-Path $intunewinFile | Should -BeTrue
+            # --- Step 3: Assign uninstall intent to the test app ---
+            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID `
+                -Intent 'uninstall' -Notification 'showAll' -Verbose
 
-            # Rename .intunewin and move to WIN32APP folder
-            $newName = "$appName.intunewin"
-            $finalPath = Join-Path 'C:\PSADT\WIN32APP' $newName
-            Move-Item -Path $intunewinFile -Destination $finalPath -Force
-            Test-Path $finalPath | Should -BeTrue
+            # --- Step 4: Trigger MDM sync and wait for IME ---
+            Wait-IntuneManagementExtension
 
-            # Upload to Intune
-            $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture 'x64x86' -MinimumSupportedWindowsRelease 'W10_1607'
+            # --- Step 5: Poll for app uninstallation on client ---
+            $uninstallVerified = Wait-AppUninstallation `
+                -DisplayName     $script:VlcRegDisplayName `
+                -ValueName       $script:VlcRegVersionName `
+                -ExpectedValue   $script:VlcRegVersionValue
+            $uninstallVerified | Should -BeTrue -Because "VLC should be removed from the Uninstall registry key within the polling window after uninstallation"
+        }
 
-            # Detect by MSI ProductCode or registry - adjust as needed for WinSCP
-            $DetectionScriptFile = Join-Path $PSScriptRoot 'DetectionRule.ps1'
-            if (Test-Path $DetectionScriptFile)
+        AfterAll {
+            # Clean up Intune Win32 app after tests.
+            Write-Information "Cleaning up Intune Win32 app for VLC..." -InformationAction Continue
+            if ($script:VlcIntuneDisplayName)
             {
-                $DetectionRule = New-IntuneWin32AppDetectionRuleScript -ScriptFile $DetectionScriptFile -EnforceSignatureCheck $false -RunAs32Bit $false
-            }
-            else
-            {
-                # Fallback: detect via Files folder MSI ProductCode
-                $msiFile = Get-ChildItem -Path $filesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($msiFile)
+                $win32App = Get-IntuneWin32App -DisplayName $script:VlcIntuneDisplayName -ErrorAction SilentlyContinue
+                if ($win32App)
                 {
-                    $comObj = New-Object -ComObject WindowsInstaller.Installer
-                    $db = $comObj.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $comObj, @($msiFile.FullName, 0))
-                    $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @("SELECT Value FROM Property WHERE Property='ProductCode'"))
-                    $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
-                    $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
-                    $ProductCode = $record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1)
-                    $DetectionRule = New-IntuneWin32AppDetectionRuleMSI -ProductCode $ProductCode
+                    Remove-IntuneWin32App -ID $win32App.id -Verbose
+                }
+            }
+        }
+    }
+
+    Context 'WinSCP - Wrap, Upload, Assign, Verify, Uninstall' -Skip {
+        BeforeAll {
+            $script:WinScpAppFolderName = 'WinSCP'
+            $script:WinScpRegDisplayName = 'WinSCP'
+            $script:WinScpRegVersionValue = '6.5.6'
+            $script:WinScpRegVersionName = 'DisplayVersion'
+            $script:WinScpInstallSucceeded = $false
+        }
+
+        It 'WinSCP - wrap and upload to Intune, assign to group, verify installation' {
+            $runnerScript = Join-Path $PSScriptRoot "$($script:WinScpAppFolderName)\Invoke-AppDeployToolkit.ps1"
+
+            # --- Step 1: Prepare working directory ---
+            $env = New-IntuneTestWorkDir `
+                -AppFolderName      $script:WinScpAppFolderName `
+                -BasePath           $script:BasePath `
+                -InstallerSourceDir 'C:\Tools\Intune\WinSCP' `
+                -RunnerScriptPath   $runnerScript
+
+            # --- Step 2: Wrap into .intunewin package ---
+            $package = New-IntuneWinPackage `
+                -WorkDir              $env.WorkDir `
+                -IntuneWinAppUtilPath $script:IntuneWinAppUtil
+            $package.IntuneWinPath | Should -Not -BeNullOrEmpty
+            Test-Path $package.IntuneWinPath | Should -BeTrue
+
+            # --- Step 3: Build detection rule from MSI ProductCode ---
+            $msiFile = Get-ChildItem -Path $env.FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $msiFile)
+            {
+                throw 'No detection rule available for WinSCP - provide DetectionRule.ps1 or an MSI file'
+            }
+            $productCode = Get-MsiProductCode -MsiPath $msiFile.FullName
+            $DetectionRule = New-IntuneWin32AppDetectionRuleMSI -ProductCode $productCode
+
+            # --- Step 4: Upload to Intune ---
+            $script:WinScpIntuneDisplayName = $package.DisplayName
+            $win32App = Publish-IntuneWin32App `
+                -FilePath      $package.IntuneWinPath `
+                -DisplayName   $script:WinScpIntuneDisplayName `
+                -DetectionRule $DetectionRule
+            $win32App | Should -Not -BeNullOrEmpty
+
+            # --- Step 5: Assign to test group ---
+            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID `
+                -Intent 'required' -Notification 'showAll' -Verbose
+
+            # --- Step 6: Trigger MDM sync and wait for IME ---
+            Wait-IntuneManagementExtension
+
+            # --- Step 7: Poll for app installation on client ---
+            $installVerified = Wait-AppInstallation `
+                -DisplayName     $script:WinScpRegDisplayName `
+                -ValueName       $script:WinScpRegVersionName `
+                -ExpectedValue   $script:WinScpRegVersionValue
+            $installVerified | Should -BeTrue -Because "WinSCP $($script:WinScpRegVersionValue) should appear in the Uninstall registry key within the polling window"
+
+            # Mark install as succeeded so the uninstall test can proceed.
+            $script:WinScpInstallSucceeded = $true
+        }
+
+        It 'WinSCP - Uninstall' {
+            if (-not $script:WinScpInstallSucceeded)
+            {
+                Set-ItResult -Skipped -Because 'WinSCP install test did not succeed'
+            }
+
+            # --- Step 1: Look up the existing Win32 app in Intune ---
+            $win32App = Get-IntuneWin32App -DisplayName $script:WinScpIntuneDisplayName -ErrorAction SilentlyContinue |
+                Sort-Object -Property createdDateTime -Descending |
+                Select-Object -First 1
+            $win32App | Should -Not -BeNullOrEmpty -Because 'WinSCP Win32 app must exist in Intune from the install test'
+
+            # --- Step 2: Remove existing app assignment ---
+            Remove-IntuneWin32AppAssignmentGroup -ID $win32App.id -GroupID $script:GroupID
+
+            # --- Step 3: Assign uninstall intent to the test app ---
+            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID `
+                -Intent 'uninstall' -Notification 'showAll' -Verbose
+
+            Start-Sleep -Seconds 5 # brief pause to allow the uninstall intent assignment to register before triggering sync
+
+            # --- Step 4: Trigger MDM sync and wait for IME ---
+            Wait-IntuneManagementExtension
+
+            # --- Step 5: Poll for app uninstallation on client ---
+            $uninstallVerified = Wait-AppUninstallation `
+                -DisplayName     $script:WinScpRegDisplayName `
+                -ValueName       $script:WinScpRegVersionName `
+                -ExpectedValue   $script:WinScpRegVersionValue
+            $uninstallVerified | Should -BeTrue -Because "WinSCP should be removed from the Uninstall registry key within the polling window after uninstallation"
+        }
+        <#
+        AfterAll {
+            # Clean up Intune Win32 app after tests.
+            Write-Information "Cleaning up Intune Win32 app for WinSCP..." -InformationAction Continue
+            if ($script:WinScpIntuneDisplayName)
+            {
+                $win32App = Get-IntuneWin32App -DisplayName $script:WinScpIntuneDisplayName -ErrorAction SilentlyContinue
+                if ($win32App)
+                {
+                    Remove-IntuneWin32App -ID $win32App.id -Verbose
+                }
+            }
+        }#>
+    }
+
+    Context 'Notepad++ - Upgrade' -Skip {
+        BeforeAll {
+            $script:NotepadAppFolderName = 'Notepad'
+            $script:NotepadRegDisplayName = 'Notepad++'
+            $script:NotepadRegVersionValue = '8.9.6.4'
+            $script:NotepadRegVersionName = 'DisplayVersion'
+            $script:NotepadInstallSucceeded = $false
+        }
+
+        It 'Notepad++ - Upgrade test with App Deploy Toolkit' {
+            $runnerScript = Join-Path $PSScriptRoot "$($script:NotepadAppFolderName)\Invoke-AppDeployToolkit.ps1"
+
+
+            # Install a lower version of Notepad++ as a prerequisite for the upgrade test.
+            $installerDir = 'C:\Tools\Intune\Notepad8.9.6.1'
+            $installerPath = Join-Path $installerDir 'npp.8.9.6.1.Installer.x64.exe'
+            if (-not (Test-Path $installerPath))
+            {
+                New-Item -Path $installerDir -ItemType Directory -Force | Out-Null
+                $downloadUrl = 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.1/npp.8.9.6.1.Installer.x64.exe'
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
+            }
+            # Silent install the lower version.
+            Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -NoNewWindow
+
+            $newVersionDir = 'C:\Tools\Intune\Notepad8.9.6.4'
+            if (-not (Test-Path $newVersionDir))
+            {
+                New-Item -Path $newVersionDir -ItemType Directory -Force | Out-Null
+            }
+            $downloadUrl = 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.4/npp.8.9.6.4.Installer.x64.exe'
+            $installerPath = Join-Path $newVersionDir 'npp.8.9.6.4.Installer.x64.exe'
+            if (-not (Test-Path $installerPath))
+            {
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
+            }
+
+            # Pre -- the machine have install lower version of Notepad++ in registry, if not skip the test
+            $lowerVersionInstalled = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++" -Name 'DisplayVersion' -ErrorAction SilentlyContinue
+            if (-not $lowerVersionInstalled -or $lowerVersionInstalled -ge $script:NotepadRegVersionValue)
+            {
+                Set-ItResult -Skipped -Because 'Notepad++ is not currently installed on the machine'
+            }
+
+            # --- Step 1: Prepare working directory ---
+            $env = New-IntuneTestWorkDir `
+                -AppFolderName      $script:NotepadAppFolderName `
+                -BasePath           $script:BasePath `
+                -InstallerSourceDir 'C:\Tools\Intune\Notepad8.9.6.4' `
+                -RunnerScriptPath   $runnerScript
+
+            # --- Step 2: Wrap into .intunewin package ---
+            $package = New-IntuneWinPackage `
+                -WorkDir              $env.WorkDir `
+                -IntuneWinAppUtilPath $script:IntuneWinAppUtil
+            $package.IntuneWinPath | Should -Not -BeNullOrEmpty
+            Test-Path $package.IntuneWinPath | Should -BeTrue
+
+            # --- Step 3: Build detection rule ---
+            $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
+                -KeyPath "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++" `
+                -ValueName "DisplayVersion" -StringComparisonOperator "equal" -StringComparisonValue "8.9.6.4"
+
+            # --- Step 4: Upload to Intune ---
+            $script:NotepadIntuneDisplayName = $package.DisplayName
+            $win32App = Publish-IntuneWin32App `
+                -FilePath      $package.IntuneWinPath `
+                -DisplayName   $script:NotepadIntuneDisplayName `
+                -DetectionRule $DetectionRule
+            $win32App | Should -Not -BeNullOrEmpty
+
+            # --- Step 5: Assign to test group ---
+            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID `
+                -Intent 'required' -Notification 'showAll' -Verbose
+
+            # --- Step 6: Trigger MDM sync and wait for IME ---
+            Wait-IntuneManagementExtension
+
+            # --- Step 7: Poll for app installation on client ---
+            $installVerified = Wait-AppInstallation `
+                -DisplayName     $script:NotepadRegDisplayName `
+                -ValueName       $script:NotepadRegVersionName `
+                -ExpectedValue   $script:NotepadRegVersionValue
+            $installVerified | Should -BeTrue -Because "Notepad++ $($script:NotepadRegVersionValue) should appear in the Uninstall registry key within the polling window"
+
+            # Mark install as succeeded so the uninstall test can proceed.
+            $script:NotepadInstallSucceeded = $true
+        }
+
+        <#
+        AfterAll {
+            # Clean up Intune Win32 app after tests.
+            Write-Information "Cleaning up Intune Win32 app for Notepad++..." -InformationAction Continue
+            if ($script:NotepadIntuneDisplayName)
+            {
+                $win32App = Get-IntuneWin32App -DisplayName $script:NotepadIntuneDisplayName -ErrorAction SilentlyContinue
+                if ($win32App)
+                {
+                    Remove-IntuneWin32App -ID $win32App.id -Verbose
+                }
+            }
+        }#>
+    }
+
+    Context 'Parallel Install - Batch Upload, Single Sync, Parallel Poll inatll and uninstall of multiple apps' {
+        BeforeAll {
+            # Define all apps to install in parallel.
+            $script:ParallelApps = @(
+                @{
+                    Name              = 'VLC'
+                    AppFolderName     = 'VLC'
+                    InstallerSourceDir = 'C:\Tools\Intune\vlc'
+                    RegDisplayName    = 'VLC media player'
+                    RegVersionValue   = '3.0.23'
+                    RegVersionName    = 'DisplayVersion'
+                    DetectionRuleBuilder = {
+                        New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
+                            -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
+                            -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '3.0.23'
+                    }
+                }
+                @{
+                    Name              = 'WinSCP'
+                    AppFolderName     = 'WinSCP'
+                    InstallerSourceDir = 'C:\Tools\Intune\WinSCP'
+                    RegDisplayName    = 'WinSCP'
+                    RegVersionValue   = '6.5.6'
+                    RegVersionName    = 'DisplayVersion'
+                    DetectionRuleBuilder = {
+                        param($FilesDir)
+                        $msiFile = Get-ChildItem -Path $FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
+                        if (-not $msiFile) { throw 'No MSI file found for WinSCP detection rule' }
+                        $productCode = Get-MsiProductCode -MsiPath $msiFile.FullName
+                        New-IntuneWin32AppDetectionRuleMSI -ProductCode $productCode
+                    }
+                }
+                @{
+                    Name              = 'Notepad++'
+                    AppFolderName     = 'Notepad++'
+                    InstallerSourceDir = 'C:\Tools\Intune\Notepad8.9.6.4'
+                    RegDisplayName    = 'Notepad++'
+                    RegVersionValue   = '8.9.6.4'
+                    RegVersionName    = 'DisplayVersion'
+                    PreInstallScript  = {
+                        # Install lower version as prerequisite for upgrade test.
+                        $installerDir = 'C:\Tools\Intune\Notepad8.9.6.1'
+                        $installerPath = Join-Path $installerDir 'npp.8.9.6.1.Installer.x64.exe'
+                        if (-not (Test-Path $installerPath))
+                        {
+                            New-Item -Path $installerDir -ItemType Directory -Force | Out-Null
+                            Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.1/npp.8.9.6.1.Installer.x64.exe' -OutFile $installerPath -UseBasicParsing
+                        }
+                        Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -NoNewWindow
+                        if (Test-Path "$env:ProgramFiles\Notepad++\notepad++.exe") { Start-Process -FilePath "$env:ProgramFiles\Notepad++\notepad++.exe" }
+
+                        # Download new version installer.
+                        $newDir = 'C:\Tools\Intune\Notepad8.9.6.4'
+                        $newPath = Join-Path $newDir 'npp.8.9.6.4.Installer.x64.exe'
+                        if (-not (Test-Path $newPath))
+                        {
+                            New-Item -Path $newDir -ItemType Directory -Force | Out-Null
+                            Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.6.4/npp.8.9.6.4.Installer.x64.exe' -OutFile $newPath -UseBasicParsing
+                        }
+                    }
+                    DetectionRuleBuilder = {
+                        New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
+                            -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++' `
+                            -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '8.9.6.4'
+                    }
+                }
+            )
+            $script:ParallelInstallResults = @{}
+        }
+
+        It 'Batch upload all apps and assign to group' {
+            $script:UploadedApps = @{}
+
+            foreach ($app in $script:ParallelApps)
+            {
+                Write-Information "--- Processing $($app.Name) ---" -InformationAction Continue
+
+                # Run pre-install script if defined (e.g., install lower version for upgrade).
+                if ($app.PreInstallScript)
+                {
+                    & $app.PreInstallScript
+                }
+
+                # Prepare working directory.
+                $runnerScript = Join-Path $PSScriptRoot "$($app.AppFolderName)\Invoke-AppDeployToolkit.ps1"
+                $env = New-IntuneTestWorkDir `
+                    -AppFolderName      $app.AppFolderName `
+                    -BasePath           $script:BasePath `
+                    -InstallerSourceDir $app.InstallerSourceDir `
+                    -RunnerScriptPath   $runnerScript
+
+                # Wrap into .intunewin package.
+                $package = New-IntuneWinPackage `
+                    -WorkDir              $env.WorkDir `
+                    -IntuneWinAppUtilPath $script:IntuneWinAppUtil
+                $package.IntuneWinPath | Should -Not -BeNullOrEmpty
+
+                # Build detection rule.
+                $DetectionRule = if ($app.Name -eq 'WinSCP')
+                {
+                    & $app.DetectionRuleBuilder $env.FilesDir
                 }
                 else
                 {
-                    throw 'No detection rule available for WinSCP - provide DetectionRule.ps1 or an MSI file'
+                    & $app.DetectionRuleBuilder
+                }
+
+                # Upload to Intune.
+                $win32App = Publish-IntuneWin32App `
+                    -FilePath      $package.IntuneWinPath `
+                    -DisplayName   $package.DisplayName `
+                    -DetectionRule $DetectionRule
+                $win32App | Should -Not -BeNullOrEmpty
+
+                # Assign to test group.
+                Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID `
+                    -Intent 'required' -Notification 'showAll' -Verbose
+
+                $script:UploadedApps[$app.Name] = @{
+                    Win32AppId      = $win32App.id
+                    DisplayName     = $package.DisplayName
+                    RegDisplayName  = $app.RegDisplayName
+                    RegVersionValue = $app.RegVersionValue
+                    RegVersionName  = $app.RegVersionName
+                }
+                Write-Information "[$($app.Name)] Uploaded and assigned successfully." -InformationAction Continue
+            }
+
+            $script:UploadedApps.Count | Should -Be $script:ParallelApps.Count
+        }
+
+        It 'Single MDM sync, then parallel poll for all installations' {
+            $script:UploadedApps | Should -Not -BeNullOrEmpty -Because 'Upload step must succeed first'
+
+            Invoke-MdmSync
+
+            Start-Sleep -Seconds 8
+
+            # Trigger a single MDM sync for all assigned apps.
+            Wait-IntuneManagementExtension
+
+            # Parallel poll using ThreadJobs.
+            $jobs = foreach ($appName in $script:UploadedApps.Keys)
+            {
+                $appInfo = $script:UploadedApps[$appName]
+                Start-ThreadJob -Name "Poll-$appName" -ScriptBlock {
+                    param($DisplayName, $ValueName, $ExpectedValue, $HelperPath)
+                    . $HelperPath
+                    Wait-AppInstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
+                } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'Private\IntuneTestHelpers.ps1')
+            }
+
+            Write-Information "Waiting for $($jobs.Count) parallel installation polls..." -InformationAction Continue
+            $jobs | Wait-Job | Out-Null
+
+            # Collect results by job name to ensure correct app-to-result mapping.
+            $failedApps = @()
+            $succeededApps = @()
+            foreach ($appName in $script:UploadedApps.Keys)
+            {
+                $jobName = "Poll-$appName"
+                $jobResult = Get-Job -Name $jobName -ErrorAction SilentlyContinue | Receive-Job
+                if ($jobResult -ne $true)
+                {
+                    Write-Information "[$appName] Installation poll result: $jobResult" -InformationAction Continue
+                    $failedApps += $appName
+                }
+                else
+                {
+                    $succeededApps += $appName
+                    $script:ParallelInstallResults[$appName] = $true
+                }
+            }
+            $jobs | Remove-Job -Force
+
+            Write-Information "[Parallel Install] Succeeded: $(if ($succeededApps) { $succeededApps -join ', ' } else { 'none' })" -InformationAction Continue
+            Write-Information "[Parallel Install] Failed: $(if ($failedApps) { $failedApps -join ', ' } else { 'none' })" -InformationAction Continue
+
+            $failedApps | Should -BeNullOrEmpty -Because "All apps should install successfully. Failed: $($failedApps -join ', ')"
+        }
+
+        It 'Parallel uninstall all apps' {
+            $script:ParallelInstallResults.Count | Should -BeGreaterThan 0 -Because 'At least one app must have installed'
+
+            # Reassign all apps with uninstall intent.
+            foreach ($appName in $script:ParallelInstallResults.Keys)
+            {
+                $appInfo = $script:UploadedApps[$appName]
+                Remove-IntuneWin32AppAssignmentGroup -ID $appInfo.Win32AppId -GroupID $script:GroupID
+                Add-IntuneWin32AppAssignmentGroup -Include -ID $appInfo.Win32AppId -GroupID $script:GroupID `
+                    -Intent 'uninstall' -Notification 'showAll' -Verbose
+            }
+
+            Invoke-MdmSync
+
+            Start-Sleep -Seconds 8
+
+            # Single sync for all uninstalls.
+            Wait-IntuneManagementExtension
+
+            # Parallel poll for uninstallation.
+            $jobs = foreach ($appName in $script:ParallelInstallResults.Keys)
+            {
+                $appInfo = $script:UploadedApps[$appName]
+                Start-ThreadJob -Name "Uninstall-$appName" -ScriptBlock {
+                    param($DisplayName, $ValueName, $ExpectedValue, $HelperPath)
+                    . $HelperPath
+                    Wait-AppUninstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
+                } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'Private\IntuneTestHelpers.ps1')
+            }
+
+            Write-Information "Waiting for $($jobs.Count) parallel uninstallation polls..." -InformationAction Continue
+            $jobs | Wait-Job | Out-Null
+
+            # Collect results by job name to ensure correct app-to-result mapping.
+            $failedApps = @()
+            $succeededApps = @()
+            foreach ($appName in $script:ParallelInstallResults.Keys)
+            {
+                $jobName = "Uninstall-$appName"
+                $jobResult = Get-Job -Name $jobName -ErrorAction SilentlyContinue | Receive-Job
+                if ($jobResult -ne $true)
+                {
+                    Write-Information "[$appName] Uninstallation poll result: $jobResult" -InformationAction Continue
+                    $failedApps += $appName
+                }
+                else
+                {
+                    $succeededApps += $appName
+                }
+            }
+            $jobs | Remove-Job -Force
+
+            Write-Information "[Parallel Uninstall] Succeeded: $(if ($succeededApps) { $succeededApps -join ', ' } else { 'none' })" -InformationAction Continue
+            Write-Information "[Parallel Uninstall] Failed: $(if ($failedApps) { $failedApps -join ', ' } else { 'none' })" -InformationAction Continue
+
+            $failedApps | Should -BeNullOrEmpty -Because "All apps should uninstall successfully. Failed: $($failedApps -join ', ')"
+        }
+
+        AfterAll {
+            # Clean up all uploaded Intune apps.
+            if ($script:UploadedApps)
+            {
+                foreach ($appName in $script:UploadedApps.Keys)
+                {
+                    $appInfo = $script:UploadedApps[$appName]
+                    Write-Information "Cleaning up Intune Win32 app '$($appInfo.DisplayName)'..." -InformationAction Continue
+                    Remove-IntuneWin32App -ID $appInfo.Win32AppId -ErrorAction SilentlyContinue -Verbose
                 }
             }
 
-            $InstallCmd   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
-            $UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
-            $DisplayName = $appName
-
-            Add-IntuneWin32App -FilePath $finalPath -DisplayName $DisplayName -Description "PSADT $appName deployment" `
-                -Publisher 'Autotest' -InstallExperience 'system' -RestartBehavior 'suppress' `
-                -DetectionRule $DetectionRule -RequirementRule $RequirementRule `
-                -InstallCommandLine $InstallCmd -UninstallCommandLine $UninstallCmd
-
-            # Intune Graph API has eventual consistency; retry until the app is visible
-            $win32App = $null
-            $retryCount = 0
-            $maxRetries = 12
-            while (-not $win32App -and $retryCount -lt $maxRetries)
+            # Clean up Azure AD test group.
+            Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
+            if ($script:GroupID)
             {
-                Start-Sleep -Seconds 10
-                $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
-                $retryCount++
+                Remove-MgGroup -GroupId $script:GroupID -ErrorAction Stop
+                Start-Sleep -Seconds 5
             }
-            $win32App | Should -Not -BeNullOrEmpty
-
-            # Assign to group
-            Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID -Intent 'required' -Notification 'showAll' -Verbose
         }
     }
+
+    <#
+    AfterAll {
+        # Clean up Azure AD test group.
+        Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
+        if ($script:GroupID)
+        {
+            Remove-MgGroup -GroupId $script:GroupID -ErrorAction Stop
+            Start-Sleep -Seconds 5
+        }
+    }#>
 }
 
 #pragma warning restore PSPlaceOpenBrace
