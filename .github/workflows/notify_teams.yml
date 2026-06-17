@@ -1,0 +1,624 @@
+name: Notify Teams of Job Status
+on:
+  workflow_call:
+    inputs:
+      job_status:
+        required: true
+        type: string
+      steps_json:
+        description: 'JSON object mapping step name to outcome, e.g. {"Build":"success","Test":"failure"}'
+        required: false
+        type: string
+        default: '{}'
+      pester_discovered:
+        required: false
+        type: string
+        default: '0'
+      pester_total:
+        required: false
+        type: string
+        default: '0'
+      pester_passed:
+        required: false
+        type: string
+        default: '0'
+      pester_failed:
+        required: false
+        type: string
+        default: '0'
+      pester_skipped:
+        required: false
+        type: string
+        default: '0'
+      pester_notrun:
+        required: false
+        type: string
+        default: '0'
+      cases_json:
+        description: 'JSON object mapping test case title to outcome, e.g. {"MyTest":"success | 0m 5s"}'
+        required: false
+        type: string
+        default: '{}'
+jobs:
+  send:
+    name: Send Notification
+    runs-on: windows-latest
+    steps:
+      - name: send msg
+        shell: pwsh
+        env:
+          WEBHOOK: ${{ secrets.TEAMS_WORKFLOW_WEBHOOK }}
+          STATUS: ${{ inputs.job_status }}
+          STEPS_JSON: ${{ inputs.steps_json }}
+          PESTER_DISCOVERED: ${{ inputs.pester_discovered }}
+          PESTER_TOTAL: ${{ inputs.pester_total }}
+          PESTER_PASSED: ${{ inputs.pester_passed }}
+          PESTER_FAILED: ${{ inputs.pester_failed }}
+          PESTER_SKIPPED: ${{ inputs.pester_skipped }}
+          PESTER_NOTRUN: ${{ inputs.pester_notrun }}
+          CASES_JSON: ${{ inputs.cases_json }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          ACTOR: ${{ github.actor }}
+          WORKFLOW: ${{ github.workflow }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $diagnostics = New-Object System.Collections.Generic.List[string]
+
+          $webhook = [string]$env:WEBHOOK
+          if ([string]::IsNullOrWhiteSpace($webhook)) {
+            Write-Error 'Teams Workflow webhook is missing. Cannot send notification.'
+            exit 1
+          }
+
+          if (-not [System.Uri]::IsWellFormedUriString($webhook, [System.UriKind]::Absolute)) {
+            Write-Error 'Teams Workflow webhook is not a valid absolute URL. Cannot send notification.'
+            exit 1
+          }
+
+          $statusKey = ([string]$env:STATUS).Trim().ToLowerInvariant()
+          if ([string]::IsNullOrWhiteSpace($statusKey)) {
+            $statusKey = 'unknown'
+            [void]$diagnostics.Add('job_status is empty; using unknown.')
+          }
+
+          $statusMap = @{
+            success   = @{ Color = '00CC44'; Icon = '✅' }
+            failure   = @{ Color = 'FF0000'; Icon = '❌' }
+            cancelled = @{ Color = '808080'; Icon = '🚫' }
+            skipped   = @{ Color = 'FFA500'; Icon = '⏭️' }
+            unknown   = @{ Color = 'FFA500'; Icon = '⚠️' }
+          }
+
+          $statusMeta = if ($statusMap.ContainsKey($statusKey)) {
+            $statusMap[$statusKey]
+          }
+          else {
+            @{ Color = 'FFA500'; Icon = '⚠️' }
+          }
+
+          $statusLabelMap = @{
+            success   = 'success'
+            failure   = 'failure'
+            cancelled = 'cancelled'
+            skipped   = 'skipped'
+            unknown   = 'unknown'
+          }
+          $statusLabel = if ($statusLabelMap.ContainsKey($statusKey)) { $statusLabelMap[$statusKey] } else { $statusKey }
+
+          $stepsJsonRaw = if ([string]::IsNullOrWhiteSpace($env:STEPS_JSON)) {
+            [void]$diagnostics.Add('steps_json is empty; using {}.')
+            '{}'
+          }
+          else {
+            $env:STEPS_JSON.Replace("`r", '')
+          }
+
+          try {
+            $stepsObject = $stepsJsonRaw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+            if ($stepsObject -isnot [hashtable]) {
+              $stepsObject = @{}
+              [void]$diagnostics.Add('steps_json is not a JSON object; using {}.')
+            }
+          }
+          catch {
+            $stepsObject = @{}
+            [void]$diagnostics.Add("steps_json parse failed: $($_.Exception.Message)")
+          }
+
+          $outcomeMap = @{
+            success   = '✅ success'
+            failure   = '❌ failure'
+            skipped   = '⏭️ skipped'
+            cancelled = '🚫 cancelled'
+            unknown   = '⚠️ unknown'
+          }
+
+          function Get-WorkflowDurationDisplay {
+            param(
+              [AllowEmptyString()]
+              [string]$Duration
+            )
+
+            $normalizedDuration = ([string]$Duration).Replace("`r", ' ').Replace("`n", ' ').Trim()
+            if ([string]::IsNullOrWhiteSpace($normalizedDuration) -or $normalizedDuration -eq '-') {
+              return 'Not reported'
+            }
+
+            return $normalizedDuration
+          }
+
+          function New-WorkflowColumnSet {
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$StepName,
+              [Parameter(Mandatory = $true)]
+              [string]$Status,
+              [Parameter(Mandatory = $true)]
+              [string]$Duration,
+              [bool]$IsHeader = $false
+            )
+
+            $safeStepName = ([string]$StepName).Replace("`r", ' ').Replace("`n", ' ')
+            $safeStatus = ([string]$Status).Replace("`r", ' ').Replace("`n", ' ')
+            $safeDuration = Get-WorkflowDurationDisplay -Duration $Duration
+
+            @{
+              type = 'ColumnSet'
+              spacing = if ($IsHeader) { 'Medium' } else { 'Small' }
+              separator = -not $IsHeader
+              columns = @(
+                @{
+                  type = 'Column'
+                  width = '3'
+                  items = @(
+                    @{
+                      type = 'TextBlock'
+                      text = $safeStepName
+                      weight = if ($IsHeader) { 'Bolder' } else { 'Default' }
+                      wrap = $true
+                    }
+                  )
+                },
+                @{
+                  type = 'Column'
+                  width = '2'
+                  items = @(
+                    @{
+                      type = 'TextBlock'
+                      text = $safeStatus
+                      weight = if ($IsHeader) { 'Bolder' } else { 'Default' }
+                      wrap = $true
+                    }
+                  )
+                },
+                @{
+                  type = 'Column'
+                  width = '1'
+                  items = @(
+                    @{
+                      type = 'TextBlock'
+                      text = $safeDuration
+                      horizontalAlignment = 'Right'
+                      weight = if ($IsHeader) { 'Bolder' } else { 'Default' }
+                      wrap = $true
+                    }
+                  )
+                }
+              )
+            }
+          }
+
+          function New-WorkflowStagePanel {
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$Title,
+              [Parameter(Mandatory = $true)]
+              [object[]]$Rows
+            )
+
+            $panelItems = @(
+              @{
+                type = 'TextBlock'
+                text = $Title
+                weight = 'Bolder'
+                wrap = $true
+              },
+              (New-WorkflowColumnSet -StepName 'Step Name' -Status 'Status' -Duration 'Time Consuming' -IsHeader $true)
+            )
+
+            foreach ($row in $Rows) {
+              $panelItems += (New-WorkflowColumnSet -StepName ([string]$row['Step Name']) -Status ([string]$row['Status']) -Duration ([string]$row['Time Consuming']))
+            }
+
+            @{
+              type = 'Container'
+              style = 'emphasis'
+              bleed = $true
+              spacing = 'Medium'
+              items = $panelItems
+            }
+          }
+
+          $stepRows = @()
+          foreach ($stepName in $stepsObject.Keys) {
+            $normalizedStepName = ([string]$stepName).Trim()
+            if ([string]::IsNullOrWhiteSpace($normalizedStepName)) {
+              $normalizedStepName = '(unnamed step)'
+            }
+
+            $displayStepName = $normalizedStepName
+
+            $rawValue = [string]$stepsObject[$stepName]
+            $rawValue = $rawValue.Trim()
+            
+            # Parse "outcome | time" format or just "outcome"
+            $outcome = $rawValue
+            $time = ''
+            if ($rawValue -match '^\s*(.+?)\s*\|\s*(.+?)\s*$') {
+              $outcome = $matches[1]
+              $time = $matches[2]
+            }
+            
+            $normalizedOutcome = $outcome.ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($normalizedOutcome)) {
+              $normalizedOutcome = 'unknown'
+            }
+
+            $displayStatus = if ($outcomeMap.ContainsKey($normalizedOutcome)) {
+              $outcomeMap[$normalizedOutcome]
+            }
+            else {
+              "⚠️ $normalizedOutcome"
+            }
+
+            $stepRows += @{
+              'Step Name' = $displayStepName
+              'Status' = $displayStatus
+              'Time Consuming' = if ([string]::IsNullOrWhiteSpace($time)) { 'N/A' } else { $time }
+            }
+          }
+
+          $jobResultDisplay = if ($outcomeMap.ContainsKey($statusKey)) {
+            $outcomeMap[$statusKey]
+          }
+          else {
+            "⚠️ $statusKey"
+          }
+
+          $stepRows = $stepRows | Sort-Object -Property 'Step Name'
+
+          $workflowName = ([string]$env:WORKFLOW).Trim()
+          if ([string]::IsNullOrWhiteSpace($workflowName)) {
+            $workflowName = '(unknown workflow)'
+          }
+
+          $branchName = ([string]$env:BRANCH).Trim()
+          if ([string]::IsNullOrWhiteSpace($branchName)) {
+            $branchName = '(unknown branch)'
+          }
+
+          $actorName = ([string]$env:ACTOR).Trim()
+          if ([string]::IsNullOrWhiteSpace($actorName)) {
+            $actorName = '(unknown actor)'
+          }
+
+          $shortSha = if ($env:COMMIT_SHA -and $env:COMMIT_SHA.Length -ge 7) {
+            $env:COMMIT_SHA.Substring(0, 7)
+          }
+          else {
+            [string]$env:COMMIT_SHA
+          }
+
+          if ([string]::IsNullOrWhiteSpace($shortSha)) {
+            $shortSha = '(none)'
+          }
+
+          $commitMessage = [string]$env:COMMIT_MSG
+          $commitTitle = (($commitMessage -split "`r?`n")[0]).Trim()
+          if ([string]::IsNullOrWhiteSpace($commitTitle)) {
+            $commitTitle = '(no commit message)'
+          }
+
+          $runUrl = ([string]$env:RUN_URL).Trim()
+          if (-not [System.Uri]::IsWellFormedUriString($runUrl, [System.UriKind]::Absolute)) {
+            $runUrl = $null
+            [void]$diagnostics.Add('run_url is invalid; action button omitted.')
+          }
+
+          $ciInfoRows = @(
+            @{ Item = 'Workflow'; Value = $workflowName },
+            @{ Item = 'Branch'; Value = $branchName },
+            @{ Item = 'Commit'; Value = $shortSha },
+            @{ Item = 'Message'; Value = $commitTitle },
+            @{ Item = 'Triggered by'; Value = $actorName }
+          )
+
+          $pesterTotal = 0
+          $pesterDiscovered = 0
+          $pesterPassed = 0
+          $pesterFailed = 0
+          $pesterSkipped = 0
+          $pesterNotRunInput = 0
+          $hasDiscoveredInput = [int]::TryParse([string]$env:PESTER_DISCOVERED, [ref]$pesterDiscovered)
+          [void][int]::TryParse([string]$env:PESTER_TOTAL, [ref]$pesterTotal)
+          [void][int]::TryParse([string]$env:PESTER_PASSED, [ref]$pesterPassed)
+          [void][int]::TryParse([string]$env:PESTER_FAILED, [ref]$pesterFailed)
+          [void][int]::TryParse([string]$env:PESTER_SKIPPED, [ref]$pesterSkipped)
+          $hasNotRunInput = [int]::TryParse([string]$env:PESTER_NOTRUN, [ref]$pesterNotRunInput)
+          $pesterExecuted = [math]::Max($pesterPassed + $pesterFailed + $pesterSkipped, 0)
+          if ($hasDiscoveredInput -and $pesterDiscovered -gt 0) {
+            $pesterTotal = $pesterDiscovered
+          }
+          $pesterNotRun = if ($hasNotRunInput -and $pesterNotRunInput -ge 0) {
+            $pesterNotRunInput
+          }
+          else {
+            [math]::Max($pesterTotal - $pesterExecuted, 0)
+          }
+
+          if ($pesterTotal -gt 0 -or $pesterExecuted -gt 0) {
+            $pesterRows = @(
+              @{ Metric = 'Total'; Value = [string]$pesterTotal },
+              @{ Metric = 'Executed'; Value = [string]$pesterExecuted },
+              @{ Metric = 'Passed'; Value = "✅ $pesterPassed" },
+              @{ Metric = 'Failed'; Value = "❌ $pesterFailed" },
+              @{ Metric = 'Skipped'; Value = "⏭️ $pesterSkipped" },
+              @{ Metric = 'Not Run'; Value = "⏸️ $pesterNotRun" }
+            )
+          }
+          else {
+            $pesterRows = @()
+          }
+
+          $pesterSummary = if ($pesterTotal -gt 0 -or $pesterExecuted -gt 0) {
+            "Total: **$pesterTotal** | Executed: **$pesterExecuted** | ✅ Passed: **$pesterPassed** | ❌ Failed: **$pesterFailed** | ⏭️ Skipped: **$pesterSkipped** | ⏸️ Not Run: **$pesterNotRun**"
+          }
+          elseif ($pesterNotRun -gt 0) {
+            'No test cases executed; some discovered cases were not run.'
+          }
+          else {
+            'No test case results were provided.'
+          }
+
+          $casesJsonRaw = if ([string]::IsNullOrWhiteSpace($env:CASES_JSON)) {
+            '{}'
+          }
+          else {
+            $env:CASES_JSON.Replace("`r", '')
+          }
+
+          try {
+            $casesObject = $casesJsonRaw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+            if ($casesObject -isnot [hashtable]) {
+              $casesObject = @{}
+            }
+          }
+          catch {
+            $casesObject = @{}
+            [void]$diagnostics.Add("cases_json parse failed: $($_.Exception.Message)")
+          }
+
+          $caseRows = @()
+          foreach ($caseName in $casesObject.Keys) {
+            $normalizedCaseName = ([string]$caseName).Trim()
+            if ([string]::IsNullOrWhiteSpace($normalizedCaseName)) {
+              $normalizedCaseName = '(unnamed case)'
+            }
+
+            $displayCaseName = $normalizedCaseName
+
+            $rawCaseValue = ([string]$casesObject[$caseName]).Trim()
+            $caseOutcome = $rawCaseValue
+            $caseTime = ''
+            if ($rawCaseValue -match '^\s*(.+?)\s*\|\s*(.+?)\s*$') {
+              $caseOutcome = $matches[1]
+              $caseTime = $matches[2]
+            }
+
+            $normalizedCaseOutcome = $caseOutcome.ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($normalizedCaseOutcome)) {
+              $normalizedCaseOutcome = 'unknown'
+            }
+
+            $displayCaseStatus = if ($outcomeMap.ContainsKey($normalizedCaseOutcome)) {
+              $outcomeMap[$normalizedCaseOutcome]
+            }
+            else {
+              "⚠️ $normalizedCaseOutcome"
+            }
+
+            $caseRows += @{
+              'Step Name'      = $displayCaseName
+              'Status'         = $displayCaseStatus
+              'Time Consuming' = if ([string]::IsNullOrWhiteSpace($caseTime)) { '-' } else { $caseTime }
+            }
+          }
+
+          $caseRows = $caseRows | Sort-Object -Property 'Step Name'
+
+          $stageHeaders = @('Step Name', 'Status', 'Time Consuming')
+
+          $ciStageRows = foreach ($ciRow in $ciInfoRows) {
+            @{
+              'Step Name'      = [string]$ciRow['Item']
+              'Status'         = [string]$ciRow['Value']
+              'Time Consuming' = 'N/A'
+            }
+          }
+
+          $pesterStageRows = foreach ($metricRow in $pesterRows) {
+            @{
+              'Step Name'      = [string]$metricRow['Metric']
+              'Status'         = [string]$metricRow['Value']
+              'Time Consuming' = 'N/A'
+            }
+          }
+
+          $ciPanel = New-WorkflowStagePanel -Title 'Stage: Pipeline Info' -Rows $ciStageRows
+          $stepsPanel = if ($stepRows.Count -gt 0) {
+            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $stepRows
+          }
+          else {
+            $null
+          }
+          $pesterPanel = if ($pesterStageRows.Count -gt 0) {
+            New-WorkflowStagePanel -Title 'Stage: Pester Test Results' -Rows $pesterStageRows
+          }
+          else {
+            $null
+          }
+          $casesPanel = if ($caseRows.Count -gt 0) {
+            New-WorkflowStagePanel -Title 'Stage: Test Cases' -Rows $caseRows
+          }
+          else {
+            $null
+          }
+
+          $hasAnyDetailData = ($stepRows.Count -gt 0) -or ($pesterStageRows.Count -gt 0) -or ($caseRows.Count -gt 0)
+
+          $adaptiveActions = @()
+          if ($runUrl) {
+            $adaptiveActions += @{
+              type  = 'Action.OpenUrl'
+              title = 'View Workflow Run'
+              url   = $runUrl
+            }
+          }
+
+          $statusColor = switch ($statusKey) {
+            'success' { 'Good' }
+            'failure' { 'Attention' }
+            'cancelled' { 'Warning' }
+            'skipped' { 'Warning' }
+            default { 'Warning' }
+          }
+
+          $cardBody = @(
+            @{
+              type   = 'TextBlock'
+              size   = 'Large'
+              weight = 'Bolder'
+              text   = "Pipeline: $workflowName"
+              wrap   = $true
+            },
+            @{
+              type   = 'TextBlock'
+              color  = $statusColor
+              weight = 'Bolder'
+              text   = "Status: $($statusMeta.Icon) $statusLabel"
+              wrap   = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = 'Pester Test Results (Summary)'
+              weight = 'Bolder'
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = $pesterSummary
+              wrap = $true
+              color = if ($pesterFailed -gt 0) { 'Attention' } else { 'Good' }
+            },
+            @{
+              type = 'TextBlock'
+              text = "Branch: $branchName | Commit: $shortSha"
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = "Message: $commitTitle"
+              wrap = $true
+            },
+            @{
+              type = 'TextBlock'
+              text = "Trigger For: $actorName"
+              wrap = $true
+            },
+            @{
+              type = 'Container'
+              items = @($ciPanel)
+            }
+          )
+
+          if ($hasAnyDetailData) {
+            if ($pesterPanel) {
+              $cardBody += @{
+                type = 'Container'
+                items = @($pesterPanel)
+              }
+            }
+
+            if ($stepsPanel) {
+              $cardBody += @{
+                type = 'Container'
+                items = @($stepsPanel)
+              }
+            }
+          }
+          else {
+            $cardBody += @{
+              type = 'TextBlock'
+              text = 'No result data was retrieved. The workflow may have been skipped or did not reach this stage. Please open the pipeline run for details.'
+              wrap = $true
+              color = 'Warning'
+            }
+          }
+
+          if ($casesPanel -and $hasAnyDetailData) {
+            $cardBody += @{
+              type = 'Container'
+              items = @($casesPanel)
+            }
+          }
+
+          if ($diagnostics.Count -gt 0) {
+            $cardBody += @{
+              type   = 'TextBlock'
+              text   = "Diagnostics: $($diagnostics -join '; ')"
+              wrap   = $true
+              isSubtle = $true
+            }
+          }
+
+          $payload = @{
+            type        = 'message'
+            attachments = @(
+              @{
+                contentType = 'application/vnd.microsoft.card.adaptive'
+                contentUrl  = $null
+                content     = @{
+                  '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'
+                  type      = 'AdaptiveCard'
+                  version   = '1.4'
+                  body      = $cardBody
+                  actions   = $adaptiveActions
+                  msteams   = @{
+                    width = 'Full'
+                  }
+                }
+              }
+            )
+          }
+
+          $payloadJson = $payload | ConvertTo-Json -Depth 20 -Compress
+
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            try {
+              Invoke-RestMethod -Method Post -Uri $webhook -ContentType 'application/json' -Body $payloadJson | Out-Null
+              Write-Host 'Teams notification sent successfully.'
+              break
+            }
+            catch {
+              if ($attempt -eq $maxAttempts) {
+                Write-Error "Failed to send Teams notification after $maxAttempts attempts: $($_.Exception.Message)"
+                exit 1
+              }
+
+              Write-Warning "Teams notification attempt $attempt failed: $($_.Exception.Message). Retrying..."
+              Start-Sleep -Seconds ([math]::Pow(2, $attempt))
+            }
+          }

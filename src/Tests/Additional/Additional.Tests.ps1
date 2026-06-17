@@ -17,6 +17,7 @@ BeforeAll {
     $script:TFAccessToken = $null
     $script:TFTestRunId = $env:TEST_RUN_ID
     $script:TFApiBaseUrl = $env:TERRAFORGE_API_BASE_URL
+    $script:TFResultByKey = @{}
 
     if ($script:TFTestRunId -and $script:TFApiBaseUrl)
     {
@@ -51,7 +52,8 @@ BeforeAll {
         #>
         param (
             [string]$TestClass,
-            [string]$TestMethod
+            [string]$TestMethod,
+            [string]$TestKey
         )
         $script:TFCurrentResultId = $null
         if (-not $script:TFReportingEnabled)
@@ -65,6 +67,15 @@ BeforeAll {
             return
         }
 
+        if (-not $script:TFResultByKey)
+        {
+            $script:TFResultByKey = @{}
+        }
+        if (-not [string]::IsNullOrWhiteSpace($TestKey))
+        {
+            [void]$script:TFResultByKey.Remove($TestKey)
+        }
+
         try
         {
             $result = New-TestRunResults `
@@ -75,7 +86,14 @@ BeforeAll {
                 -SessionId $env:TEST_SESSION_ID `
                 -ProductName $TestMethod `
                 -MachineId $env:COMPUTERNAME
-            $script:TFCurrentResultId = $result.Id
+            if (-not [string]::IsNullOrWhiteSpace($TestKey))
+            {
+                $script:TFResultByKey[$TestKey] = $result.Id
+            }
+            else
+            {
+                $script:TFCurrentResultId = $result.Id
+            }
             Write-Information "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod" -InformationAction Continue
         }
         catch
@@ -94,9 +112,20 @@ BeforeAll {
             and the Skipped flag instead.
         #>
         param (
-            [object]$TestResult
+            [object]$TestResult,
+            [string]$TestKey
         )
-        if (-not $script:TFReportingEnabled -or -not $script:TFCurrentResultId)
+        $resultId = $null
+        if (-not [string]::IsNullOrWhiteSpace($TestKey) -and $script:TFResultByKey -and $script:TFResultByKey.ContainsKey($TestKey))
+        {
+            $resultId = $script:TFResultByKey[$TestKey]
+        }
+        elseif ($script:TFCurrentResultId)
+        {
+            $resultId = $script:TFCurrentResultId
+        }
+
+        if (-not $script:TFReportingEnabled -or -not $resultId)
         {
             return
         }
@@ -129,40 +158,116 @@ BeforeAll {
             Update-TestRunResults `
                 -ApiBaseUrl $script:TFApiBaseUrl `
                 -AccessToken $script:TFAccessToken `
-                -TestRunResultId $script:TFCurrentResultId `
+                -TestRunResultId $resultId `
                 -Result $resultCode `
                 -ErrorMessage $errorMsg
-            Write-Verbose "[TerraForge] Updated result Id=$($script:TFCurrentResultId) -> code=$resultCode"
+            Write-Verbose "[TerraForge] Updated result Id=$resultId -> code=$resultCode"
         }
         catch
         {
-            Write-Warning "[TerraForge] Failed to update result Id=$($script:TFCurrentResultId): $($_.Exception.Message)"
+            Write-Warning "[TerraForge] Failed to update result Id=${resultId}: $($_.Exception.Message)"
+        }
+        finally
+        {
+            if (-not [string]::IsNullOrWhiteSpace($TestKey) -and $script:TFResultByKey)
+            {
+                [void]$script:TFResultByKey.Remove($TestKey)
+            }
         }
     }
+
+    function script:New-TFTestCaseKey
+    {
+        param (
+            [string]$TestClass,
+            [string]$TestMethod
+        )
+
+        $sessionSeed = if ($env:TEST_SESSION_ID) { $env:TEST_SESSION_ID } elseif ($env:TEST_RUN_ID) { $env:TEST_RUN_ID } else { "$PID" }
+        $safeClass = if ([string]::IsNullOrWhiteSpace($TestClass)) { 'UnknownClass' } else { $TestClass }
+        $safeMethod = if ([string]::IsNullOrWhiteSpace($TestMethod)) { 'UnknownMethod' } else { $TestMethod }
+        return "$sessionSeed|$safeClass|$safeMethod|$([DateTime]::UtcNow.Ticks)"
+    }
+
+    function script:Get-PSADTParallelSafeSuffix
+    {
+        param (
+            [int]$MaxLength = 24
+        )
+
+        $raw = if ($env:APP_TEST_SUFFIX)
+        {
+            $env:APP_TEST_SUFFIX
+        }
+        elseif ($env:TEST_SESSION_ID)
+        {
+            $env:TEST_SESSION_ID
+        }
+        elseif ($env:TEST_RUN_ID)
+        {
+            $env:TEST_RUN_ID
+        }
+        elseif ($env:GITHUB_RUN_ID)
+        {
+            $env:GITHUB_RUN_ID
+        }
+        else
+        {
+            $null
+        }
+
+        if ([string]::IsNullOrWhiteSpace($raw))
+        {
+            return ''
+        }
+
+        $safe = ($raw -replace '[^A-Za-z0-9-]', '-') -replace '-{2,}', '-'
+        $safe = $safe.Trim('-')
+        if ([string]::IsNullOrWhiteSpace($safe))
+        {
+            return ''
+        }
+        if ($safe.Length -gt $MaxLength)
+        {
+            $safe = $safe.Substring(0, $MaxLength)
+        }
+
+        return "-$safe"
+    }
+
+    $script:AdditionalHelpersPath = Join-Path $script:_tfScriptRoot 'Additional.Tests.Helpers.ps1'
+    if (-not (Test-Path $script:AdditionalHelpersPath))
+    {
+        throw "Required helper file not found: $script:AdditionalHelpersPath"
+    }
+    . $script:AdditionalHelpersPath
+
 }
 
 # ---------------------------------------------------------------------------
 
-Describe 'PSADT Build Template Validation' {
+Describe 'PSADT Build Template Validation' -Tag 'Validation' {
     Context 'Template paths from build output' {
 
         BeforeAll {
             $script:v3Dir = $env:PSADT_TEMPLATE_V3_DIR
             $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
+            $script:TemplateValidationPassed = $false
         }
 
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
             $script:CurrentTestClass = 'PSADT Build Template Validation / Template paths from build output'
             $script:CurrentTestMethod = $testInfo.Name
+            $script:CurrentTestKey = New-TFTestCaseKey -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
             Write-Verbose "[BeforeEach] TestClass: $($script:CurrentTestClass)"
             Write-Verbose "[BeforeEach] TestMethod: $($script:CurrentTestMethod)"
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod -TestKey $script:CurrentTestKey
         }
 
         AfterEach {
             $currentTest = $____Pester.CurrentTest
-            Invoke-TFUpdateTestCase -TestResult $currentTest
+            Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
         It 'Template environment variables, directories, and contents are valid' {
@@ -183,38 +288,39 @@ Describe 'PSADT Build Template Validation' {
             # Search recursively - zip may extract into a subdirectory
             $foundV4 = Get-ChildItem -Path $script:v4Dir -File -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             $foundV4 | Should -Not -BeNullOrEmpty -Because 'V4 template must contain Invoke-AppDeployToolkit.ps1'
+
+            # Mark validation as passed for downstream tests within the same run.
+            $script:TemplateValidationPassed = $true
         }
     }
 }
 
-Describe 'winSCP Package Preparation and SCCM Import' {
-    Context 'Build winSCP package from V4 template and import into SCCM' {
+Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
+    Context 'Build winSCP package from V4 template and deploy into SCCM' {
 
         BeforeAll {
-            $script:v4Dir = $env:PSADT_TEMPLATE_V4_DIR
-            $script:winscpSourceScript = Join-Path $PSScriptRoot 'winSCP\Invoke-AppDeployToolkit.ps1'
-            $script:winscpPackageDir = 'C:\PSADT\winSCP'
-            $script:winscpAppName = 'WinSCP (PSADT v4 winSCP)'
-            $script:winscpAppVendor = 'Martin Prikryl'
-            $script:winscpAppVersion = '6.5.6'
-            $script:winscpDTName = "WinSCP $script:winscpAppVersion (v4 winSCP)"
-            $script:winscpContentUNC = "\\$env:COMPUTERNAME\PSADT_Content$\winSCP"
-            $script:targetCollection = if ($env:SCCM_TARGET_COLLECTION) { $env:SCCM_TARGET_COLLECTION } else { 'All Systems' }
+            $ctx = New-PSADTAppTestContext `
+                -SourceScriptRelativePath 'winSCP\Invoke-AppDeployToolkit.ps1' `
+                -PackageDir 'C:\PSADT\winSCP' `
+                -AppName 'WinSCP (PSADT v4 winSCP)' `
+                -AppVendor 'Martin Prikryl' `
+                -AppVersion '6.5.6' `
+                -DeploymentTypeName 'WinSCP 6.5.6 (v4 winSCP)' `
+                -ContentSubPath 'winSCP'
+
+            $script:v4Dir = $ctx.V4Dir
+            $script:winscpSourceScript = $ctx.SourceScript
+            $script:winscpPackageDir = $ctx.PackageDir
+            $script:winscpAppName = $ctx.AppName
+            $script:winscpAppVendor = $ctx.AppVendor
+            $script:winscpAppVersion = $ctx.AppVersion
+            $script:winscpDTName = $ctx.DeploymentTypeName
+            $script:winscpContentUNC = $ctx.ContentUNC
+            $script:targetCollection = $ctx.TargetCollection
             $script:winscpInstallDeploySucceeded = $false
-
-            $script:siteCode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Operations Management' -Name 'Site Code' -ErrorAction SilentlyContinue).'Site Code'
-            $script:siteServer = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Setup' -Name 'Provider Location' -ErrorAction SilentlyContinue).'Provider Location'
-
-            $script:cmModulePath = @(
-                'C:\Program Files (x86)\Microsoft Configuration Manager\AdminConsole\bin\ConfigurationManager.psd1',
-                'C:\Program Files\Microsoft Configuration Manager\AdminConsole\bin\ConfigurationManager.psd1'
-            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-            if (-not $script:cmModulePath -and $env:SMS_ADMIN_UI_PATH)
-            {
-                $candidate = Join-Path (Split-Path $env:SMS_ADMIN_UI_PATH -Parent) 'ConfigurationManager.psd1'
-                if (Test-Path $candidate) { $script:cmModulePath = $candidate }
-            }
+            $script:siteCode = $ctx.SiteCode
+            $script:siteServer = $ctx.SiteServer
+            $script:cmModulePath = $ctx.CmModulePath
         }
 
         AfterAll {
@@ -227,171 +333,88 @@ Describe 'winSCP Package Preparation and SCCM Import' {
 
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'winSCP Package Preparation and SCCM Import / Build winSCP package from V4 template and import into SCCM'
+            $script:CurrentTestClass = 'winSCP Package Preparation and SCCM Deployment / Build winSCP package from V4 template and deploy into SCCM'
             $script:CurrentTestMethod = $testInfo.Name
-            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            $script:CurrentTestKey = New-TFTestCaseKey -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod -TestKey $script:CurrentTestKey
         }
 
         AfterEach {
             $currentTest = $____Pester.CurrentTest
-            Invoke-TFUpdateTestCase -TestResult $currentTest
+            Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        function script:Invoke-WinSCPSccmClientEvaluation
-        {
-            Write-Information "Triggering policy/application/update evaluation" -InformationAction Continue
+        It 'Builds winSCP package and deploys into SCCM' {
+            Write-Information "::info::[winSCP] Step 0: Verifying template validation gate..."
+            if (-not (Test-PSADTTemplateValidationGate))
+            {
+                Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
+                return
+            }
+            Write-Information "::info::[winSCP] Template validation gate satisfied." -InformationAction Continue
 
-            # Computer policy
-            $trigger = "{00000000-0000-0000-0000-000000000021}"
-            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-
-            # Application evaluation
-            $trigger = "{00000000-0000-0000-0000-000000000121}"
-            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-
-            # Software update
-            $trigger = "{00000000-0000-0000-0000-000000000108}"
-            ([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
-        }
-
-        It 'Builds winSCP package and imports into SCCM' {
             # ----------------------------------------------------------------
             # Step 1 - Verify prerequisites
             # ----------------------------------------------------------------
-            if (-not $script:v4Dir)
+            if (-not (Test-PSADTPackageBuildPrerequisites `
+                        -TemplateDir $script:v4Dir `
+                        -TemplateEnvName 'PSADT_TEMPLATE_V4_DIR' `
+                        -SiteCode $script:siteCode `
+                        -SiteServer $script:siteServer `
+                        -SourceScript $script:winscpSourceScript `
+                        -SourceScriptLabel 'winSCP\Invoke-AppDeployToolkit.ps1' `
+                        -LogPrefix 'winSCP' `
+                        -UseInformationLogs))
             {
-                Set-ItResult -Skipped -Because 'PSADT_TEMPLATE_V4_DIR not set'
                 return
             }
-            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
-            {
-                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
-                return
-            }
-            Test-Path $script:v4Dir | Should -BeTrue -Because 'V4 template directory must exist'
-            Test-Path $script:winscpSourceScript | Should -BeTrue -Because 'winSCP\Invoke-AppDeployToolkit.ps1 must exist'
 
             # ----------------------------------------------------------------
             # Step 2 - Copy V4 template to winSCP package directory
             # ----------------------------------------------------------------
-            Write-Verbose '[winSCP] Step 2: Copying V4 template to winSCP package directory...'
-            if (Test-Path $script:winscpPackageDir)
-            {
-                Remove-Item $script:winscpPackageDir -Recurse -Force
-            }
-            Copy-Item -Path $script:v4Dir -Destination $script:winscpPackageDir -Recurse -Force
-            Test-Path $script:winscpPackageDir | Should -BeTrue
+            Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v4Dir -PackageDir $script:winscpPackageDir -LogPrefix 'winSCP' -UseInformationLogs
 
             # ----------------------------------------------------------------
             # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with winSCP version
             # ----------------------------------------------------------------
-            Write-Verbose '[winSCP] Step 3: Replacing Invoke-AppDeployToolkit.ps1 with winSCP version...'
-            $allDestScripts = Get-ChildItem -Path $script:winscpPackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File -ErrorAction SilentlyContinue
-            $destScript = $allDestScripts | Select-Object -First 1
-            $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
-            Copy-Item -Path $script:winscpSourceScript -Destination $destScript.FullName -Force
-            $content = Get-Content -Path $destScript.FullName -Raw
-            $content | Should -Match 'WinSCP'
+            $destScript = Update-PSADTPackageDeployScript `
+                -PackageDir $script:winscpPackageDir `
+                -SourceScript $script:winscpSourceScript `
+                -ExpectedContentPattern 'WinSCP' `
+                -LogPrefix 'winSCP' `
+                -UseInformationLogs
 
             # ----------------------------------------------------------------
             # Step 4 - Copy WinSCP MSI into Files folder
             # ----------------------------------------------------------------
-            Write-Verbose '[winSCP] Step 4: Copying WinSCP MSI into Files folder...'
             $msiSource = 'C:\Tools\Intune\WinSCP\WinSCP-6.5.6.msi'
-            if (-not (Test-Path $msiSource))
-            {
-                Write-Information "::warning::[winSCP] MSI not found at '$msiSource', skipping MSI copy step." -InformationAction Continue
-            }
-            else
-            {
-                $filesDir = Join-Path $script:winscpPackageDir 'Files'
-                if (-not (Test-Path $filesDir))
-                {
-                    New-Item -ItemType Directory -Path $filesDir -Force | Out-Null
-                }
-                Copy-Item -Path $msiSource -Destination $filesDir -Force
-                Test-Path (Join-Path $filesDir 'WinSCP-6.5.6.msi') | Should -BeTrue
-            }
+            Copy-PSADTPackageInstallerToFiles `
+                -DeployScriptPath $destScript.FullName `
+                -InstallerSource $msiSource `
+                -InstallerLabel 'MSI' `
+                -LogPrefix 'winSCP' `
+                -UseInformationLogs `
+                -ExpectedFileName 'WinSCP-6.5.6.msi'
 
             # ----------------------------------------------------------------
-            # Step 5 - Create SMB content share
+            # Step 5 - Verify SMB content share and directories exist
             # ----------------------------------------------------------------
-            Write-Verbose '[winSCP] Step 5: Ensuring SMB content share exists...'
-            if (-not $script:cmModulePath)
+            if (-not (Assert-PSADTContentPathReady `
+                        -CmModulePath $script:cmModulePath `
+                        -PackageDir $script:winscpPackageDir `
+                        -ContentUNC $script:winscpContentUNC `
+                        -LogPrefix 'winSCP' `
+                        -UseInformationLogs))
             {
-                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
                 return
             }
-            $shareName = 'PSADT_Content$'
-            if (-not (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue))
-            {
-                New-SmbShare -Name $shareName -Path 'C:\PSADT' -FullAccess 'Everyone' -Description 'PSADT SCCM Content Source' | Out-Null
-            }
-            # Ensure the winSCP subdirectory exists under the share root (C:\PSADT\winSCP)
-            if (-not (Test-Path $script:winscpPackageDir))
-            {
-                New-Item -ItemType Directory -Path $script:winscpPackageDir -Force | Out-Null
-                Write-Verbose "[winSCP] Created missing package directory: $($script:winscpPackageDir)"
-            }
-            Test-Path $script:winscpContentUNC | Should -BeTrue
 
             # ----------------------------------------------------------------
             # Step 6 - Import application into SCCM
             # ----------------------------------------------------------------
             Write-Verbose '[winSCP] Step 6: Importing winSCP application into SCCM...'
-            if ([string]::IsNullOrWhiteSpace($script:siteCode))
-            {
-                throw "siteCode cannot be null or empty"
-            }
-            if ([string]::IsNullOrWhiteSpace($script:siteServer))
-            {
-                throw "siteServer cannot be null or empty"
-            }
-            Import-Module $script:cmModulePath -ErrorAction Stop
-            $script:WinSCPSiteOriginalLocation = Get-Location
-            if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
-            {
-                New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
-            }
-            Set-Location "$($script:siteCode):\"
-            try
-            {
-                # Remove existing application
-                if (Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue)
-                {
-                    $existingDeps = Get-CMApplicationDeployment -Name $script:winscpAppName -ErrorAction SilentlyContinue
-                    foreach ($dep in $existingDeps)
-                    {
-                        Remove-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
-                    }
-                    Remove-CMApplication -Name $script:winscpAppName -Force
-                    Start-Sleep -Seconds 2
-                }
-
-                New-CMApplication `
-                    -Name            $script:winscpAppName `
-                    -Publisher       $script:winscpAppVendor `
-                    -SoftwareVersion $script:winscpAppVersion `
-                    -LocalizedName   $script:winscpAppName `
-                    -Description     "PSADT v4 winSCP template - WinSCP $script:winscpAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')" | Out-Null
-
-                $installCmd = if (Test-Path (Join-Path $script:winscpPackageDir 'Invoke-AppDeployToolkit.exe'))
-                {
-                    'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
-                }
-                else
-                {
-                    'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Install'
-                }
-                $uninstallCmd = if (Test-Path (Join-Path $script:winscpPackageDir 'Invoke-AppDeployToolkit.exe'))
-                {
-                    'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
-                }
-                else
-                {
-                    'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Uninstall'
-                }
-
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                Write-Information '::info::[winSCP] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
                 $detectScript = @'
 $uninstallRoots = @(
     'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -409,196 +432,42 @@ $app = foreach ($root in $uninstallRoots)
 if ($app) { Write-Host "Installed" }
 '@
 
-                Add-CMScriptDeploymentType `
-                    -ApplicationName           $script:winscpAppName `
-                    -DeploymentTypeName        $script:winscpDTName `
-                    -ContentLocation           $script:winscpContentUNC `
-                    -InstallCommand            $installCmd `
-                    -UninstallCommand          $uninstallCmd `
-                    -ScriptLanguage            PowerShell `
-                    -ScriptText                $detectScript `
-                    -InstallationBehaviorType  InstallForSystem `
-                    -LogonRequirementType      WhetherOrNotUserLoggedOn `
-                    -RebootBehavior            BasedOnExitCode `
-                    -SlowNetworkDeploymentMode Download `
-                    -MaximumRuntimeMins        30 `
-                    -EstimatedRuntimeMins      5 | Out-Null
-
-                $dt = Get-CMDeploymentType -ApplicationName $script:winscpAppName -DeploymentTypeName $script:winscpDTName
-                Add-CMDeploymentTypeReturnCode -InputObject $dt -ReturnCode 3010 -CodeType SoftReboot -Name 'Reboot Required' | Out-Null
-                Add-CMDeploymentTypeReturnCode -InputObject $dt -ReturnCode 1641 -CodeType HardReboot -Name 'Reboot Initiated' | Out-Null
-
-                $created = Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue
-                $created | Should -Not -BeNullOrEmpty
+                New-PSADTApplicationWithDeploymentType `
+                    -AppName $script:winscpAppName `
+                    -Vendor $script:winscpAppVendor `
+                    -Version $script:winscpAppVersion `
+                    -DeploymentTypeName $script:winscpDTName `
+                    -ContentUNC $script:winscpContentUNC `
+                    -PackageDir $script:winscpPackageDir `
+                    -DetectScript $detectScript `
+                    -Description "PSADT v4 winSCP template - WinSCP $script:winscpAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
 
                 # ----------------------------------------------------------------
                 # Step 7 - Distribute content
                 # ----------------------------------------------------------------
                 Write-Verbose '[winSCP] Step 7: Triggering content distribution...'
-                $dpGroups = Get-CMDistributionPointGroup -ErrorAction SilentlyContinue
-                $dpList = Get-CMDistributionPoint -ErrorAction SilentlyContinue
-
-                if ($dpGroups)
-                {
-                    foreach ($grp in $dpGroups)
-                    {
-                        Start-CMContentDistribution -ApplicationName $script:winscpAppName `
-                            -DistributionPointGroupName $grp.Name -ErrorAction SilentlyContinue | Out-Null
-                    }
-                }
-                elseif ($dpList)
-                {
-                    foreach ($dp in $dpList)
-                    {
-                        Start-CMContentDistribution -ApplicationName $script:winscpAppName `
-                            -DistributionPointName $dp.NetworkOSPath.TrimStart('\') -ErrorAction SilentlyContinue | Out-Null
-                    }
-                }
-                else
-                {
-                    Write-Information '::warning::[winSCP] No distribution points or DP groups found - content distribution skipped.' -InformationAction Continue
-                }
-                # Check content distribution status via Get-CMDistributionStatus
-                # Poll every 60 seconds for up to 10 minutes until all DPs report success
-                $packageId = (Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue).PackageID
-                if ($packageId)
-                {
-                    $maxWaitSeconds = 600
-                    $pollIntervalSeconds = 60
-                    $elapsed = 0
-                    $distributionStatus = $null
-
-                    do
-                    {
-                        $distributionStatus = Get-CMDistributionStatus -Id $packageId -ErrorAction SilentlyContinue
-                        if ($distributionStatus)
-                        {
-                            Write-Verbose "[winSCP] Distribution status (elapsed ${elapsed}s): Targeted=$($distributionStatus.Targeted) Success=$($distributionStatus.NumberSuccess) InProgress=$($distributionStatus.NumberInProgress) Errors=$($distributionStatus.NumberErrors)"
-                            if ($distributionStatus.NumberSuccess -ge $distributionStatus.Targeted -and $distributionStatus.Targeted -gt 0)
-                            {
-                                break
-                            }
-                        }
-
-                        if ($elapsed -lt $maxWaitSeconds)
-                        {
-                            Write-Verbose "[winSCP] Distribution not yet complete - waiting ${pollIntervalSeconds}s before next check..."
-                            Start-Sleep -Seconds $pollIntervalSeconds
-                            $elapsed += $pollIntervalSeconds
-                        }
-                        else
-                        {
-                            break
-                        }
-                    }
-                    while ($elapsed -le $maxWaitSeconds)
-
-                    $distributionStatus | Should -Not -BeNullOrEmpty -Because 'Content distribution status must exist'
-                    $distributionStatus.NumberSuccess | Should -Be $distributionStatus.Targeted -Because "All $($distributionStatus.Targeted) targeted distribution points must have received the content successfully (waited up to ${maxWaitSeconds}s)"
-                }
-                else
-                {
-                    Write-Information '::warning::[winSCP] Could not retrieve PackageID for distribution status check.' -InformationAction Continue
-                }
+                Start-PSADTContentDistributionAndAssert -AppName $script:winscpAppName -LogPrefix 'winSCP'
 
                 # ----------------------------------------------------------------
                 # Step 7b - Deploy application to collection
                 # ----------------------------------------------------------------
                 Write-Verbose "[winSCP] Step 7b: Deploying application to collection '$($script:targetCollection)'..."
-
-                # Validate collection exists if not using default
-                if ($script:targetCollection -ne 'All Systems')
-                {
-                    $col = Get-CMDeviceCollection -Name $script:targetCollection -ErrorAction SilentlyContinue
-                    $col | Should -Not -BeNullOrEmpty -Because "Collection '$($script:targetCollection)' must exist in SCCM"
-                    Write-Verbose "[winSCP] Collection validated: $($script:targetCollection) ($($col.MemberCount) device(s))"
-                }
-
-                # Remove existing deployment before recreating
-                $existDeploy = Get-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
-                if ($existDeploy)
-                {
-                    Remove-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -Force -ErrorAction SilentlyContinue
-                    Write-Verbose "[winSCP] Removed existing deployment: $($script:winscpAppName) -> $($script:targetCollection)"
-                }
-
-                New-CMApplicationDeployment `
-                    -Name                       $script:winscpAppName `
-                    -CollectionName             $script:targetCollection `
-                    -DeployAction               Install `
-                    -DeployPurpose              Required `
-                    -UserNotification           DisplaySoftwareCenterOnly `
-                    -TimeBaseOn                 LocalTime `
-                    -OverrideServiceWindow      $false `
-                    -RebootOutsideServiceWindow $false | Out-Null
-
-                $createdDeploy = Get-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
-                $createdDeploy | Should -Not -BeNullOrEmpty -Because "Deployment of '$($script:winscpAppName)' to '$($script:targetCollection)' must be created successfully"
-                Write-Verbose "[winSCP] Deployment created: $($script:winscpAppName) -> $($script:targetCollection) (Required)"
+                New-PSADTRequiredDeployment -AppName $script:winscpAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'winSCP'
 
                 # ----------------------------------------------------------------
                 # Step 8 - Poll application deployment status
                 # ----------------------------------------------------------------
                 Write-Information '[winSCP] Step 8: Polling application deployment status...' -InformationAction Continue
-                $maxWaitSecondsDeployment = 1800   # 30 minutes
-                $pollIntervalDeployment = 180       # 3 minutes
-                $elapsedDeployment = 0
-                $deploymentSummary = $null
-
-                do
-                {
-                    $deployments = Get-CMDeployment -SoftwareName "$script:winscpAppName" -ErrorAction SilentlyContinue
-                    $deployments | ForEach-Object { Invoke-CMDeploymentSummarization -DeploymentId $_.DeploymentId }
-                    if (-not [string]::IsNullOrWhiteSpace($script:siteCode))
-                    {
-                        $cimNamespace = "root\SMS\Site_$($script:siteCode)"
-                        $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
-                    }
-                    else
-                    {
-                        $deploymentSummary = $null
-                    }
-                    if ($deploymentSummary)
-                    {
-                        Write-Information "[winSCP] Deployment status (elapsed ${elapsedDeployment}s): Success=$($deploymentSummary.NumberSuccess) InProgress=$($deploymentSummary.NumberInProgress) Error=$($deploymentSummary.NumberErrors) Targeted=$($deploymentSummary.NumberTargeted)" -InformationAction Continue
-                        if ($deploymentSummary.NumberSuccess -gt 0)
-                        {
-                            break
-                        }
-                    }
-
-                    if ($elapsedDeployment -lt $maxWaitSecondsDeployment)
-                    {
-                        Write-Information "[winSCP] Deployment not yet successful - waiting ${pollIntervalDeployment}s before next check..." -InformationAction Continue
-                        Invoke-WinSCPSccmClientEvaluation
-
-                        Start-Sleep -Seconds $pollIntervalDeployment
-                        $elapsedDeployment += $pollIntervalDeployment
-                    }
-                    else
-                    {
-                        break
-                    }
-                }
-                while ($elapsedDeployment -le $maxWaitSecondsDeployment)
-                $deploymentSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
-                $deploymentSummary | Should -Not -BeNullOrEmpty -Because 'Application deployment status must exist'
-                $deploymentSummary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully deployed the application (waited up to ${maxWaitSecondsDeployment}s)"
+                $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:winscpAppName -SiteCode $script:siteCode -Label 'Deployment'
+                Write-Information $deploymentSummary -InformationAction Continue
                 $script:winscpInstallDeploySucceeded = $true
-            }
-            finally
-            {
-                if ($script:WinSCPSiteOriginalLocation)
-                {
-                    Set-Location $script:WinSCPSiteOriginalLocation
-                }
             }
         }
 
         It 'Creates uninstall deployment after winSCP install deployment succeeds' {
             if (-not $script:winscpInstallDeploySucceeded)
             {
-                Set-ItResult -Skipped -Because "Prerequisite test 'Builds winSCP package and imports into SCCM' did not complete successfully"
+                Set-ItResult -Skipped -Because "Prerequisite test 'Builds winSCP package and deploys into SCCM' did not complete successfully"
                 return
             }
 
@@ -614,99 +483,218 @@ if ($app) { Write-Host "Installed" }
                 return
             }
 
-            if ([string]::IsNullOrWhiteSpace($script:siteCode))
-            {
-                throw "siteCode cannot be null or empty"
-            }
-            if ([string]::IsNullOrWhiteSpace($script:siteServer))
-            {
-                throw "siteServer cannot be null or empty"
-            }
-            Import-Module $script:cmModulePath -ErrorAction Stop
-            $script:WinSCPSiteOriginalLocation = Get-Location
-            if (-not (Get-PSDrive -Name $script:siteCode -ErrorAction SilentlyContinue))
-            {
-                New-PSDrive -Name $script:siteCode -PSProvider CMSite -Root $script:siteServer | Out-Null
-            }
-            Set-Location "$($script:siteCode):\"
-            try
-            {
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 $app = Get-CMApplication -Name $script:winscpAppName -ErrorAction SilentlyContinue
                 $app | Should -Not -BeNullOrEmpty -Because 'winSCP application must exist before creating uninstall deployment'
 
-                $existingDeployments = Get-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
-                foreach ($dep in $existingDeployments)
-                {
-                    Remove-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $dep.CollectionName -Force -ErrorAction SilentlyContinue
-                    Write-Information "Removed existing deployment for '$($script:winscpAppName)' to collection '$($dep.CollectionName)'" -InformationAction Continue
-                }
-                Start-Sleep -Seconds 2
-
-                New-CMApplicationDeployment `
-                    -Name                       $script:winscpAppName `
-                    -CollectionName             $script:targetCollection `
-                    -DeployAction               Uninstall `
-                    -DeployPurpose              Required `
-                    -UserNotification           DisplaySoftwareCenterOnly `
-                    -TimeBaseOn                 LocalTime `
-                    -OverrideServiceWindow      $false `
-                    -RebootOutsideServiceWindow $false | Out-Null
-
-                $uninstallDeploy = Get-CMApplicationDeployment -Name $script:winscpAppName -CollectionName $script:targetCollection -ErrorAction SilentlyContinue
-                $uninstallDeploy | Should -Not -BeNullOrEmpty -Because "Uninstall deployment of '$($script:winscpAppName)' to '$($script:targetCollection)' must be created successfully"
-                Write-Information "[winSCP] Uninstall deployment created: $($script:winscpAppName) -> $($script:targetCollection) (Required)" -InformationAction Continue
+                New-PSADTRequiredDeployment -AppName $script:winscpAppName -TargetCollection $script:targetCollection -DeployAction Uninstall -LogPrefix 'winSCP'
 
                 # ----------------------------------------------------------------
                 # Step 9 - Poll uninstall deployment status
                 # ----------------------------------------------------------------
                 Write-Information '[winSCP] Step 9: Polling uninstall deployment status...' -InformationAction Continue
-                $maxWaitSecondsUninstall = 1800   # 30 minutes
-                $pollIntervalUninstall = 180      # 3 minutes
-                $elapsedUninstall = 0
-                $uninstallSummary = $null
-
-                do
-                {
-                    $uninstallSummary = $null
-                    if (-not [string]::IsNullOrWhiteSpace($script:siteCode))
-                    {
-                        $cimNamespace = "root\SMS\Site_$($script:siteCode)"
-                        $uninstallSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
-                    }
-                    if ($uninstallSummary)
-                    {
-                        Write-Information "[winSCP] Uninstall deployment status (elapsed ${elapsedUninstall}s): Success=$($uninstallSummary.NumberSuccess) InProgress=$($uninstallSummary.NumberInProgress) Error=$($uninstallSummary.NumberErrors) Targeted=$($uninstallSummary.NumberTargeted)" -InformationAction Continue
-                        if ($uninstallSummary.NumberSuccess -gt 0)
-                        {
-                            break
-                        }
-                    }
-
-                    if ($elapsedUninstall -lt $maxWaitSecondsUninstall)
-                    {
-                        Write-Information "[winSCP] Uninstall deployment not yet successful - waiting ${pollIntervalUninstall}s before next check..." -InformationAction Continue
-                        Invoke-WinSCPSccmClientEvaluation
-
-                        Start-Sleep -Seconds $pollIntervalUninstall
-                        $elapsedUninstall += $pollIntervalUninstall
-                    }
-                    else
-                    {
-                        break
-                    }
-                }
-                while ($elapsedUninstall -le $maxWaitSecondsUninstall)
-
-                $uninstallSummary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $script:winscpAppName } | Select-Object -First 1
-                $uninstallSummary | Should -Not -BeNullOrEmpty -Because 'Uninstall deployment status must exist'
-                $uninstallSummary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully uninstalled the application (waited up to ${maxWaitSecondsUninstall}s)"
+                [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:winscpAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
             }
-            finally
+        }
+    }
+}
+
+Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
+    Context 'Build VLC package from V4 template and deploy into SCCM' {
+
+        BeforeAll {
+            $ctx = New-PSADTAppTestContext `
+                -SourceScriptRelativePath 'VLC\Invoke-AppDeployToolkit.ps1' `
+                -SourceFolderRelativePath 'VLC' `
+                -PackageDir 'C:\PSADT\VLC' `
+                -AppName 'VLC media player (PSADT v4 VLC)' `
+                -AppVendor 'VideoLAN' `
+                -AppVersion '3.0.23' `
+                -DeploymentTypeName 'VLC 3.0.23 (v4 VLC)' `
+                -ContentSubPath 'VLC'
+
+            $script:v4Dir = $ctx.V4Dir
+            $script:vlcSourceScript = $ctx.SourceScript
+            $script:vlcSourceFolder = $ctx.SourceFolder
+            $script:vlcPackageDir = $ctx.PackageDir
+            $script:vlcAppName = $ctx.AppName
+            $script:vlcAppVendor = $ctx.AppVendor
+            $script:vlcAppVersion = $ctx.AppVersion
+            $script:vlcDTName = $ctx.DeploymentTypeName
+            $script:vlcContentUNC = $ctx.ContentUNC
+            $script:targetCollection = $ctx.TargetCollection
+            $script:vlcInstallDeploySucceeded = $false
+            $script:siteCode = $ctx.SiteCode
+            $script:siteServer = $ctx.SiteServer
+            $script:cmModulePath = $ctx.CmModulePath
+        }
+
+        AfterAll {
+            # if (Test-Path $script:vlcPackageDir)
+            # {
+            #     Remove-Item $script:vlcPackageDir -Recurse -Force -ErrorAction SilentlyContinue
+            #     Write-Verbose "  [teardown] Removed VLC package directory: $($script:vlcPackageDir)"
+            # }
+        }
+
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass = 'VLC Package Preparation and SCCM Import / Build VLC package from V4 template and import into SCCM'
+            $script:CurrentTestMethod = $testInfo.Name
+            $script:CurrentTestKey = New-TFTestCaseKey -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod -TestKey $script:CurrentTestKey
+        }
+
+        AfterEach {
+            $currentTest = $____Pester.CurrentTest
+            Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
+        }
+
+        It 'Builds VLC package and deploys into SCCM' {
+            if (-not (Test-PSADTTemplateValidationGate))
             {
-                if ($script:WinSCPSiteOriginalLocation)
-                {
-                    Set-Location $script:WinSCPSiteOriginalLocation
-                }
+                Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
+                return
+            }
+
+            # ----------------------------------------------------------------
+            # Step 1 - Verify prerequisites
+            # ----------------------------------------------------------------
+            if (-not (Test-PSADTPackageBuildPrerequisites `
+                        -TemplateDir $script:v4Dir `
+                        -TemplateEnvName 'PSADT_TEMPLATE_V4_DIR' `
+                        -SiteCode $script:siteCode `
+                        -SiteServer $script:siteServer `
+                        -SourceScript $script:vlcSourceScript `
+                        -SourceScriptLabel 'VLC\Invoke-AppDeployToolkit.ps1' `
+                        -LogPrefix 'VLC'))
+            {
+                return
+            }
+
+            # ----------------------------------------------------------------
+            # Step 2 - Copy V4 template to VLC package directory
+            # ----------------------------------------------------------------
+            Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v4Dir -PackageDir $script:vlcPackageDir -LogPrefix 'VLC'
+
+            # ----------------------------------------------------------------
+            # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with VLC version
+            # ----------------------------------------------------------------
+            $destScript = Update-PSADTPackageDeployScript `
+                -PackageDir $script:vlcPackageDir `
+                -SourceScript $script:vlcSourceScript `
+                -ExpectedContentPattern 'VLC' `
+                -LogPrefix 'VLC' `
+                -AdditionalContentSourceDir $script:vlcSourceFolder
+
+            # ----------------------------------------------------------------
+            # Step 4 - Copy VLC installer into Files folder
+            # ----------------------------------------------------------------
+            $installerSource = "C:\Tools\Intune\VLC\vlc-$($script:vlcAppVersion)-win64.exe"
+            Copy-PSADTPackageInstallerToFiles `
+                -DeployScriptPath $destScript.FullName `
+                -InstallerSource $installerSource `
+                -InstallerLabel 'installer' `
+                -LogPrefix 'VLC' `
+                -ExpectedFileName "vlc-$($script:vlcAppVersion)-win64.exe"
+
+            # ----------------------------------------------------------------
+            # Step 5 - Verify SMB content share and directories exist
+            # ----------------------------------------------------------------
+            if (-not (Assert-PSADTContentPathReady `
+                        -CmModulePath $script:cmModulePath `
+                        -PackageDir $script:vlcPackageDir `
+                        -ContentUNC $script:vlcContentUNC `
+                        -LogPrefix 'VLC'))
+            {
+                return
+            }
+
+            # ----------------------------------------------------------------
+            # Step 6 - Import application into SCCM
+            # ----------------------------------------------------------------
+            Write-Verbose '[VLC] Step 6: Importing VLC application into SCCM...'
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                Write-Information '::info::[VLC] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
+                $detectScript = @'
+$uninstallRoots = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+$app = foreach ($root in $uninstallRoots)
+{
+    if (Test-Path $root)
+    {
+        Get-ChildItem -Path $root |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like '*VLC media player*' -and $_.DisplayVersion -like '3.0.23*' }
+    }
+}
+if ($app) { Write-Host "Installed" }
+'@
+
+                New-PSADTApplicationWithDeploymentType `
+                    -AppName $script:vlcAppName `
+                    -Vendor $script:vlcAppVendor `
+                    -Version $script:vlcAppVersion `
+                    -DeploymentTypeName $script:vlcDTName `
+                    -ContentUNC $script:vlcContentUNC `
+                    -PackageDir $script:vlcPackageDir `
+                    -DetectScript $detectScript `
+                    -Description "PSADT v4 VLC template - VLC media player $script:vlcAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+
+                # ----------------------------------------------------------------
+                # Step 7 - Distribute content
+                # ----------------------------------------------------------------
+                Write-Verbose '[VLC] Step 7: Triggering content distribution...'
+                Start-PSADTContentDistributionAndAssert -AppName $script:vlcAppName -LogPrefix 'VLC'
+
+                # ----------------------------------------------------------------
+                # Step 7b - Deploy application to collection
+                # ----------------------------------------------------------------
+                Write-Verbose "[VLC] Step 7b: Deploying application to collection '$($script:targetCollection)'..."
+                New-PSADTRequiredDeployment -AppName $script:vlcAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'VLC'
+
+                # ----------------------------------------------------------------
+                # Step 8 - Poll application deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[VLC] Step 8: Polling application deployment status...' -InformationAction Continue
+                $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:vlcAppName -SiteCode $script:siteCode -Label 'Deployment'
+                Write-Information $deploymentSummary -InformationAction Continue
+                $script:vlcInstallDeploySucceeded = $true
+            }
+        }
+
+        It 'Creates uninstall deployment after VLC install deployment succeeds' {
+            if (-not $script:vlcInstallDeploySucceeded)
+            {
+                Set-ItResult -Skipped -Because "Prerequisite test 'Builds VLC package and imports into SCCM' did not complete successfully"
+                return
+            }
+
+            if (-not $script:cmModulePath)
+            {
+                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
+                return
+            }
+
+            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
+                return
+            }
+
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                $app = Get-CMApplication -Name $script:vlcAppName -ErrorAction SilentlyContinue
+                $app | Should -Not -BeNullOrEmpty -Because 'VLC application must exist before creating uninstall deployment'
+
+                New-PSADTRequiredDeployment -AppName $script:vlcAppName -TargetCollection $script:targetCollection -DeployAction Uninstall -LogPrefix 'VLC'
+
+                # ----------------------------------------------------------------
+                # Step 9 - Poll uninstall deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[VLC] Step 9: Polling uninstall deployment status...' -InformationAction Continue
+                [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:vlcAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
             }
         }
     }

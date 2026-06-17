@@ -21,16 +21,17 @@ jobs:
     steps:
       - name: Check out scripts
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
-        with:
-          sparse-checkout: .github/scripts
-          sparse-checkout-cone-mode: false
 
       - name: Launch Agent
         id: launch-agent
         shell: pwsh
         run: |
           # Load shared TerraForge helper functions (extracted for reuse across workflows)
-          . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+          $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+          if (-not (Test-Path -LiteralPath $tfHelper)) {
+            throw "TerraForge helper script not found: $tfHelper"
+          }
+          . $tfHelper
 
           Invoke-TFLaunchAgent -ConfigName "Lite (CM2509 Github)-Agent"
 
@@ -38,6 +39,15 @@ jobs:
     name: Run Additional Tests
     needs: discover-agent
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
+    outputs:
+      steps_json:     ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
+      pester_discovered: ${{ steps.run-pester.outputs.pester_discovered || '0' }}
+      pester_total:   ${{ steps.run-pester.outputs.pester_total || '0' }}
+      pester_passed:  ${{ steps.run-pester.outputs.pester_passed || '0' }}
+      pester_failed:  ${{ steps.run-pester.outputs.pester_failed || '0' }}
+      pester_skipped: ${{ steps.run-pester.outputs.pester_skipped || '0' }}
+      pester_notrun:  ${{ steps.run-pester.outputs.pester_notrun || '0' }}
+      cases_json:     ${{ steps.collect-cases.outputs.cases_json || '{}' }}
     strategy:
       fail-fast: false
     env:
@@ -47,7 +57,14 @@ jobs:
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       TERRAFORGE_CONFIG_NAME: "Lite (CM2509 Github)-Agent"
     steps:
+    - name: Initialize Workflow Timers
+      id: init-timers
+      shell: pwsh
+      run: |
+        Write-Host "Workflow timing initialized."
+
     - name: Check out repository
+      id: checkout-repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
       env:
         GIT_CONFIG_COUNT: 1
@@ -62,29 +79,48 @@ jobs:
         GITHUB_ACTOR: ${{ github.actor }}
       run: |
         # Load shared TerraForge helper functions
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
 
         # Start the test run and write test-run-id to GitHub output
         Invoke-TFStartTestRun `
             -Title "PSADT CM Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
 
     - name: Install Node.js (required for GitHub Actions on self-hosted runner)
+      id: install-node
       shell: pwsh
       run: |
         if (-not (Get-Command node -ErrorAction Ignore)) {
           Write-Host "Node.js not found, installing..."
           $installer = "$env:TEMP\node-lts.msi"
           Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.19.0/node-v20.19.0-x64.msi" -OutFile $installer
-          Start-Process msiexec.exe -Wait -ArgumentList "/I $installer /quiet /norestart"
+          # Install with error checking
+          $process = Start-Process msiexec.exe -ArgumentList "/I `"$installer`" /quiet /norestart" -Wait -PassThru
+          Remove-Item $installer -Force -ErrorAction SilentlyContinue
+          if ($process.ExitCode -ne 0) {
+            throw "Node.js installation failed with exit code: $($process.ExitCode)"
+          }
           # Refresh PATH in current session
           $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+          # Explicitly add the default Node.js install directory in case PATH refresh is incomplete
+          $nodePath = "$env:ProgramFiles\nodejs"
+          if ((Test-Path $nodePath) -and ($env:PATH -notlike "*$nodePath*")) {
+            $env:PATH = "$nodePath;$env:PATH"
+          }
+          # Verify installation
+          if (-not (Test-Path "$nodePath\node.exe")) {
+            throw "Node.js executable not found at expected location: $nodePath\node.exe"
+          }
           Write-Host "Node.js installed: $(node --version)"
         } else {
           Write-Host "Node.js already installed: $(node --version)"
         }
 
     - name: Install 7-Zip (required for build packaging on self-hosted runner)
-      if: false  # Temporarily disable 7-Zip installation step until we can confirm it works reliably across all self-hosted runner environments - see
+      id: install-7zip
       shell: pwsh
       run: |
         # Check if 7-Zip is already installed via registry
@@ -123,19 +159,23 @@ jobs:
         }
 
     - name: Display the path
+      id: display-path
       shell: pwsh
       run: echo ${env:PATH}
 
     - name: Version Display
+      id: version-display
       shell: pwsh
       run: $PSVersionTable
 
     - name: Install .NET 10 SDK (required for net10.0 build target)
+      id: setup-dotnet
       uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # https://github.com/actions/setup-dotnet/releases/tag/v4.3.1
       with:
         dotnet-version: '10.0.x'
 
     - name: Cache NuGet packages
+      id: cache-nuget
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # https://github.com/actions/cache/releases/tag/v5.0.5
       with:
         path: ${{ env.NUGET_PACKAGES }}
@@ -151,6 +191,7 @@ jobs:
         key: ${{ runner.os }}-psmodule-PSScriptAnalyzer-1.25.0-Pester-5.7.1-platyPS-0.14.2-Alt3.Docusaurus.Powershell-1.0.37
 
     - name: Install PowerShell modules
+      id: install-psmodules
       if: steps.psmodule-cache.outputs.cache-hit != 'true'
       shell: pwsh
       run: |
@@ -166,6 +207,7 @@ jobs:
         Install-Module -Name Alt3.Docusaurus.Powershell -RequiredVersion 1.0.37 -Force -Scope CurrentUser
 
     - name: Configure NuGet source
+      id: configure-nuget
       shell: pwsh
       run: |
         dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org 2>&1 | Out-Null
@@ -173,22 +215,38 @@ jobs:
         dotnet nuget list source
 
     - name: Build (minimal - Prerequisites, Clean, Dependencies, DotNet, Build)
+      id: build
       shell: pwsh
       run: |
+        $buildStart = Get-Date
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
             Invoke-ADTModuleBuild -Steps 'Prerequisites', 'Clean', 'Dependencies', 'DotNet', 'Build'
         }
+        $buildEnd = Get-Date
+        $duration = $buildEnd - $buildStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "build_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Generate artifact templates
       id: exports
       shell: pwsh
       run: |
+        $exportsStart = Get-Date
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
+        $exportsEnd = Get-Date
+        $duration = $exportsEnd - $exportsStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "exports_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Prepare PSADT templates for deployment test
       id: template-prep
       shell: pwsh
       run: |
+        $templateStart = Get-Date
         $v3Src = '.\src\Artifacts\Template_v3'
         $v4Src = '.\src\Artifacts\Template_v4'
 
@@ -217,54 +275,437 @@ jobs:
 
         "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        
+        $templateEnd = Get-Date
+        $duration = $templateEnd - $templateStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "template_prep_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     # Add your new test cases below this line
     - name: Run Additional Tests
+      id: run-pester
       shell: pwsh
       env:
         PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
         PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
+        $pesterStart = Get-Date
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
-        $config = New-PesterConfiguration
-        $config.Run.Path = '.\src\Tests\Additional'
-        $config.Output.Verbosity = 'Detailed'
-        $config.TestResult.Enabled = $true
-        $config.TestResult.OutputPath = '.\src\Artifacts\TestOutput\AdditionalTests.xml'
-        $config.TestResult.OutputFormat = 'NUnitXml'
-        Invoke-Pester -Configuration $config
+        $workspaceRoot = '${{ github.workspace }}'
+        $additionalTestsPath = Join-Path $workspaceRoot 'src\Tests\Additional'
+
+        # Pre-create SMB share before parallel tests to avoid race condition
+        $shareName = 'PSADT_Content$'
+        $shareRootPath = 'C:\PSADT'
+        if (-not (Test-Path $shareRootPath)) {
+          New-Item -ItemType Directory -Path $shareRootPath -Force | Out-Null
+        }
+        if (-not (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue)) {
+          New-SmbShare -Name $shareName -Path $shareRootPath -FullAccess 'Everyone' -Description 'PSADT SCCM Content Source' | Out-Null
+          Write-Host "Created SMB share: $shareName at $shareRootPath"
+        } else {
+          Write-Host "SMB share $shareName already exists"
+        }
+        # Create subdirectories for WinSCP and VLC
+        New-Item -ItemType Directory -Path "$shareRootPath\winSCP" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$shareRootPath\VLC" -Force | Out-Null
+
+        # Discover all targeted tests first so we can report how many were not executed.
+        $discoveryConfig = New-PesterConfiguration
+        $discoveryConfig.Run.Path = $additionalTestsPath
+        $discoveryConfig.Filter.Tag = @('Validation', 'WinSCP', 'VLC')
+        $discoveryConfig.Run.SkipRun = $true
+        $discoveryConfig.Run.PassThru = $true
+        $discoveryResult = Invoke-Pester -Configuration $discoveryConfig
+        $discoveredTotal = [int]$discoveryResult.TotalCount
+
+        # 1) Run Validation first as a hard gate.
+        $validationConfig = New-PesterConfiguration
+        $validationConfig.Run.Path = $additionalTestsPath
+        $validationConfig.Filter.Tag = @('Validation')
+        $validationConfig.Output.Verbosity = 'Detailed'
+        $validationConfig.TestResult.Enabled = $true
+        $validationConfig.TestResult.OutputPath = '.\src\Artifacts\TestOutput\AdditionalTests.xml'
+        $validationConfig.TestResult.OutputFormat = 'NUnitXml'
+        $validationConfig.Run.PassThru = $true
+        $validationResult = Invoke-Pester -Configuration $validationConfig
+
+        if ($validationResult.FailedCount -gt 0)
+        {
+          $executedValidation = [math]::Max([int]$validationResult.PassedCount + [int]$validationResult.FailedCount + [int]$validationResult.SkippedCount, 0)
+          $notRunValidation = [math]::Max($discoveredTotal - $executedValidation, 0)
+          "pester_discovered=$discoveredTotal"               | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_total=$discoveredTotal"                    | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_passed=$($validationResult.PassedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_failed=$($validationResult.FailedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_skipped=$($validationResult.SkippedCount)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_notrun=$notRunValidation"                  | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          throw 'Validation tests failed. WinSCP/VLC test suites were not started.'
+        }
+
+        # 2) Run WinSCP and VLC in parallel after validation succeeds.
+        $tagsToRun = @('WinSCP', 'VLC')
+        $indexedTags = for ($i = 0; $i -lt $tagsToRun.Count; $i++) {
+          [pscustomobject]@{ Index = $i; Tag = $tagsToRun[$i] }
+        }
+
+        $parallelResults = $indexedTags | ForEach-Object -Parallel {
+          $tag = $_.Tag
+          $delaySeconds = [int]($_.Index * 120)
+
+          if ($delaySeconds -gt 0) {
+            Write-Host "Delaying start for tag '$tag' by $delaySeconds seconds..."
+            Start-Sleep -Seconds $delaySeconds
+          }
+
+          Set-Location $using:workspaceRoot
+          $testOutputDir = Join-Path $using:workspaceRoot 'src\Artifacts\TestOutput'
+          $additionalTestsPath = Join-Path $using:workspaceRoot 'src\Tests\Additional'
+          $outputPath = Join-Path $testOutputDir ("AdditionalTests-{0}.xml" -f $tag)
+
+          $env:PSADT_TEMPLATE_VALIDATION_PASSED = 'true'
+
+          $config = New-PesterConfiguration
+          $config.Run.Path = $additionalTestsPath
+          $config.Filter.Tag = @($tag)
+          $config.Output.Verbosity = 'Detailed'
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = $outputPath
+          $config.TestResult.OutputFormat = 'NUnitXml'
+          $config.Run.PassThru = $true
+
+          $result = Invoke-Pester -Configuration $config
+
+          [pscustomobject]@{
+            Tag = $tag
+            TotalCount = $result.TotalCount
+            PassedCount = $result.PassedCount
+            FailedCount = $result.FailedCount
+            SkippedCount = $result.SkippedCount
+          }
+        } -ThrottleLimit 2
+
+        $allResults = @($validationResult) + @($parallelResults)
+        $executedTotal = ($allResults | Measure-Object -Property TotalCount -Sum).Sum
+        $passed = ($allResults | Measure-Object -Property PassedCount -Sum).Sum
+        $failed = ($allResults | Measure-Object -Property FailedCount -Sum).Sum
+        $skipped = ($allResults | Measure-Object -Property SkippedCount -Sum).Sum
+        $notRun = $discoveredTotal - $executedTotal
+
+        "pester_discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_total=$discoveredTotal"      | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_passed=$passed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_failed=$failed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_skipped=$skipped"            | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_notrun=$notRun"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+        if ($failed -gt 0)
+        {
+          throw "One or more Additional test suites failed. Failed count: $failed"
+        }
+        
+        $pesterEnd = Get-Date
+        $duration = $pesterEnd - $pesterStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "run_pester_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    - name: Collect test case results from XML
+      id: collect-cases
+      if: always()
+      shell: pwsh
+      run: |
+        $caseEntries = [ordered]@{}
+        function Get-XmlAttributeValue {
+          param(
+            [Parameter(Mandatory = $true)]
+            [System.Xml.XmlNode]$Node,
+            [Parameter(Mandatory = $true)]
+            [string]$Name
+          )
+
+          if ($Node -and $Node.Attributes) {
+            $attribute = $Node.Attributes[$Name]
+            if ($attribute) {
+              return [string]$attribute.Value
+            }
+          }
+
+          return ''
+        }
+        $xmlFiles = Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -ErrorAction SilentlyContinue | Sort-Object Name
+        foreach ($xmlFile in $xmlFiles) {
+          try {
+            [xml]$xml = Get-Content $xmlFile.FullName -Raw -Encoding UTF8
+            $testCases = $xml.SelectNodes('/test-results/test-suite/results//test-case')
+            foreach ($tc in $testCases) {
+              $caseDescription = (Get-XmlAttributeValue -Node $tc -Name 'description').Trim()
+              $caseNodeName = (Get-XmlAttributeValue -Node $tc -Name 'name').Trim()
+              # Prefer description (the It-block text); fall back to last dot-segment of name
+              $caseName = if (-not [string]::IsNullOrWhiteSpace($caseDescription)) {
+                $caseDescription
+              }
+              else {
+                ($caseNodeName -split '\.')[-1].Trim()
+              }
+              if ([string]::IsNullOrWhiteSpace($caseName)) { $caseName = '(unnamed)' }
+
+              $result = (Get-XmlAttributeValue -Node $tc -Name 'result').Trim().ToLowerInvariant()
+              $executed = (Get-XmlAttributeValue -Node $tc -Name 'executed').Trim().ToLowerInvariant()
+              $success = (Get-XmlAttributeValue -Node $tc -Name 'success').Trim().ToLowerInvariant()
+              $outcome = if (-not [string]::IsNullOrWhiteSpace($result)) {
+                switch ($result) {
+                  'passed'       { 'success' }
+                  'success'      { 'success' }
+                  'failed'       { 'failure' }
+                  'failure'      { 'failure' }
+                  'skipped'      { 'skipped' }
+                  'inconclusive' { 'unknown' }
+                  default        { 'unknown' }
+                }
+              }
+              elseif ($executed -eq 'false') {
+                'skipped'
+              }
+              elseif ($success -eq 'true') {
+                'success'
+              }
+              elseif ($success -eq 'false') {
+                'failure'
+              }
+              else {
+                'unknown'
+              }
+
+              $durationText = (Get-XmlAttributeValue -Node $tc -Name 'duration').Trim()
+              if ([string]::IsNullOrWhiteSpace($durationText)) {
+                $durationText = (Get-XmlAttributeValue -Node $tc -Name 'time').Trim()
+              }
+
+              $durationSec = 0.0
+              [void][double]::TryParse(
+                $durationText,
+                [System.Globalization.NumberStyles]::Float,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [ref]$durationSec
+              )
+              $mins = [int]($durationSec / 60)
+              $secs = [int]($durationSec % 60)
+              if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+              $durationStr = "${mins}m ${secs}s"
+
+              if (-not $caseEntries.Contains($caseName)) {
+                $caseEntries[$caseName] = "$outcome | $durationStr"
+              }
+            }
+          }
+          catch {
+            Write-Warning "Failed to parse $($xmlFile.Name): $($_.Exception.Message)"
+          }
+        }
+        $casesJson = if ($caseEntries.Count -gt 0) { $caseEntries | ConvertTo-Json -Compress } else { '{}' }
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_json=$casesJson`n", [System.Text.Encoding]::UTF8)
+        Write-Host "Collected $($caseEntries.Count) test case result(s)."
 
     - name: Upload additional test results
+      id: upload-artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # https://github.com/actions/upload-artifact/releases/tag/v7.0.1
       with:
         name: additional-test-results
-        path: .\src\Artifacts\TestOutput\AdditionalTests.xml
+        path: .\src\Artifacts\TestOutput\AdditionalTests*.xml
         if-no-files-found: error
         overwrite: true
   # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
     - name: Complete Test Run
+      id: complete-test-run
       if: always()
       shell: pwsh
       env:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
         Invoke-TFCompleteTestRun
 
     - name: Upload Test Results to Azure Blob Storage
+      id: upload-to-blob
       if: always()
       shell: pwsh
       env:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml'
 
-    - name: Reset Azure Session VM
+    - name: Collect step outcomes
+      id: collect-outputs
       if: always()
       shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        # ── Fetch actual step durations from the GitHub Jobs API ──────────────
+        # This ensures Teams timings match what GitHub Actions UI shows.
+        $apiStepTimings = @{}
+        try {
+          $apiHeaders = @{
+            Authorization            = "Bearer $env:GH_TOKEN"
+            Accept                   = 'application/vnd.github+json'
+            'X-GitHub-Api-Version'   = '2022-11-28'
+          }
+          $jobsUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/jobs?per_page=100"
+          $jobsData = Invoke-RestMethod -Uri $jobsUrl -Headers $apiHeaders -ErrorAction Stop
+
+          # Identify this job by looking for the "Collect step outcomes" step (unique to this job)
+          $thisJob = $jobsData.jobs |
+                     Where-Object { $_.steps | Where-Object { $_.name -eq 'Collect step outcomes' } } |
+                     Select-Object -First 1
+
+          if ($thisJob) {
+            foreach ($apiStep in $thisJob.steps) {
+              if ($apiStep.started_at -and $apiStep.completed_at) {
+                $started   = [datetime]::Parse($apiStep.started_at,  $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                $completed = [datetime]::Parse($apiStep.completed_at, $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                $sec = ($completed - $started).TotalSeconds
+                $mins = [int]($sec / 60)
+                $secs = [int]($sec % 60)
+                if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+                $apiStepTimings[$apiStep.name] = "${mins}m ${secs}s"
+              }
+            }
+            Write-Host "Fetched timings for $($apiStepTimings.Count) step(s) from GitHub API."
+          }
+          else {
+            Write-Warning 'Could not locate this job in the GitHub API response; falling back to env-based timings.'
+          }
+        }
+        catch {
+          Write-Warning "GitHub API call failed; falling back to env-based timings. Error: $_"
+        }
+
+        # Map each Teams display name to the corresponding GitHub Actions step name pattern
+        $displayToApiPattern = [ordered]@{
+          'Initialize Workflow Timers'  = 'Initialize Workflow Timers'
+          'Check out repository'        = 'Check out repository'
+          'Set Test Run Start'          = 'Set Test Run Start'
+          'Install Node.js'             = 'Install Node.js*'
+          'Install 7-Zip'               = 'Install 7-Zip*'
+          'Display the path'            = 'Display the path'
+          'Version Display'             = 'Version Display'
+          'Install .NET 10 SDK'         = 'Install .NET 10 SDK*'
+          'Cache NuGet packages'        = 'Cache NuGet packages'
+          'Cache PowerShell modules'    = 'Cache PowerShell modules'
+          'Install PowerShell modules'  = 'Install PowerShell modules'
+          'Configure NuGet source'      = 'Configure NuGet source'
+          'Build'                       = 'Build*'
+          'Generate Artifact Templates' = 'Generate artifact templates'
+          'Prepare Templates'           = 'Prepare PSADT*'
+          'Run Pester Tests'            = 'Run Additional Tests'
+          'Collect test case results'   = 'Collect test case results*'
+          'Upload Test Results'         = 'Upload additional test results'
+          'Complete Test Run'           = 'Complete Test Run'
+          'Upload to Blob Storage'      = 'Upload Test Results to Azure*'
+        }
+
+        function Get-ApiDuration {
+          param([string]$DisplayName)
+          $pattern = $displayToApiPattern[$DisplayName]
+          if (-not $pattern) { return $null }
+          foreach ($key in $apiStepTimings.Keys) {
+            if ($key -like $pattern) { return $apiStepTimings[$key] }
+          }
+          return $null
+        }
+
+        # Return the first non-blank value; fall back to '-' if all are blank/null
+        function Resolve-Duration {
+          param([string[]]$Candidates)
+          foreach ($v in $Candidates) {
+            if (-not [string]::IsNullOrWhiteSpace($v)) { return $v }
+          }
+          return '-'
+        }
+
+        $steps = [ordered]@{
+          'Initialize Workflow Timers'  = @{ outcome = '${{ steps.init-timers.outcome }}';         duration = (Resolve-Duration (Get-ApiDuration 'Initialize Workflow Timers')) }
+          'Check out repository'        = @{ outcome = '${{ steps.checkout-repository.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Check out repository')) }
+          'Set Test Run Start'          = @{ outcome = '${{ steps.set-test-run-start.outcome }}';  duration = (Resolve-Duration (Get-ApiDuration 'Set Test Run Start')) }
+          'Install Node.js'             = @{ outcome = '${{ steps.install-node.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Install Node.js')) }
+          'Install 7-Zip'               = @{ outcome = '${{ steps.install-7zip.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Install 7-Zip')) }
+          'Display the path'            = @{ outcome = '${{ steps.display-path.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Display the path')) }
+          'Version Display'             = @{ outcome = '${{ steps.version-display.outcome }}';     duration = (Resolve-Duration (Get-ApiDuration 'Version Display')) }
+          'Install .NET 10 SDK'         = @{ outcome = '${{ steps.setup-dotnet.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Install .NET 10 SDK')) }
+          'Cache NuGet packages'        = @{ outcome = '${{ steps.cache-nuget.outcome }}';         duration = (Resolve-Duration (Get-ApiDuration 'Cache NuGet packages')) }
+          'Cache PowerShell modules'    = @{ outcome = '${{ steps.psmodule-cache.outcome }}';      duration = (Resolve-Duration (Get-ApiDuration 'Cache PowerShell modules')) }
+          'Install PowerShell modules'  = @{ outcome = '${{ steps.install-psmodules.outcome }}';   duration = (Resolve-Duration (Get-ApiDuration 'Install PowerShell modules')) }
+          'Configure NuGet source'      = @{ outcome = '${{ steps.configure-nuget.outcome }}';     duration = (Resolve-Duration (Get-ApiDuration 'Configure NuGet source')) }
+          'Build'                       = @{ outcome = '${{ steps.build.outcome }}';               duration = (Resolve-Duration @((Get-ApiDuration 'Build'),                       $env:build_duration)) }
+          'Generate Artifact Templates' = @{ outcome = '${{ steps.exports.outcome }}';             duration = (Resolve-Duration @((Get-ApiDuration 'Generate Artifact Templates'),  $env:exports_duration)) }
+          'Prepare Templates'           = @{ outcome = '${{ steps.template-prep.outcome }}';       duration = (Resolve-Duration @((Get-ApiDuration 'Prepare Templates'),            $env:template_prep_duration)) }
+          'Run Pester Tests'            = @{ outcome = '${{ steps.run-pester.outcome }}';          duration = (Resolve-Duration @((Get-ApiDuration 'Run Pester Tests'),            $env:run_pester_duration)) }
+          'Collect test case results'   = @{ outcome = '${{ steps.collect-cases.outcome }}';       duration = (Resolve-Duration (Get-ApiDuration 'Collect test case results')) }
+          'Upload Test Results'         = @{ outcome = '${{ steps.upload-artifacts.outcome }}';    duration = (Resolve-Duration (Get-ApiDuration 'Upload Test Results')) }
+          'Complete Test Run'           = @{ outcome = '${{ steps.complete-test-run.outcome }}';   duration = (Resolve-Duration (Get-ApiDuration 'Complete Test Run')) }
+          'Upload to Blob Storage'      = @{ outcome = '${{ steps.upload-to-blob.outcome }}';      duration = (Resolve-Duration (Get-ApiDuration 'Upload to Blob Storage')) }
+        }
+        
+        # Build steps JSON with outcome and duration
+        $stepsJson = [ordered]@{}
+        foreach ($stepName in $steps.Keys) {
+          $outcome = $steps[$stepName].outcome
+          $duration = $steps[$stepName].duration
+          
+          if ([string]::IsNullOrWhiteSpace($duration) -or $duration -eq '$null') {
+            $duration = '-'
+          }
+          
+          if ($duration -eq '-') {
+            $stepsJson[$stepName] = $outcome
+          } else {
+            $stepsJson[$stepName] = "$outcome | $duration"
+          }
+        }
+        
+        # Use AppendAllText with LF (not CRLF) so the value is not corrupted when consumed on Linux runners
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($stepsJson | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
+
+    - name: Reset Azure Session VM
+      id: reset-sessionvm
+      if: false #always()
+      shell: pwsh
+      run: |
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
         Invoke-TFResetSessionVM
+
+  notify-teams:
+    name: Notify Teams
+    needs: run-additional-tests
+    if: ${{ always() }} # notify even if tests fail so the team can investigate
+    uses: ./.github/workflows/notify_teams.yml
+    with:
+      job_status:     ${{ needs.run-additional-tests.result || 'failed' }}
+      steps_json:     ${{ needs.run-additional-tests.outputs.steps_json || '{}' }}
+      pester_discovered: ${{ needs.run-additional-tests.outputs.pester_discovered || '0' }}
+      pester_total:   ${{ needs.run-additional-tests.outputs.pester_total   || '0' }}
+      pester_passed:  ${{ needs.run-additional-tests.outputs.pester_passed  || '0' }}
+      pester_failed:  ${{ needs.run-additional-tests.outputs.pester_failed  || '0' }}
+      pester_skipped: ${{ needs.run-additional-tests.outputs.pester_skipped || '0' }}
+      pester_notrun:  ${{ needs.run-additional-tests.outputs.pester_notrun  || '0' }}
+      cases_json:     ${{ needs.run-additional-tests.outputs.cases_json     || '{}' }}
+    secrets: inherit

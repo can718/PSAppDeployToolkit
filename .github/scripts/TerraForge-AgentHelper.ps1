@@ -897,7 +897,7 @@ function Get-AzureBlobStorageFolderToLocal
         $blobName = $blob.Name
 
         # Compute relative path by stripping the folder prefix, then convert '/' to '\'
-        $relativePath  = $blobName.Substring($folderPrefix.Length).TrimStart('/').Replace('/', '\')
+        $relativePath = $blobName.Substring($folderPrefix.Length).TrimStart('/').Replace('/', '\')
         $localFilePath = Join-Path $LocalDestinationDir $relativePath
 
         # Ensure the sub-directory exists before downloading
@@ -1015,7 +1015,7 @@ function Set-TestRun
     {
         Write-Host "$Action test run (MachineId: $MachineId)..."
         Write-Host "URI    : $uri"
-        # Write-Host "Payload: $payload"
+        Write-Host "Payload: $payload"
         $response = Invoke-WebRequest -Uri $uri -Method Post -Headers $headers -Body $payload -ErrorAction Stop
         $content = $response.Content | ConvertFrom-Json -ErrorAction Stop
 

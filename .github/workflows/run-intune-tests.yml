@@ -22,16 +22,17 @@ jobs:
     steps:
       - name: Check out scripts
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
-        with:
-          sparse-checkout: .github/scripts
-          sparse-checkout-cone-mode: false
 
       - name: Launch Agent
         id: launch-agent
         shell: pwsh
         run: |
           # Load shared TerraForge helper functions (extracted for reuse across workflows)
-          . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+          $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+          if (-not (Test-Path -LiteralPath $tfHelper)) {
+            throw "TerraForge helper script not found: $tfHelper"
+          }
+          . $tfHelper
 
           Invoke-TFLaunchAgent -ConfigName "Intune (Github)-Agent"
 
@@ -67,7 +68,11 @@ jobs:
         GITHUB_ACTOR: ${{ github.actor }}
       run: |
         # Load shared TerraForge helper functions (extracted for reuse across workflows)
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
 
         # Register a new test run in TerraForge and expose its ID as 'test-run-id' output.
         # All connection parameters (API URL, credentials, config) are resolved from job-level env vars.
@@ -78,7 +83,11 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
 
         $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
 
@@ -295,7 +304,11 @@ jobs:
       env:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
         Invoke-TFCompleteTestRun
 
     - name: Upload Test Results to Azure Blob Storage
@@ -304,12 +317,20 @@ jobs:
       env:
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml'
 
     - name: Reset Azure Session VM
       if: always()
       shell: pwsh
       run: |
-        . "${{ github.workspace }}/.github/scripts/TerraForge-AgentHelper.ps1"
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
         Invoke-TFResetSessionVM
