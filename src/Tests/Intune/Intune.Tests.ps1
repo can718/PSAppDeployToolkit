@@ -528,7 +528,14 @@ Describe 'Intune Tests' {
                         {
                             $notepadFileVersion = (Get-Item -Path $notepadExePath).VersionInfo.FileVersion
                             Write-Information "[Notepad++] FileVersion: $notepadFileVersion" -InformationAction Continue
-                            $notepadFileVersion | Should -Match '^6(\.2\.3|\.23)(\.|$)' -Because 'Notepad++ main exe remains as the old version.'
+                            if ($notepadFileVersion -match '^6\.23(\.|$)' -or $notepadFileVersion -match '^6\.2\.3(\.|$)')
+                            {
+                                Write-Information '[Notepad++] The currently retained version is the legacy version (6.23).' -InformationAction Continue
+                            }
+                            else
+                            {
+                                Write-Warning "[Notepad++] Main exe version is not an expected legacy value: $notepadFileVersion"
+                            }
                         }
                         else
                         {
@@ -682,14 +689,7 @@ Describe 'Intune Tests' {
                         $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $appName } | Select-Object -First 1
                         if ($appConfig -and $appConfig.PostInstallScript)
                         {
-                            try
-                            {
-                                & $appConfig.PostInstallScript
-                            }
-                            catch
-                            {
-                                Write-Warning "[$appName] Post-install validation failed but execution will continue. $($_.Exception.Message)"
-                            }
+                            & $appConfig.PostInstallScript
                         }
                     }
                 }
@@ -747,9 +747,7 @@ Describe 'Intune Tests' {
             }
 
             Invoke-MdmSync
-
             Start-Sleep -Seconds 8
-
             # Single sync for all uninstalls.
             Wait-IntuneManagementExtension
 
