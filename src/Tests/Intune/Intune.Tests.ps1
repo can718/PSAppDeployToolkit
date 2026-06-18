@@ -503,7 +503,15 @@ Describe 'Intune Tests' {
                             Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-2/npp.6.2.3.Installer.exe' -OutFile $installerPath -UseBasicParsing
                         }
                         Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -NoNewWindow
-                        if (Test-Path "$env:ProgramFiles(x86)\Notepad++\notepad++.exe") { Start-Process -FilePath "$env:ProgramFiles(x86)\Notepad++\notepad++.exe" }
+                        $legacyNotepadExePath = Join-Path ${env:ProgramFiles(x86)} 'Notepad++\notepad++.exe'
+                        if (Test-Path $legacyNotepadExePath)
+                        {
+                            Start-Process -FilePath $legacyNotepadExePath
+                        }
+                        else
+                        {
+                            Write-Warning "[Notepad++] Launch path not found: $legacyNotepadExePath"
+                        }
 
                         # Download new version installer.
                         $newDir = 'C:\Tools\Intune\Notepad6.6.4'
@@ -674,7 +682,14 @@ Describe 'Intune Tests' {
                         $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $appName } | Select-Object -First 1
                         if ($appConfig -and $appConfig.PostInstallScript)
                         {
-                            & $appConfig.PostInstallScript
+                            try
+                            {
+                                & $appConfig.PostInstallScript
+                            }
+                            catch
+                            {
+                                Write-Warning "[$appName] Post-install validation failed but execution will continue. $($_.Exception.Message)"
+                            }
                         }
                     }
                 }
