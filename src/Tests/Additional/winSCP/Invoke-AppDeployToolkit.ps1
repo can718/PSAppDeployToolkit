@@ -158,45 +158,7 @@ Set-StrictMode -Version 1
 
 $recordingStarted = $false
 $recordingOutputFile = $null
-try
-{
-    $helperScriptPath = "C:\PSADTScripts\TerraForge-AgentHelper.ps1"
-    if ([System.String]::IsNullOrWhiteSpace($helperScriptPath) -or -not (Test-Path -LiteralPath $helperScriptPath -PathType Leaf))
-    {
-        $helperScriptPath = Join-Path $PSScriptRoot '..\..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'
-    }
-    if (Test-Path -LiteralPath $helperScriptPath -PathType Leaf)
-    {
-        . $helperScriptPath
-        if (Get-Command -Name StartRecord -ErrorAction SilentlyContinue)
-        {
-            $rawRecordFileName = '{0}_{1}_{2}' -f $adtSession.AppName, $adtSession.DeploymentType, (Get-Date -Format 'yyyyMMdd_HHmmss')
-            $invalidPattern = '[{0}]' -f [regex]::Escape(( -join [System.IO.Path]::GetInvalidFileNameChars()))
-            $recordFileName = ($rawRecordFileName -replace '\s+', '_' -replace $invalidPattern, '_').Trim(' ', '.')
-            if ([System.String]::IsNullOrWhiteSpace($recordFileName))
-            {
-                $recordFileName = 'recording'
-            }
-
-            $recordingOutputFile = "C:\Recordings\$recordFileName.mp4"
-            StartRecord -recordSavePath $recordFileName
-            $recordingStarted = $true
-            Write-Host "StartRecord succeeded."
-        }
-        else
-        {
-            Write-Warning "StartRecord function not found in TerraForge-AgentHelper.ps1. Skipping recording start."
-        }
-    }
-    else
-    {
-        Write-Warning "TerraForge-AgentHelper.ps1 not found at path: $helperScriptPath. Skipping recording start."
-    }
-}
-catch
-{
-    Write-Warning "StartRecord failed but deployment will continue: $($_.Exception.Message)"
-}
+$helperLoaded = $false
 
 try
 {
@@ -212,6 +174,52 @@ try
     $iadtParams = Get-ADTBoundParametersAndDefaultValues -Invocation $MyInvocation
     $adtSession = Remove-ADTHashtableNullOrEmptyValues -Hashtable $adtSession
     $adtSession = Open-ADTSession @adtSession @iadtParams -PassThru
+
+    try
+    {
+        $helperScriptPath = "C:\PSADTScripts\TerraForge-AgentHelper.ps1"
+        if ([System.String]::IsNullOrWhiteSpace($helperScriptPath) -or -not (Test-Path -LiteralPath $helperScriptPath -PathType Leaf))
+        {
+            $helperScriptPath = Join-Path $PSScriptRoot '..\..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'
+        }
+        if (Test-Path -LiteralPath $helperScriptPath -PathType Leaf)
+        {
+            . $helperScriptPath
+            $helperLoaded = $true
+        }
+        else
+        {
+            Write-ADTLogEntry -Message "TerraForge-AgentHelper.ps1 not found at path: $helperScriptPath. Skipping recording start." -Severity Warning
+        }
+    }
+    catch
+    {
+        Write-ADTLogEntry -Message "Failed to load TerraForge-AgentHelper.ps1. Skipping recording integration. $($_.Exception.Message)" -Severity Warning
+    }
+
+    try
+    {
+        if ($helperLoaded -and (Get-Command -Name Start-TerraForgeRecording -ErrorAction SilentlyContinue))
+        {
+            Write-ADTLogEntry -Message "Starting recording for [$($adtSession.AppName)] deployment type [$($adtSession.DeploymentType)]." -Severity Information
+            $recordingContext = Start-TerraForgeRecording -AppName $adtSession.AppName -DeploymentType $adtSession.DeploymentType
+            $recordingStarted = $recordingContext.Started
+            $recordingOutputFile = $recordingContext.OutputFile
+
+            if ($recordingStarted)
+            {
+                Write-ADTLogEntry -Message "Recording started successfully. Output file: [$recordingOutputFile]." -Severity Information
+            }
+            else
+            {
+                Write-ADTLogEntry -Message "Recording start completed without starting an active recording." -Severity Warning
+            }
+        }
+    }
+    catch
+    {
+        Write-ADTLogEntry -Message "Failed to start recording. Deployment will continue. $($_.Exception.Message)" -Severity Warning
+    }
 }
 catch
 {
@@ -263,28 +271,11 @@ finally
     # Best-effort recording stop. Never block deployment completion if stop fails.
     if ($recordingStarted)
     {
-        try
+        if ($helperLoaded -and (Get-Command -Name Stop-TerraForgeRecording -ErrorAction SilentlyContinue))
         {
-            if (Get-Command -Name StopRecord -ErrorAction SilentlyContinue)
-            {
-                if ($recordingOutputFile)
-                {
-                    StopRecord -UploadToStorageAccount -Files @($recordingOutputFile)
-                }
-                else
-                {
-                    StopRecord -UploadToStorageAccount
-                }
-                Write-Host "StopRecord succeeded."
-            }
-            else
-            {
-                Write-Warning "StopRecord function not found. Skipping recording stop."
-            }
-        }
-        catch
-        {
-            Write-Warning "StopRecord failed but deployment completion will continue: $($_.Exception.Message)"
+            Write-ADTLogEntry -Message "Stopping recording for [$($adtSession.AppName)] deployment type [$($adtSession.DeploymentType)]." -Severity Information
+            Stop-TerraForgeRecording -RecordingStarted:$recordingStarted -RecordingOutputFile $recordingOutputFile -UploadToStorageAccount
+            Write-ADTLogEntry -Message "Recording stop request completed for output file [$recordingOutputFile]." -Severity Information
         }
     }
 }

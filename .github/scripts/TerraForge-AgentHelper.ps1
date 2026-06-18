@@ -171,16 +171,7 @@ function StartRecord
 
     if (-not $MachineIp)
     {
-        $MachineIp = [System.Net.Dns]::GetHostAddresses($env:COMPUTERNAME) |
-        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
-        ForEach-Object { $_.IPAddressToString } |
-        Where-Object { $_ -ne '127.0.0.1' -and $_ -notlike '169.254.*' } |
-        Select-Object -First 1
-
-        if (-not $MachineIp)
-        {
-            throw 'Unable to resolve local IPv4 address automatically. Please provide -MachineIp explicitly.'
-        }
+        $MachineIp = Resolve-TerraForgeLocalIPv4
     }
 
     #$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -224,16 +215,7 @@ function StopRecord
 
     if (-not $MachineIp)
     {
-        $MachineIp = [System.Net.Dns]::GetHostAddresses($env:COMPUTERNAME) |
-        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
-        ForEach-Object { $_.IPAddressToString } |
-        Where-Object { $_ -ne '127.0.0.1' -and $_ -notlike '169.254.*' } |
-        Select-Object -First 1
-
-        if (-not $MachineIp)
-        {
-            throw 'Unable to resolve local IPv4 address automatically. Please provide -MachineIp explicitly.'
-        }
+        $MachineIp = Resolve-TerraForgeLocalIPv4
     }
 
     Invoke-RestMethod -Uri ('http://{0}:8088/stop' -f $MachineIp)
@@ -262,6 +244,130 @@ function StopRecord
             -AccessToken $AccessToken `
             -TestRunId   $TestRunId `
             -Files       $Files
+    }
+}
+
+function Resolve-TerraForgeLocalIPv4
+{
+    [CmdletBinding()]
+    [OutputType([string])]
+    param ()
+
+    $machineIp = [System.Net.Dns]::GetHostAddresses($env:COMPUTERNAME) |
+        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
+        ForEach-Object { $_.IPAddressToString } |
+        Where-Object { $_ -ne '127.0.0.1' -and $_ -notlike '169.254.*' } |
+        Select-Object -First 1
+
+    if (-not $machineIp)
+    {
+        throw 'Unable to resolve local IPv4 address automatically. Please provide -MachineIp explicitly.'
+    }
+
+    return $machineIp
+}
+
+function Start-TerraForgeRecording
+{
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string]$AppName,
+
+        [Parameter()]
+        [string]$DeploymentType,
+
+        [Parameter()]
+        [string]$FallbackRecordName = 'recording',
+
+        [Parameter()]
+        [string]$RecordingDirectory = 'C:\Recordings'
+    )
+
+    $result = [PSCustomObject]@{
+        Started    = $false
+        OutputFile = $null
+    }
+
+    if (-not (Get-Command -Name StartRecord -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'StartRecord function not found. Skipping recording start.'
+        return $result
+    }
+
+    try
+    {
+        if ([System.String]::IsNullOrWhiteSpace($DeploymentType))
+        {
+            $DeploymentType = 'Install'
+        }
+
+        $rawRecordFileName = '{0}_{1}_{2}' -f $AppName, $DeploymentType, (Get-Date -Format 'yyyyMMdd_HHmmss')
+        $invalidPattern = '[{0}]' -f [regex]::Escape((-join [System.IO.Path]::GetInvalidFileNameChars()))
+        $recordFileName = ($rawRecordFileName -replace '\s+', '_' -replace $invalidPattern, '_').Trim(' ', '.')
+        if ([System.String]::IsNullOrWhiteSpace($recordFileName))
+        {
+            $recordFileName = $FallbackRecordName
+        }
+
+        $outputFile = Join-Path -Path $RecordingDirectory -ChildPath "$recordFileName.mp4"
+        StartRecord -recordSavePath $recordFileName
+        Write-Host 'StartRecord succeeded.'
+
+        $result.Started = $true
+        $result.OutputFile = $outputFile
+        return $result
+    }
+    catch
+    {
+        Write-Warning "StartRecord failed but deployment will continue: $($_.Exception.Message)"
+        return $result
+    }
+}
+
+function Stop-TerraForgeRecording
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [bool]$RecordingStarted,
+
+        [Parameter()]
+        [string]$RecordingOutputFile,
+
+        [Parameter()]
+        [switch]$UploadToStorageAccount
+    )
+
+    if (-not $RecordingStarted)
+    {
+        return
+    }
+
+    if (-not (Get-Command -Name StopRecord -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'StopRecord function not found. Skipping recording stop.'
+        return
+    }
+
+    try
+    {
+        if ($RecordingOutputFile)
+        {
+            StopRecord -UploadToStorageAccount:$UploadToStorageAccount -Files @($RecordingOutputFile)
+        }
+        else
+        {
+            StopRecord -UploadToStorageAccount:$UploadToStorageAccount
+        }
+        Write-Host 'StopRecord succeeded.'
+    }
+    catch
+    {
+        Write-Warning "StopRecord failed but deployment completion will continue: $($_.Exception.Message)"
     }
 }
 
