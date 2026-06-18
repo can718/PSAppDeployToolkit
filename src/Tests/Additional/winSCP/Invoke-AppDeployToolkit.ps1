@@ -155,6 +155,45 @@ $PostRepair = {
 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
 $ProgressPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue
 Set-StrictMode -Version 1
+
+$recordingStarted = $false
+$recordingOutputFile = $null
+try
+{
+    $helperScriptPath = Join-Path $PSScriptRoot '..\..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'
+    if (Test-Path -LiteralPath $helperScriptPath -PathType Leaf)
+    {
+        . $helperScriptPath
+        if (Get-Command -Name StartRecord -ErrorAction SilentlyContinue)
+        {
+            $rawRecordFileName = '{0}_{1}_{2}' -f $adtSession.AppName, $adtSession.DeploymentType, (Get-Date -Format 'yyyyMMdd_HHmmss')
+            $invalidPattern = '[{0}]' -f [regex]::Escape(( -join [System.IO.Path]::GetInvalidFileNameChars()))
+            $recordFileName = ($rawRecordFileName -replace '\s+', '_' -replace $invalidPattern, '_').Trim(' ', '.')
+            if ([System.String]::IsNullOrWhiteSpace($recordFileName))
+            {
+                $recordFileName = 'recording'
+            }
+
+            $recordingOutputFile = "C:\Recordings\$recordFileName.mp4"
+            StartRecord -recordSavePath $recordFileName
+            $recordingStarted = $true
+            Write-Host "StartRecord succeeded."
+        }
+        else
+        {
+            Write-Warning "StartRecord function not found in TerraForge-AgentHelper.ps1. Skipping recording start."
+        }
+    }
+    else
+    {
+        Write-Warning "TerraForge-AgentHelper.ps1 not found at path: $helperScriptPath. Skipping recording start."
+    }
+}
+catch
+{
+    Write-Warning "StartRecord failed but deployment will continue: $($_.Exception.Message)"
+}
+
 try
 {
     if (Test-Path -LiteralPath "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1" -PathType Leaf)
@@ -214,4 +253,34 @@ catch
     # Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) failed at line $($_.InvocationInfo.ScriptLineNumber), char $($_.InvocationInfo.OffsetInLine):`n$($_.InvocationInfo.Line.Trim())`n`nMessage:`n$($_.Exception.Message)" -ButtonRightText OK -NoWait
 
     Close-ADTSession -ExitCode 60001
+}
+finally
+{
+    # Best-effort recording stop. Never block deployment completion if stop fails.
+    if ($recordingStarted)
+    {
+        try
+        {
+            if (Get-Command -Name StopRecord -ErrorAction SilentlyContinue)
+            {
+                if ($recordingOutputFile)
+                {
+                    StopRecord -UploadToStorageAccount -Files @($recordingOutputFile)
+                }
+                else
+                {
+                    StopRecord -UploadToStorageAccount
+                }
+                Write-Host "StopRecord succeeded."
+            }
+            else
+            {
+                Write-Warning "StopRecord function not found. Skipping recording stop."
+            }
+        }
+        catch
+        {
+            Write-Warning "StopRecord failed but deployment completion will continue: $($_.Exception.Message)"
+        }
+    }
 }

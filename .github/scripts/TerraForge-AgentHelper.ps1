@@ -157,6 +157,114 @@ function Set-GitHubOutput
     Write-Host "GitHub output set: $Name=$Value"
 }
 
+function StartRecord
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string]$recordSavePath,
+
+        [Parameter()]
+        [string]$MachineIp
+    )
+
+    if (-not $MachineIp)
+    {
+        $MachineIp = [System.Net.Dns]::GetHostAddresses($env:COMPUTERNAME) |
+        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
+        ForEach-Object { $_.IPAddressToString } |
+        Where-Object { $_ -ne '127.0.0.1' -and $_ -notlike '169.254.*' } |
+        Select-Object -First 1
+
+        if (-not $MachineIp)
+        {
+            throw 'Unable to resolve local IPv4 address automatically. Please provide -MachineIp explicitly.'
+        }
+    }
+
+    #$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    #$RecordSavePath = 'C:\Recordings\{0}_{1}.mp4' -f $recordSavePath, $timestamp
+    $RecordSavePath = 'C:\Recordings\{0}.mp4' -f $recordSavePath
+    Invoke-RestMethod -Uri ('http://{0}:8088/start?savingPath={1}' -f $MachineIp, $RecordSavePath)
+}
+
+function StopRecord
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [string]$MachineIp,
+
+        [Parameter()]
+        [switch]$UploadToStorageAccount,
+
+        [Parameter()]
+        [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
+
+        [Parameter()]
+        [string]$AccessToken,
+
+        [Parameter()]
+        [string]$TestRunId = $env:TEST_RUN_ID,
+
+        [Parameter()]
+        [string[]]$Files = @("$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"),
+
+        [Parameter()]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter()]
+        [string]$KeyVaultName = $env:INFRA_KEYVAULT,
+
+        [Parameter()]
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
+    )
+
+    if (-not $MachineIp)
+    {
+        $MachineIp = [System.Net.Dns]::GetHostAddresses($env:COMPUTERNAME) |
+        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
+        ForEach-Object { $_.IPAddressToString } |
+        Where-Object { $_ -ne '127.0.0.1' -and $_ -notlike '169.254.*' } |
+        Select-Object -First 1
+
+        if (-not $MachineIp)
+        {
+            throw 'Unable to resolve local IPv4 address automatically. Please provide -MachineIp explicitly.'
+        }
+    }
+
+    Invoke-RestMethod -Uri ('http://{0}:8088/stop' -f $MachineIp)
+
+    if ($UploadToStorageAccount)
+    {
+        if (-not $ApiBaseUrl)
+        {
+            throw 'ApiBaseUrl is required when -UploadToStorageAccount is specified.'
+        }
+        if (-not $AccessToken)
+        {
+            $AccessToken = Get-TerraForgeAuthToken `
+                -ApiBaseUrl              $ApiBaseUrl `
+                -ManagedIdentityClientId $ManagedIdentityClientId `
+                -KeyVaultName            $KeyVaultName `
+                -ApiKeySecretName        $ApiKeySecretName
+        }
+        if (-not $TestRunId)
+        {
+            throw 'TestRunId is required when -UploadToStorageAccount is specified.'
+        }
+
+        Copy-ResultsToAzureBlobStorage `
+            -ApiBaseUrl  $ApiBaseUrl `
+            -AccessToken $AccessToken `
+            -TestRunId   $TestRunId `
+            -Files       $Files
+    }
+}
+
 #region Registry Helpers
 
 function Get-RegistryValue
