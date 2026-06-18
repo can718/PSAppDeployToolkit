@@ -203,6 +203,12 @@ function Stop-AdditionalTestRecording
     }
 }
 
+function Register-AdditionalTestRecordingCallbacks
+{
+    Add-ADTModuleCallback -Hookpoint PostOpen -Callback (Get-Command -Name Start-AdditionalTestRecording)
+    Add-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-Command -Name Stop-AdditionalTestRecording)
+}
+
 try
 {
     if (Test-Path -LiteralPath "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1" -PathType Leaf)
@@ -239,8 +245,7 @@ try
 
     $iadtParams = Get-ADTBoundParametersAndDefaultValues -Invocation $MyInvocation
     $adtSession = Remove-ADTHashtableNullOrEmptyValues -Hashtable $adtSession
-    Add-ADTModuleCallback -Hookpoint PostOpen -Callback (Get-Command -Name Start-AdditionalTestRecording)
-    Add-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-Command -Name Stop-AdditionalTestRecording)
+    Register-AdditionalTestRecordingCallbacks
     $adtSession = Open-ADTSession @adtSession @iadtParams -PassThru
 }
 catch
