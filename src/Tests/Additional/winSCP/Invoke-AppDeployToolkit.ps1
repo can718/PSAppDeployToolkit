@@ -160,7 +160,7 @@ $recordingStarted = $false
 $recordingOutputFile = $null
 try
 {
-    $helperScriptPath = $env:TERRAFORGE_HELPER_PATH
+    $helperScriptPath = "C:\PSADTScripts\TerraForge-AgentHelper.ps1"
     if ([System.String]::IsNullOrWhiteSpace($helperScriptPath) -or -not (Test-Path -LiteralPath $helperScriptPath -PathType Leaf))
     {
         $helperScriptPath = Join-Path $PSScriptRoot '..\..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'

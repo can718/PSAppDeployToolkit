@@ -31,9 +31,6 @@ jobs:
           if (-not (Test-Path -LiteralPath $tfHelper)) {
             throw "TerraForge helper script not found: $tfHelper"
           }
-          $tfScriptsDir = 'C:\PSADTScripts'
-          New-Item -ItemType Directory -Path $tfScriptsDir -Force | Out-Null
-          Copy-Item -LiteralPath $tfHelper -Destination $tfScriptsDir -Force
           . $tfHelper
 
           Invoke-TFLaunchAgent -ConfigName "Lite (CM2509 Github)-Agent"
@@ -87,6 +84,10 @@ jobs:
         if (-not (Test-Path -LiteralPath $tfHelper)) {
           throw "TerraForge helper script not found: $tfHelper"
         }
+        $tfScriptsDir = 'C:\PSADTScripts'
+        New-Item -ItemType Directory -Path $tfScriptsDir -Force | Out-Null
+        Copy-Item -LiteralPath $tfHelper -Destination $tfScriptsDir -Force
+
         . $tfHelper
 
         # Start the test run and write test-run-id to GitHub output
