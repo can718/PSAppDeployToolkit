@@ -66,6 +66,16 @@ Describe 'Intune Tests' {
         }
         New-Item -Path $script:BasePath -ItemType Directory -Force | Out-Null
 
+        # Ensure uploaded app names are unique per machine for parallel test runs.
+        $script:IntuneDisplayNameSuffix = if ([System.String]::IsNullOrWhiteSpace($env:COMPUTERNAME))
+        {
+            'UnknownHost'
+        }
+        else
+        {
+            $env:COMPUTERNAME
+        }
+
         # Resolve IntuneWinAppUtil.exe.
         $script:IntuneWinAppUtil = Get-IntuneWinAppUtilPath
         $script:Win32WrapAndUploadSkipReason = if (-not $script:IntuneWinAppUtil)
@@ -163,7 +173,7 @@ Describe 'Intune Tests' {
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
                 -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '3.0.23'
 
-            $script:VlcIntuneDisplayName = $package.DisplayName
+            $script:VlcIntuneDisplayName = '{0}-{1}' -f $package.DisplayName, $script:IntuneDisplayNameSuffix
             $win32App = Publish-IntuneWin32App `
                 -FilePath      $package.IntuneWinPath `
                 -DisplayName   $script:VlcIntuneDisplayName `
@@ -268,7 +278,7 @@ Describe 'Intune Tests' {
             $DetectionRule = New-IntuneWin32AppDetectionRuleMSI -ProductCode $productCode
 
             # --- Step 4: Upload to Intune ---
-            $script:WinScpIntuneDisplayName = $package.DisplayName
+            $script:WinScpIntuneDisplayName = '{0}-{1}' -f $package.DisplayName, $script:IntuneDisplayNameSuffix
             $win32App = Publish-IntuneWin32App `
                 -FilePath      $package.IntuneWinPath `
                 -DisplayName   $script:WinScpIntuneDisplayName `
@@ -403,7 +413,7 @@ Describe 'Intune Tests' {
                 -ValueName "DisplayVersion" -StringComparisonOperator "equal" -StringComparisonValue "8.9.6.4"
 
             # --- Step 4: Upload to Intune ---
-            $script:NotepadIntuneDisplayName = $package.DisplayName
+            $script:NotepadIntuneDisplayName = '{0}-{1}' -f $package.DisplayName, $script:IntuneDisplayNameSuffix
             $win32App = Publish-IntuneWin32App `
                 -FilePath      $package.IntuneWinPath `
                 -DisplayName   $script:NotepadIntuneDisplayName `
@@ -551,9 +561,10 @@ Describe 'Intune Tests' {
                 }
 
                 # Upload to Intune.
+                $intuneDisplayName = '{0}-{1}' -f $package.DisplayName, $script:IntuneDisplayNameSuffix
                 $win32App = Publish-IntuneWin32App `
                     -FilePath      $package.IntuneWinPath `
-                    -DisplayName   $package.DisplayName `
+                    -DisplayName   $intuneDisplayName `
                     -DetectionRule $DetectionRule
                 $win32App | Should -Not -BeNullOrEmpty
 
@@ -563,7 +574,7 @@ Describe 'Intune Tests' {
 
                 $script:UploadedApps[$app.Name] = @{
                     Win32AppId      = $win32App.id
-                    DisplayName     = $package.DisplayName
+                    DisplayName     = $intuneDisplayName
                     RegDisplayName  = $app.RegDisplayName
                     RegVersionValue = $app.RegVersionValue
                     RegVersionName  = $app.RegVersionName
