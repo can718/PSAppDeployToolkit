@@ -201,14 +201,14 @@ try
     {
         if ($helperLoaded -and (Get-Command -Name Start-TerraForgeRecording -ErrorAction SilentlyContinue))
         {
-            Write-ADTLogEntry -Message "Starting recording for [$($adtSession.AppName)] deployment type [$($adtSession.DeploymentType)]." -Severity Information
+            Write-ADTLogEntry -Message "Starting recording for [$($adtSession.AppName)] deployment type [$($adtSession.DeploymentType)]." -Severity Info
             $recordingContext = Start-TerraForgeRecording -AppName $adtSession.AppName -DeploymentType $adtSession.DeploymentType
             $recordingStarted = $recordingContext.Started
             $recordingOutputFile = $recordingContext.OutputFile
 
             if ($recordingStarted)
             {
-                Write-ADTLogEntry -Message "Recording started successfully. Output file: [$recordingOutputFile]." -Severity Information
+                Write-ADTLogEntry -Message "Recording started successfully. Output file: [$recordingOutputFile]." -Severity Info
             }
             else
             {
@@ -273,9 +273,9 @@ finally
     {
         if ($helperLoaded -and (Get-Command -Name Stop-TerraForgeRecording -ErrorAction SilentlyContinue))
         {
-            Write-ADTLogEntry -Message "Stopping recording for [$($adtSession.AppName)] deployment type [$($adtSession.DeploymentType)]." -Severity Information
+            Write-ADTLogEntry -Message "Stopping recording for [$($adtSession.AppName)] deployment type [$($adtSession.DeploymentType)]." -Severity Info
             Stop-TerraForgeRecording -RecordingStarted:$recordingStarted -RecordingOutputFile $recordingOutputFile -UploadToStorageAccount
-            Write-ADTLogEntry -Message "Recording stop request completed for output file [$recordingOutputFile]." -Severity Information
+            Write-ADTLogEntry -Message "Recording stop request completed for output file [$recordingOutputFile]." -Severity Info
         }
     }
 }
