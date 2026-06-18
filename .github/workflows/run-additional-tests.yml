@@ -31,6 +31,9 @@ jobs:
           if (-not (Test-Path -LiteralPath $tfHelper)) {
             throw "TerraForge helper script not found: $tfHelper"
           }
+          $tfScriptsDir = 'C:\PSADTScripts'
+          New-Item -ItemType Directory -Path $tfScriptsDir -Force | Out-Null
+          Copy-Item -LiteralPath $tfHelper -Destination $tfScriptsDir -Force
           . $tfHelper
 
           Invoke-TFLaunchAgent -ConfigName "Lite (CM2509 Github)-Agent"
@@ -56,6 +59,7 @@ jobs:
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       TERRAFORGE_CONFIG_NAME: "Lite (CM2509 Github)-Agent"
+      TERRAFORGE_HELPER_PATH: 'C:\PSADTScripts\TerraForge-AgentHelper.ps1'
     steps:
     - name: Initialize Workflow Timers
       id: init-timers
