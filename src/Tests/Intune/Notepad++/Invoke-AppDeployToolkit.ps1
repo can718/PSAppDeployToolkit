@@ -54,7 +54,7 @@ param
 $adtSession = @{
     AppVendor = 'Don HO don.h@free.fr'
     AppName = 'Notepad++'
-    AppVersion = '8.9.6.4'
+    AppVersion = '6.6.4'
     AppArch = 'x64'
     AppLang = 'EN'
     AppRevision = '01'
@@ -79,14 +79,15 @@ $adtSession = @{
 ## MARK: Pre-Install
 $PreInstall = {
     $saiwParams = @{
-        #AllowDeferCloseProcesses = $true
-        #DeferTimes = 3
-        #PersistPrompt = $true
-        CloseProcessesCountdown = 10
+        AllowDefer = $true
+        DeferTimes = 2
+        # PersistPrompt = $true
+        ForceCountdown = 8
+        CheckDiskSpace = $true
     }
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
-        $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
+        #$saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
     }
     Show-ADTInstallationWelcome @saiwParams
     Show-ADTInstallationProgress
@@ -94,13 +95,11 @@ $PreInstall = {
 
 ## MARK: Install
 $Install = {
-    Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.x64.exe" -ArgumentList '/S'
+    Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.exe" -ArgumentList '/S'
 }
 
 ## MARK: Post-Install
 $PostInstall = {
-    # Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
-    # Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
     Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait -Timeout 5
 }
 
