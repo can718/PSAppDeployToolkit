@@ -472,8 +472,17 @@ jobs:
           }
 
           $ciPanel = New-WorkflowStagePanel -Title 'Stage: Pipeline Info' -Rows $ciStageRows
-          $stepsPanel = if ($stepRows.Count -gt 0) {
-            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $stepRows
+          $maxVisibleStepRows = 5
+          $visibleStepRows = @($stepRows | Select-Object -First $maxVisibleStepRows)
+          $hasAdditionalStepRows = $stepRows.Count -gt $maxVisibleStepRows
+          $stepsPanel = if ($visibleStepRows.Count -gt 0) {
+            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $visibleStepRows
+          }
+          else {
+            $null
+          }
+          $allStepsPanel = if ($hasAdditionalStepRows) {
+            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps (All)' -Rows $stepRows
           }
           else {
             $null
@@ -565,6 +574,22 @@ jobs:
               $cardBody += @{
                 type = 'Container'
                 items = @($stepsPanel)
+              }
+
+              if ($allStepsPanel) {
+                $cardBody += @{
+                  type = 'ActionSet'
+                  actions = @(
+                    @{
+                      type = 'Action.ShowCard'
+                      title = '查看更多'
+                      card = @{
+                        type = 'AdaptiveCard'
+                        body = @($allStepsPanel)
+                      }
+                    }
+                  )
+                }
               }
             }
           }
