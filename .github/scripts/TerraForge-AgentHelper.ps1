@@ -489,7 +489,7 @@ function Assert-PSADTDeploymentLogContent
         [string]$LogFileName,
 
         [Parameter()]
-        [string[]]$ValidationContent,
+        [string[]]$ValidationContent = @(''),
 
         [Parameter()]
         [string]$AppVendor,
@@ -549,7 +549,8 @@ function Assert-PSADTDeploymentLogContent
         $LogFileName = "$LogFileName.log"
     }
 
-    if (-not $ValidationContent -or $ValidationContent.Count -eq 0)
+    $hasValidationContent = @($ValidationContent | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -gt 0
+    if (-not $hasValidationContent)
     {
         if ($missingMetadata.Count -gt 0)
         {
@@ -557,9 +558,10 @@ function Assert-PSADTDeploymentLogContent
         }
 
         $deploymentTypeText = $DeploymentType.ToLowerInvariant()
+        $escapedInstallName = [regex]::Escape($installName)
+        $escapedDeploymentType = [regex]::Escape($deploymentTypeText)
         $ValidationContent = @(
-            "[Finalization] :: [$installName] $deploymentTypeText completed in",
-            'seconds with exit code [0].'
+            "\[$escapedInstallName\]\s+$escapedDeploymentType completed in \[\d+(?:\.\d+)?\]\s+seconds with exit code \[0\]\."
         )
     }
 
@@ -586,7 +588,7 @@ function Assert-PSADTDeploymentLogContent
                 continue
             }
 
-            if ($logContent.IndexOf($expectedContent, [System.StringComparison]::OrdinalIgnoreCase) -lt 0)
+            if (-not [regex]::IsMatch($logContent, $expectedContent, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase))
             {
                 $expectedContent
             }
