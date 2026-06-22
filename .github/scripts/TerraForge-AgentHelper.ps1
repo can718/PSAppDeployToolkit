@@ -228,6 +228,12 @@ function StopRecord
 
     if ($UploadToStorageAccount)
     {
+        if (-not $ApiBaseUrl) { $ApiBaseUrl = [System.Environment]::GetEnvironmentVariable('TERRAFORGE_API_BASE_URL', 'Machine') }
+        if (-not $TestRunId) { $TestRunId = [System.Environment]::GetEnvironmentVariable('TEST_RUN_ID', 'Machine') }
+        if (-not $ManagedIdentityClientId) { $ManagedIdentityClientId = [System.Environment]::GetEnvironmentVariable('INFRA_MI_CLIENT_ID', 'Machine') }
+        if (-not $KeyVaultName) { $KeyVaultName = [System.Environment]::GetEnvironmentVariable('INFRA_KEYVAULT', 'Machine') }
+        if (-not $ApiKeySecretName) { $ApiKeySecretName = [System.Environment]::GetEnvironmentVariable('TERRAFORGE_API_KEY_SECRET', 'Machine') }
+
         $missingUploadSettings = @(
             if (-not $ApiBaseUrl) { 'TERRAFORGE_API_BASE_URL' }
             if (-not $TestRunId) { 'TEST_RUN_ID' }

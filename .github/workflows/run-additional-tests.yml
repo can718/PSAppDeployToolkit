@@ -94,6 +94,31 @@ jobs:
         Invoke-TFStartTestRun `
             -Title "PSADT CM Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
 
+    - name: Set TerraForge machine environment
+      id: set-terraforge-machine-env
+      shell: pwsh
+      env:
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
+      run: |
+        $settings = [ordered]@{
+          TERRAFORGE_API_BASE_URL   = $env:TERRAFORGE_API_BASE_URL
+          TEST_RUN_ID               = $env:TEST_RUN_ID
+          INFRA_MI_CLIENT_ID        = $env:INFRA_MI_CLIENT_ID
+          INFRA_KEYVAULT            = $env:INFRA_KEYVAULT
+          TERRAFORGE_API_KEY_SECRET = $env:TERRAFORGE_API_KEY_SECRET
+        }
+
+        $missing = @($settings.GetEnumerator() | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.Value) } | ForEach-Object { $_.Key })
+        if ($missing.Count -gt 0) {
+          throw "Cannot set TerraForge machine environment. Missing value(s): $($missing -join ', ')"
+        }
+
+        foreach ($item in $settings.GetEnumerator()) {
+          [System.Environment]::SetEnvironmentVariable($item.Key, [string]$item.Value, 'Machine')
+          Set-Item -Path "Env:\$($item.Key)" -Value ([string]$item.Value)
+          Write-Host "Set machine environment variable: $($item.Key)"
+        }
+
     - name: Install Node.js (required for GitHub Actions on self-hosted runner)
       id: install-node
       shell: pwsh
@@ -553,6 +578,17 @@ jobs:
         }
         . $tfHelper
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml'
+
+    - name: Clear TerraForge machine environment
+      id: clear-terraforge-machine-env
+      if: always()
+      shell: pwsh
+      run: |
+        foreach ($name in 'TERRAFORGE_API_BASE_URL', 'TEST_RUN_ID', 'INFRA_MI_CLIENT_ID', 'INFRA_KEYVAULT', 'TERRAFORGE_API_KEY_SECRET') {
+          [System.Environment]::SetEnvironmentVariable($name, $null, 'Machine')
+          Remove-Item -Path "Env:\$name" -ErrorAction SilentlyContinue
+          Write-Host "Cleared machine environment variable: $name"
+        }
 
     - name: Collect step outcomes
       id: collect-outputs
