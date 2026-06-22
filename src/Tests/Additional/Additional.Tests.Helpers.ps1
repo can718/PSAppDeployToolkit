@@ -739,7 +739,7 @@ function script:Assert-PSADTDeploymentSummarySuccess
         [string]$SiteCode,
         [Parameter(Mandatory = $true)]
         [string]$Label,
-        [int]$MaxWaitSeconds = 3600,
+        [int]$MaxWaitSeconds = 1800,
         [int]$PollInterval = 180
     )
 
