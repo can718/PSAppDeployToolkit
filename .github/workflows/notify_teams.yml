@@ -582,7 +582,7 @@ jobs:
                   actions = @(
                     @{
                       type = 'Action.ShowCard'
-                      title = '查看更多'
+                      title = 'View All Steps'
                       card = @{
                         type = 'AdaptiveCard'
                         body = @($allStepsPanel)
