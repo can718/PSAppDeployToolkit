@@ -228,9 +228,16 @@ function StopRecord
 
     if ($UploadToStorageAccount)
     {
-        if (-not $ApiBaseUrl)
+        $missingUploadSettings = @(
+            if (-not $ApiBaseUrl) { 'TERRAFORGE_API_BASE_URL' }
+            if (-not $TestRunId) { 'TEST_RUN_ID' }
+            if (-not $AccessToken -and -not $ManagedIdentityClientId) { 'INFRA_MI_CLIENT_ID' }
+            if (-not $AccessToken -and -not $KeyVaultName) { 'INFRA_KEYVAULT' }
+            if (-not $AccessToken -and -not $ApiKeySecretName) { 'TERRAFORGE_API_KEY_SECRET' }
+        )
+        if ($missingUploadSettings.Count -gt 0)
         {
-            throw 'ApiBaseUrl is required when -UploadToStorageAccount is specified.'
+            throw "Missing required TerraForge upload environment setting(s): $($missingUploadSettings -join ', ')."
         }
         if (-not $AccessToken)
         {
@@ -239,10 +246,6 @@ function StopRecord
                 -ManagedIdentityClientId $ManagedIdentityClientId `
                 -KeyVaultName            $KeyVaultName `
                 -ApiKeySecretName        $ApiKeySecretName
-        }
-        if (-not $TestRunId)
-        {
-            throw 'TestRunId is required when -UploadToStorageAccount is specified.'
         }
 
         if ($Files -and $Files.Count -gt 0)
@@ -397,6 +400,7 @@ function Start-TerraForgeRecording
 function Stop-TerraForgeRecording
 {
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param
     (
         [Parameter(Mandatory)]
@@ -409,19 +413,31 @@ function Stop-TerraForgeRecording
         [switch]$UploadToStorageAccount
     )
 
+    $result = [PSCustomObject]@{
+        StopAttempted       = $false
+        StopSucceeded       = $false
+        UploadRequested     = [bool]$UploadToStorageAccount
+        UploadSucceeded     = $false
+        RecordingOutputFile = $RecordingOutputFile
+        Error               = $null
+    }
+
     if (-not $RecordingStarted)
     {
-        return
+        $result.Error = 'Recording was not started. Skipping recording stop and upload.'
+        return $result
     }
 
     if (-not (Get-Command -Name StopRecord -ErrorAction SilentlyContinue))
     {
-        Write-Warning 'StopRecord function not found. Skipping recording stop.'
-        return
+        $result.Error = 'StopRecord function not found. Skipping recording stop and upload.'
+        Write-Warning $result.Error
+        return $result
     }
 
     try
     {
+        $result.StopAttempted = $true
         if ($RecordingOutputFile)
         {
             StopRecord -UploadToStorageAccount:$UploadToStorageAccount -Files @($RecordingOutputFile)
@@ -430,11 +446,27 @@ function Stop-TerraForgeRecording
         {
             StopRecord -UploadToStorageAccount:$UploadToStorageAccount
         }
+
+        $result.StopSucceeded = $true
+        if ($UploadToStorageAccount)
+        {
+            if ($RecordingOutputFile -and -not (Test-Path -LiteralPath $RecordingOutputFile -PathType Leaf))
+            {
+                $result.Error = "Recording output file was not found after stopping recorder: $RecordingOutputFile"
+            }
+            else
+            {
+                $result.UploadSucceeded = $true
+            }
+        }
         Write-Host 'StopRecord succeeded.'
+        return $result
     }
     catch
     {
-        Write-Warning "StopRecord failed but deployment completion will continue: $($_.Exception.Message)"
+        $result.Error = "StopRecord failed but deployment completion will continue: $($_.Exception.Message)"
+        Write-Warning $result.Error
+        return $result
     }
 }
 
