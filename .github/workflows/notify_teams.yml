@@ -478,12 +478,7 @@ jobs:
           else {
             $null
           }
-          $pesterPanel = if ($pesterStageRows.Count -gt 0) {
-            New-WorkflowStagePanel -Title 'Stage: Pester Test Results' -Rows $pesterStageRows
-          }
-          else {
-            $null
-          }
+          $pesterPanel = $null
           $casesPanel = if ($caseRows.Count -gt 0) {
             New-WorkflowStagePanel -Title 'Stage: Test Cases' -Rows $caseRows
           }
@@ -491,7 +486,7 @@ jobs:
             $null
           }
 
-          $hasAnyDetailData = ($stepRows.Count -gt 0) -or ($pesterStageRows.Count -gt 0) -or ($caseRows.Count -gt 0)
+          $hasAnyDetailData = ($stepRows.Count -gt 0) -or ($caseRows.Count -gt 0)
 
           $adaptiveActions = @()
           if ($runUrl) {
