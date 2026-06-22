@@ -476,6 +476,143 @@ function Stop-TerraForgeRecording
     }
 }
 
+function Assert-PSADTDeploymentLogContent
+{
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param
+    (
+        [Parameter()]
+        [string]$LogFolder = 'C:\Windows\Logs\Software',
+
+        [Parameter()]
+        [string]$LogFileName,
+
+        [Parameter()]
+        [string[]]$ValidationContent,
+
+        [Parameter()]
+        [string]$AppVendor,
+
+        [Parameter()]
+        [string]$AppName,
+
+        [Parameter()]
+        [string]$AppVersion,
+
+        [Parameter()]
+        [string]$AppArch,
+
+        [Parameter()]
+        [string]$AppLang,
+
+        [Parameter()]
+        [string]$AppRevision,
+
+        [Parameter()]
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType = 'Install',
+
+        [Parameter()]
+        [switch]$PassThru
+    )
+
+    $metadata = [ordered]@{
+        AppVendor   = $AppVendor
+        AppName     = $AppName
+        AppVersion  = $AppVersion
+        AppArch     = $AppArch
+        AppLang     = $AppLang
+        AppRevision = $AppRevision
+    }
+    $missingMetadata = @($metadata.GetEnumerator() | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.Value) } | ForEach-Object { $_.Key })
+    $installName = $null
+
+    if ($missingMetadata.Count -eq 0)
+    {
+        $rawInstallName = '{0}_{1}_{2}_{3}_{4}_{5}' -f $AppVendor, $AppName, $AppVersion, $AppArch, $AppLang, $AppRevision
+        $invalidPattern = '[{0}]' -f [regex]::Escape((-join [System.IO.Path]::GetInvalidFileNameChars()))
+        $installName = ($rawInstallName.Trim('_') -replace '\s+', '' -replace '_+', '_') -replace $invalidPattern, ''
+    }
+
+    if ([string]::IsNullOrWhiteSpace($LogFileName))
+    {
+        if ($missingMetadata.Count -gt 0)
+        {
+            throw "Cannot generate PSADT log file name. Missing application metadata: $($missingMetadata -join ', ')."
+        }
+
+        $LogFileName = '{0}_PSAppDeployToolkit_{1}.log' -f $installName, $DeploymentType
+    }
+    elseif ([string]::IsNullOrWhiteSpace([System.IO.Path]::GetExtension($LogFileName)))
+    {
+        $LogFileName = "$LogFileName.log"
+    }
+
+    if (-not $ValidationContent -or $ValidationContent.Count -eq 0)
+    {
+        if ($missingMetadata.Count -gt 0)
+        {
+            throw "ValidationContent is required when application metadata is incomplete. Missing application metadata: $($missingMetadata -join ', ')."
+        }
+
+        $deploymentTypeText = $DeploymentType.ToLowerInvariant()
+        $ValidationContent = @(
+            "[Finalization] :: [$installName] $deploymentTypeText completed in",
+            'seconds with exit code [0].'
+        )
+    }
+
+    $logPath = if ([System.IO.Path]::IsPathRooted($LogFileName))
+    {
+        $LogFileName
+    }
+    else
+    {
+        Join-Path -Path $LogFolder -ChildPath $LogFileName
+    }
+
+    if (-not (Test-Path -LiteralPath $logPath -PathType Leaf))
+    {
+        throw "PSADT deployment log file was not found: $logPath"
+    }
+
+    $logContent = Get-Content -LiteralPath $logPath -Raw -ErrorAction Stop
+    $missingContent = @(
+        foreach ($expectedContent in $ValidationContent)
+        {
+            if ([string]::IsNullOrWhiteSpace($expectedContent))
+            {
+                continue
+            }
+
+            if ($logContent.IndexOf($expectedContent, [System.StringComparison]::OrdinalIgnoreCase) -lt 0)
+            {
+                $expectedContent
+            }
+        }
+    )
+
+    $result = [PSCustomObject]@{
+        Succeeded       = ($missingContent.Count -eq 0)
+        LogPath         = $logPath
+        LogFileName     = [System.IO.Path]::GetFileName($logPath)
+        ValidationCount = @($ValidationContent | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+        MissingContent  = $missingContent
+    }
+
+    if (-not $result.Succeeded)
+    {
+        throw "PSADT deployment log validation failed for '$logPath'. Missing content: $($missingContent -join ' | ')"
+    }
+
+    Write-Host "PSADT deployment log validation passed: $logPath"
+    if ($PassThru)
+    {
+        return $result
+    }
+}
+
 #region Registry Helpers
 
 function Get-RegistryValue

@@ -217,8 +217,10 @@ jobs:
       id: psmodule-cache
       uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306  # https://github.com/actions/cache/releases/tag/v5.0.3
       with:
-        path: ~\Documents\WindowsPowerShell\Modules
-        key: ${{ runner.os }}-psmodule-PSScriptAnalyzer-1.25.0-Pester-5.7.1-platyPS-0.14.2-Alt3.Docusaurus.Powershell-1.0.37
+        path: |
+          ~\Documents\PowerShell\Modules
+          ~\Documents\WindowsPowerShell\Modules
+        key: ${{ runner.os }}-psmodule-PSScriptAnalyzer-1.25.0-Pester-5.7.1-platyPS-0.14.2-Alt3.Docusaurus.Powershell-1.0.37-AzModules-v1
 
     - name: Install PowerShell modules
       id: install-psmodules
@@ -235,6 +237,17 @@ jobs:
         Install-Module -Name Pester -RequiredVersion 5.7.1 -Force -SkipPublisherCheck -Scope CurrentUser
         Install-Module -Name platyPS -RequiredVersion 0.14.2 -Force -Scope CurrentUser
         Install-Module -Name Alt3.Docusaurus.Powershell -RequiredVersion 1.0.37 -Force -Scope CurrentUser
+        Install-Module -Name Az.Accounts, Az.KeyVault, Az.Storage -Force -Scope CurrentUser -AllowClobber
+
+        # Deployment scripts can run under Windows PowerShell 5.1, which uses a different CurrentUser module path.
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -Command @'
+        $ErrorActionPreference = 'Stop'
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+        Install-Module -Name PowerShellGet -MinimumVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
+        Import-Module PowerShellGet -MinimumVersion 2.2.5 -Force
+        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        Install-Module -Name Az.Accounts, Az.KeyVault, Az.Storage -Force -Scope CurrentUser -AllowClobber
+        '@
 
     - name: Configure NuGet source
       id: configure-nuget
