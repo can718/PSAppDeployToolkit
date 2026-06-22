@@ -315,7 +315,9 @@ function script:Copy-PSADTPackageInstallerToFiles
 
     if (-not (Test-Path $InstallerSource))
     {
-        Write-Information "::warning::[$LogPrefix] $InstallerLabel not found at '$InstallerSource', skipping installer copy step." -InformationAction Continue
+        $message = "$InstallerLabel not found at '$InstallerSource'"
+        Write-Information "::error::[$LogPrefix] $message" -InformationAction Continue
+        $true | Should -BeFalse -Because $message
         return
     }
 

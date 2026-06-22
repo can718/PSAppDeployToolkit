@@ -426,7 +426,7 @@ $app = foreach ($root in $uninstallRoots)
     {
         Get-ChildItem -Path $root |
             Get-ItemProperty -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like '*WinSCP*' -and $_.DisplayVersion -eq '6.5.6' }
+            Where-Object { $_.DisplayName -like '*WinSCP*' -and $_.DisplayVersion -like '6.5.6*' }
     }
 }
 if ($app) { Write-Host "Installed" }
