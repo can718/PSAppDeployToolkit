@@ -196,7 +196,7 @@ function Stop-AdditionalTestRecording
 
     if ($script:helperLoaded -and (Get-Command -Name Stop-TerraForgeRecording -ErrorAction SilentlyContinue))
     {
-        Start-Sleep -Seconds 10
+        Start-Sleep -Seconds 3
         Write-ADTLogEntry -Message "Stopping recording for [$($script:adtSession.AppName)] deployment type [$($script:adtSession.DeploymentType)]." -Severity Info
         Stop-TerraForgeRecording -RecordingStarted:$script:recordingStarted -RecordingOutputFile $script:recordingOutputFile -UploadToStorageAccount
         Write-ADTLogEntry -Message "Recording stop request completed for output file [$($script:recordingOutputFile)]." -Severity Info
