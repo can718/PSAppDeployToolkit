@@ -204,6 +204,12 @@ function StopRecord
         [string[]]$Files = @("$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"),
 
         [Parameter()]
+        [int]$UploadFileReadyTimeoutSeconds = 120,
+
+        [Parameter()]
+        [int]$UploadFileReadyPollSeconds = 2,
+
+        [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
 
         [Parameter()]
@@ -239,11 +245,72 @@ function StopRecord
             throw 'TestRunId is required when -UploadToStorageAccount is specified.'
         }
 
+        if ($Files -and $Files.Count -gt 0)
+        {
+            Wait-TerraForgeFilesReady `
+                -Files              $Files `
+                -TimeoutSeconds     $UploadFileReadyTimeoutSeconds `
+                -PollSeconds        $UploadFileReadyPollSeconds
+        }
+
         Copy-ResultsToAzureBlobStorage `
             -ApiBaseUrl  $ApiBaseUrl `
             -AccessToken $AccessToken `
             -TestRunId   $TestRunId `
             -Files       $Files
+    }
+}
+
+function Wait-TerraForgeFilesReady
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string[]]$Files,
+
+        [Parameter()]
+        [int]$TimeoutSeconds = 120,
+
+        [Parameter()]
+        [int]$PollSeconds = 2
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $pendingFiles = @($Files)
+
+    while ($pendingFiles.Count -gt 0 -and (Get-Date) -lt $deadline)
+    {
+        $stillPending = foreach ($file in $pendingFiles)
+        {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf))
+            {
+                Write-Host "Waiting for upload file to exist: $file"
+                $file
+                continue
+            }
+
+            $firstLength = (Get-Item -LiteralPath $file).Length
+            Start-Sleep -Seconds 1
+            $secondLength = (Get-Item -LiteralPath $file).Length
+
+            if ($firstLength -ne $secondLength)
+            {
+                Write-Host "Waiting for upload file to finish writing: $file"
+                $file
+            }
+        }
+
+        $pendingFiles = @($stillPending)
+        if ($pendingFiles.Count -gt 0)
+        {
+            Start-Sleep -Seconds $PollSeconds
+        }
+    }
+
+    foreach ($file in $pendingFiles)
+    {
+        Write-Warning "Upload file was not ready before timeout and will be skipped if still unavailable: $file"
     }
 }
 
@@ -1025,7 +1092,7 @@ function Copy-ResultsToAzureBlobStorage
             }
             else
             {
-                Write-Host "File '$file' not found, skipping."
+                Write-Warning "File '$file' not found, skipping upload."
             }
         }
     }

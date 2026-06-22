@@ -291,15 +291,15 @@ try
     Close-ADTSession
 }
 catch
-    if ($recordingStarted)
-    {
-        if ($helperLoaded -and (Get-Command -Name Stop-TerraForgeRecording -ErrorAction SilentlyContinue))
-        {
-            #sleep 10 seconds to allow any final recording data to be captured before stopping, if the recording was started successfully
-            Start-Sleep -Seconds 10
-            Write-ADTLogEntry -Message "Stopping recording for [$($adtSession.AppName)] deployment type [$($adtSession.DeploymentType)]." -Severity Info
-            Stop-TerraForgeRecording -RecordingStarted:$recordingStarted -RecordingOutputFile $recordingOutputFile -UploadToStorageAccount
-            Write-ADTLogEntry -Message "Recording stop request completed for output file [$recordingOutputFile]." -Severity Info
-        }
-    }
+{
+    $mainErrorMessage = "An unhandled error within [$($MyInvocation.MyCommand.Name)] has occurred.`n$(Resolve-ADTErrorRecord -ErrorRecord $_)"
+    Write-ADTLogEntry -Message $mainErrorMessage -Severity Error
+
+    ## Error details hidden from the user by default. Show a simple dialog with full stack trace:
+    # Show-ADTDialogBox -Text $mainErrorMessage -Icon Stop -NoWait
+
+    ## Or, a themed dialog with basic error message:
+    # Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) failed at line $($_.InvocationInfo.ScriptLineNumber), char $($_.InvocationInfo.OffsetInLine):`n$($_.InvocationInfo.Line.Trim())`n`nMessage:`n$($_.Exception.Message)" -ButtonRightText OK -NoWait
+
+    Close-ADTSession -ExitCode 60001
 }
