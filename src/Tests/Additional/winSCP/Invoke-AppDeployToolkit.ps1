@@ -226,7 +226,7 @@ function Stop-AdditionalTestRecording
         }
         elseif (-not $recordingResult.UploadRequested)
         {
-            Set-RegistryValue -Name 'RecordingUploadNotRequested' -Value $script:recordingOutputFile
+            Append-RegistryValue -Name 'RecordingUploadNotRequested' -Value $script:recordingOutputFile
             Write-ADTLogEntry -Message "Set registry value for output file [$($script:recordingOutputFile)] successfully." -Severity info
         }
         else

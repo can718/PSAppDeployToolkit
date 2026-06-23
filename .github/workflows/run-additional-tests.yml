@@ -632,8 +632,9 @@ jobs:
          
         $recordFile = Get-RegistryValue -Name 'RecordingUploadNotRequested'
         if ($recordFile) {
-          Write-Host "Uploading recording file to blob storage: $recordFile"
-          Invoke-TFUploadTestResults -TestResultXmlPath $recordFile
+          Write-Host "Uploading recording file(s) to blob storage: $recordFile"
+          $recordFiles = $recordFile -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles
         } else {
           Write-Host "No recording file found for upload."
         }

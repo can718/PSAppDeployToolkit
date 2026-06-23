@@ -710,6 +710,61 @@ function Set-RegistryValue
     Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force
 }
 
+function Append-RegistryValue
+{
+    <#
+    .SYNOPSIS
+        Appends a value to an existing registry string value, creating the key if necessary.
+    .PARAMETER Path
+        The registry key path. Defaults to the TerraForge agent registry path.
+    .PARAMETER Name
+        The name of the registry value to append to.
+    .PARAMETER Value
+        The value to append.
+    .PARAMETER Separator
+        The separator to use between existing and new value (default: ';').
+    .PARAMETER Type
+        The registry value type (default: String).
+    #>
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [string]$Path = 'HKLM:\SOFTWARE\Microsoft\TerraforgeAgent',
+
+        [Parameter(Mandatory)]
+        [string]$Name,
+
+        [Parameter(Mandatory)]
+        [string]$Value,
+
+        [Parameter()]
+        [string]$Separator = ';',
+
+        [Parameter()]
+        [Microsoft.Win32.RegistryValueKind]$Type = [Microsoft.Win32.RegistryValueKind]::String
+    )
+
+    if (-not (Test-Path $Path))
+    {
+        New-Item -Path $Path -Force | Out-Null
+    }
+
+    $existingValue = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+    $currentValue = if ($existingValue) { $existingValue.$Name } else { $null }
+
+    if ([string]::IsNullOrWhiteSpace($currentValue))
+    {
+        $newValue = $Value
+    }
+    else
+    {
+        $newValue = "{0}{1}{2}" -f $currentValue, $Separator, $Value
+    }
+
+    Set-ItemProperty -Path $Path -Name $Name -Value $newValue -Type $Type -Force
+}
+
 function Get-SessionID
 {
     [CmdletBinding()]
