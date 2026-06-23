@@ -215,7 +215,7 @@ function Stop-AdditionalTestRecording
         ) -join ', '
         Write-ADTLogEntry -Message "TerraForge upload environment status: $uploadEnvironmentStatus" -Severity Info
         Write-ADTLogEntry -Message "Stopping recording for [$($script:adtSession.AppName)] deployment type [$($script:adtSession.DeploymentType)]." -Severity Info
-        $recordingResult = Stop-TerraForgeRecording -RecordingStarted:$script:recordingStarted -RecordingOutputFile $script:recordingOutputFile -UploadToStorageAccount
+        $recordingResult = Stop-TerraForgeRecording -RecordingStarted:$script:recordingStarted -RecordingOutputFile $script:recordingOutputFile
         if ($recordingResult.Error)
         {
             Write-ADTLogEntry -Message "Recording stop/upload completed with warning for output file [$($script:recordingOutputFile)]: $($recordingResult.Error)" -Severity Warning
@@ -223,6 +223,11 @@ function Stop-AdditionalTestRecording
         elseif ($recordingResult.UploadRequested -and $recordingResult.UploadSucceeded)
         {
             Write-ADTLogEntry -Message "Recording stopped and uploaded successfully for output file [$($script:recordingOutputFile)]." -Severity Info
+        }
+        elseif (-not $recordingResult.UploadRequested)
+        {
+            Set-RegistryValue -Name 'RecordingUploadNotRequested' -Value $script:recordingOutputFile
+            Write-ADTLogEntry -Message "Set registry value for output file [$($script:recordingOutputFile)] successfully." -Severity info
         }
         else
         {

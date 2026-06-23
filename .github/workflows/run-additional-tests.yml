@@ -629,6 +629,14 @@ jobs:
         }
         . $tfHelper
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml'
+         
+        $recordFile = Get-RegistryValue -Name 'RecordingUploadNotRequested'
+        if ($recordFile) {
+          Write-Host "Uploading recording file to blob storage: $recordFile"
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFile
+        } else {
+          Write-Host "No recording file found for upload."
+        }
 
     - name: Clear TerraForge machine environment
       id: clear-terraforge-machine-env
