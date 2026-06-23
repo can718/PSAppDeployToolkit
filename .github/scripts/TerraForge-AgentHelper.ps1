@@ -157,6 +157,464 @@ function Set-GitHubOutput
     Write-Host "GitHub output set: $Name=$Value"
 }
 
+function StartRecord
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string]$recordSavePath,
+
+        [Parameter()]
+        [string]$MachineIp
+    )
+
+    if (-not $MachineIp)
+    {
+        $MachineIp = Resolve-TerraForgeLocalIPv4
+    }
+
+    #$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    #$RecordSavePath = 'C:\Recordings\{0}_{1}.mp4' -f $recordSavePath, $timestamp
+    $RecordSavePath = 'C:\Recordings\{0}.mp4' -f $recordSavePath
+    Invoke-RestMethod -Uri ('http://{0}:8088/start?savingPath={1}' -f $MachineIp, $RecordSavePath)
+}
+
+function StopRecord
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [string]$MachineIp,
+
+        [Parameter()]
+        [switch]$UploadToStorageAccount,
+
+        [Parameter()]
+        [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
+
+        [Parameter()]
+        [string]$AccessToken,
+
+        [Parameter()]
+        [string]$TestRunId = $env:TEST_RUN_ID,
+
+        [Parameter()]
+        [string[]]$Files = @("$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"),
+
+        [Parameter()]
+        [int]$UploadFileReadyTimeoutSeconds = 120,
+
+        [Parameter()]
+        [int]$UploadFileReadyPollSeconds = 2,
+
+        [Parameter()]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter()]
+        [string]$KeyVaultName = $env:INFRA_KEYVAULT,
+
+        [Parameter()]
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
+    )
+
+    if (-not $MachineIp)
+    {
+        $MachineIp = Resolve-TerraForgeLocalIPv4
+    }
+
+    Invoke-RestMethod -Uri ('http://{0}:8088/stop' -f $MachineIp)
+
+    if ($UploadToStorageAccount)
+    {
+        if (-not $ApiBaseUrl) { $ApiBaseUrl = [System.Environment]::GetEnvironmentVariable('TERRAFORGE_API_BASE_URL', 'Machine') }
+        if (-not $TestRunId) { $TestRunId = [System.Environment]::GetEnvironmentVariable('TEST_RUN_ID', 'Machine') }
+        if (-not $ManagedIdentityClientId) { $ManagedIdentityClientId = [System.Environment]::GetEnvironmentVariable('INFRA_MI_CLIENT_ID', 'Machine') }
+        if (-not $KeyVaultName) { $KeyVaultName = [System.Environment]::GetEnvironmentVariable('INFRA_KEYVAULT', 'Machine') }
+        if (-not $ApiKeySecretName) { $ApiKeySecretName = [System.Environment]::GetEnvironmentVariable('TERRAFORGE_API_KEY_SECRET', 'Machine') }
+
+        $missingUploadSettings = @(
+            if (-not $ApiBaseUrl) { 'TERRAFORGE_API_BASE_URL' }
+            if (-not $TestRunId) { 'TEST_RUN_ID' }
+            if (-not $AccessToken -and -not $ManagedIdentityClientId) { 'INFRA_MI_CLIENT_ID' }
+            if (-not $AccessToken -and -not $KeyVaultName) { 'INFRA_KEYVAULT' }
+            if (-not $AccessToken -and -not $ApiKeySecretName) { 'TERRAFORGE_API_KEY_SECRET' }
+        )
+        if ($missingUploadSettings.Count -gt 0)
+        {
+            throw "Missing required TerraForge upload environment setting(s): $($missingUploadSettings -join ', ')."
+        }
+        if (-not $AccessToken)
+        {
+            $AccessToken = Get-TerraForgeAuthToken `
+                -ApiBaseUrl              $ApiBaseUrl `
+                -ManagedIdentityClientId $ManagedIdentityClientId `
+                -KeyVaultName            $KeyVaultName `
+                -ApiKeySecretName        $ApiKeySecretName
+        }
+
+        if ($Files -and $Files.Count -gt 0)
+        {
+            Wait-TerraForgeFilesReady `
+                -Files              $Files `
+                -TimeoutSeconds     $UploadFileReadyTimeoutSeconds `
+                -PollSeconds        $UploadFileReadyPollSeconds
+        }
+
+        Copy-ResultsToAzureBlobStorage `
+            -ApiBaseUrl  $ApiBaseUrl `
+            -AccessToken $AccessToken `
+            -TestRunId   $TestRunId `
+            -Files       $Files
+    }
+}
+
+function Wait-TerraForgeFilesReady
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string[]]$Files,
+
+        [Parameter()]
+        [int]$TimeoutSeconds = 120,
+
+        [Parameter()]
+        [int]$PollSeconds = 2
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $pendingFiles = @($Files)
+
+    while ($pendingFiles.Count -gt 0 -and (Get-Date) -lt $deadline)
+    {
+        $stillPending = foreach ($file in $pendingFiles)
+        {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf))
+            {
+                Write-Host "Waiting for upload file to exist: $file"
+                $file
+                continue
+            }
+
+            $firstLength = (Get-Item -LiteralPath $file).Length
+            Start-Sleep -Seconds 1
+            $secondLength = (Get-Item -LiteralPath $file).Length
+
+            if ($firstLength -ne $secondLength)
+            {
+                Write-Host "Waiting for upload file to finish writing: $file"
+                $file
+            }
+        }
+
+        $pendingFiles = @($stillPending)
+        if ($pendingFiles.Count -gt 0)
+        {
+            Start-Sleep -Seconds $PollSeconds
+        }
+    }
+
+    foreach ($file in $pendingFiles)
+    {
+        Write-Warning "Upload file was not ready before timeout and will be skipped if still unavailable: $file"
+    }
+}
+
+function Resolve-TerraForgeLocalIPv4
+{
+    [CmdletBinding()]
+    [OutputType([string])]
+    param ()
+
+    $machineIp = [System.Net.Dns]::GetHostAddresses($env:COMPUTERNAME) |
+        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
+        ForEach-Object { $_.IPAddressToString } |
+        Where-Object { $_ -ne '127.0.0.1' -and $_ -notlike '169.254.*' } |
+        Select-Object -First 1
+
+    if (-not $machineIp)
+    {
+        throw 'Unable to resolve local IPv4 address automatically. Please provide -MachineIp explicitly.'
+    }
+
+    return $machineIp
+}
+
+function Start-TerraForgeRecording
+{
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string]$AppName,
+
+        [Parameter()]
+        [string]$DeploymentType,
+
+        [Parameter()]
+        [string]$FallbackRecordName = 'recording',
+
+        [Parameter()]
+        [string]$RecordingDirectory = 'C:\Recordings'
+    )
+
+    $result = [PSCustomObject]@{
+        Started    = $false
+        OutputFile = $null
+    }
+
+    if (-not (Get-Command -Name StartRecord -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'StartRecord function not found. Skipping recording start.'
+        return $result
+    }
+
+    try
+    {
+        if ([System.String]::IsNullOrWhiteSpace($DeploymentType))
+        {
+            $DeploymentType = 'Install'
+        }
+
+        $rawRecordFileName = '{0}_{1}_{2}' -f $AppName, $DeploymentType, (Get-Date -Format 'yyyyMMdd_HHmmss')
+        $invalidPattern = '[{0}]' -f [regex]::Escape((-join [System.IO.Path]::GetInvalidFileNameChars()))
+        $recordFileName = ($rawRecordFileName -replace '\s+', '_' -replace $invalidPattern, '_').Trim(' ', '.')
+        if ([System.String]::IsNullOrWhiteSpace($recordFileName))
+        {
+            $recordFileName = $FallbackRecordName
+        }
+
+        $outputFile = Join-Path -Path $RecordingDirectory -ChildPath "$recordFileName.mp4"
+        StartRecord -recordSavePath $recordFileName
+        Write-Host 'StartRecord succeeded.'
+
+        $result.Started = $true
+        $result.OutputFile = $outputFile
+        return $result
+    }
+    catch
+    {
+        Write-Warning "StartRecord failed but deployment will continue: $($_.Exception.Message)"
+        return $result
+    }
+}
+
+function Stop-TerraForgeRecording
+{
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param
+    (
+        [Parameter(Mandatory)]
+        [bool]$RecordingStarted,
+
+        [Parameter()]
+        [string]$RecordingOutputFile,
+
+        [Parameter()]
+        [switch]$UploadToStorageAccount
+    )
+
+    $result = [PSCustomObject]@{
+        StopAttempted       = $false
+        StopSucceeded       = $false
+        UploadRequested     = [bool]$UploadToStorageAccount
+        UploadSucceeded     = $false
+        RecordingOutputFile = $RecordingOutputFile
+        Error               = $null
+    }
+
+    if (-not $RecordingStarted)
+    {
+        $result.Error = 'Recording was not started. Skipping recording stop and upload.'
+        return $result
+    }
+
+    if (-not (Get-Command -Name StopRecord -ErrorAction SilentlyContinue))
+    {
+        $result.Error = 'StopRecord function not found. Skipping recording stop and upload.'
+        Write-Warning $result.Error
+        return $result
+    }
+
+    try
+    {
+        $result.StopAttempted = $true
+        if ($RecordingOutputFile)
+        {
+            StopRecord -UploadToStorageAccount:$UploadToStorageAccount -Files @($RecordingOutputFile)
+        }
+        else
+        {
+            StopRecord -UploadToStorageAccount:$UploadToStorageAccount
+        }
+
+        $result.StopSucceeded = $true
+        if ($UploadToStorageAccount)
+        {
+            if ($RecordingOutputFile -and -not (Test-Path -LiteralPath $RecordingOutputFile -PathType Leaf))
+            {
+                $result.Error = "Recording output file was not found after stopping recorder: $RecordingOutputFile"
+            }
+            else
+            {
+                $result.UploadSucceeded = $true
+            }
+        }
+        Write-Host 'StopRecord succeeded.'
+        return $result
+    }
+    catch
+    {
+        $result.Error = "StopRecord failed but deployment completion will continue: $($_.Exception.Message)"
+        Write-Warning $result.Error
+        return $result
+    }
+}
+
+function Assert-PSADTDeploymentLogContent
+{
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param
+    (
+        [Parameter()]
+        [string]$LogFolder = 'C:\Windows\Logs\Software',
+
+        [Parameter()]
+        [string]$LogFileName,
+
+        [Parameter()]
+        [string[]]$ValidationContent = @(''),
+
+        [Parameter()]
+        [string]$AppVendor,
+
+        [Parameter()]
+        [string]$AppName,
+
+        [Parameter()]
+        [string]$AppVersion,
+
+        [Parameter()]
+        [string]$AppArch,
+
+        [Parameter()]
+        [string]$AppLang,
+
+        [Parameter()]
+        [string]$AppRevision,
+
+        [Parameter()]
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType = 'Install',
+
+        [Parameter()]
+        [switch]$PassThru
+    )
+
+    $metadata = [ordered]@{
+        AppVendor   = $AppVendor
+        AppName     = $AppName
+        AppVersion  = $AppVersion
+        AppArch     = $AppArch
+        AppLang     = $AppLang
+        AppRevision = $AppRevision
+    }
+    $missingMetadata = @($metadata.GetEnumerator() | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.Value) } | ForEach-Object { $_.Key })
+    $installName = $null
+
+    if ($missingMetadata.Count -eq 0)
+    {
+        $rawInstallName = '{0}_{1}_{2}_{3}_{4}_{5}' -f $AppVendor, $AppName, $AppVersion, $AppArch, $AppLang, $AppRevision
+        $invalidPattern = '[{0}]' -f [regex]::Escape((-join [System.IO.Path]::GetInvalidFileNameChars()))
+        $installName = ($rawInstallName.Trim('_') -replace '\s+', '' -replace '_+', '_') -replace $invalidPattern, ''
+    }
+
+    if ([string]::IsNullOrWhiteSpace($LogFileName))
+    {
+        if ($missingMetadata.Count -gt 0)
+        {
+            throw "Cannot generate PSADT log file name. Missing application metadata: $($missingMetadata -join ', ')."
+        }
+
+        $LogFileName = '{0}_PSAppDeployToolkit_{1}.log' -f $installName, $DeploymentType
+    }
+    elseif ([string]::IsNullOrWhiteSpace([System.IO.Path]::GetExtension($LogFileName)))
+    {
+        $LogFileName = "$LogFileName.log"
+    }
+
+    $hasValidationContent = @($ValidationContent | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -gt 0
+    if (-not $hasValidationContent)
+    {
+        if ($missingMetadata.Count -gt 0)
+        {
+            throw "ValidationContent is required when application metadata is incomplete. Missing application metadata: $($missingMetadata -join ', ')."
+        }
+
+        $deploymentTypeText = $DeploymentType.ToLowerInvariant()
+        $escapedInstallName = [regex]::Escape($installName)
+        $escapedDeploymentType = [regex]::Escape($deploymentTypeText)
+        $ValidationContent = @(
+            "\[$escapedInstallName\]\s+$escapedDeploymentType completed in \[\d+(?:\.\d+)?\]\s+seconds with exit code \[0\]\."
+        )
+    }
+
+    $logPath = if ([System.IO.Path]::IsPathRooted($LogFileName))
+    {
+        $LogFileName
+    }
+    else
+    {
+        Join-Path -Path $LogFolder -ChildPath $LogFileName
+    }
+
+    if (-not (Test-Path -LiteralPath $logPath -PathType Leaf))
+    {
+        throw "PSADT deployment log file was not found: $logPath"
+    }
+
+    $logContent = Get-Content -LiteralPath $logPath -Raw -ErrorAction Stop
+    $missingContent = @(
+        foreach ($expectedContent in $ValidationContent)
+        {
+            if ([string]::IsNullOrWhiteSpace($expectedContent))
+            {
+                continue
+            }
+
+            if (-not [regex]::IsMatch($logContent, $expectedContent, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase))
+            {
+                $expectedContent
+            }
+        }
+    )
+
+    $result = [PSCustomObject]@{
+        Succeeded       = ($missingContent.Count -eq 0)
+        LogPath         = $logPath
+        LogFileName     = [System.IO.Path]::GetFileName($logPath)
+        ValidationCount = @($ValidationContent | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+        MissingContent  = $missingContent
+    }
+
+    if (-not $result.Succeeded)
+    {
+        throw "PSADT deployment log validation failed for '$logPath'. Missing content: $($missingContent -join ' | ')"
+    }
+
+    Write-Host "PSADT deployment log validation passed: $logPath"
+    if ($PassThru)
+    {
+        return $result
+    }
+}
+
 #region Registry Helpers
 
 function Get-RegistryValue
@@ -250,6 +708,61 @@ function Set-RegistryValue
     }
 
     Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force
+}
+
+function Append-RegistryValue
+{
+    <#
+    .SYNOPSIS
+        Appends a value to an existing registry string value, creating the key if necessary.
+    .PARAMETER Path
+        The registry key path. Defaults to the TerraForge agent registry path.
+    .PARAMETER Name
+        The name of the registry value to append to.
+    .PARAMETER Value
+        The value to append.
+    .PARAMETER Separator
+        The separator to use between existing and new value (default: ';').
+    .PARAMETER Type
+        The registry value type (default: String).
+    #>
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [string]$Path = 'HKLM:\SOFTWARE\Microsoft\TerraforgeAgent',
+
+        [Parameter(Mandatory)]
+        [string]$Name,
+
+        [Parameter(Mandatory)]
+        [string]$Value,
+
+        [Parameter()]
+        [string]$Separator = ';',
+
+        [Parameter()]
+        [Microsoft.Win32.RegistryValueKind]$Type = [Microsoft.Win32.RegistryValueKind]::String
+    )
+
+    if (-not (Test-Path $Path))
+    {
+        New-Item -Path $Path -Force | Out-Null
+    }
+
+    $existingValue = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+    $currentValue = if ($existingValue) { $existingValue.$Name } else { $null }
+
+    if ([string]::IsNullOrWhiteSpace($currentValue))
+    {
+        $newValue = $Value
+    }
+    else
+    {
+        $newValue = "{0}{1}{2}" -f $currentValue, $Separator, $Value
+    }
+
+    Set-ItemProperty -Path $Path -Name $Name -Value $newValue -Type $Type -Force
 }
 
 function Get-SessionID
@@ -811,7 +1324,7 @@ function Copy-ResultsToAzureBlobStorage
             }
             else
             {
-                Write-Host "File '$file' not found, skipping."
+                Write-Warning "File '$file' not found, skipping upload."
             }
         }
     }

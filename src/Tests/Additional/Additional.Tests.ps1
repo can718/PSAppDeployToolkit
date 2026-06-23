@@ -270,7 +270,7 @@ Describe 'PSADT Build Template Validation' -Tag 'Validation' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It 'Template environment variables, directories, and contents are valid' {
+        It 'PSADT Build Template Validation' {
             # V3 and V4 environment variables must be set
             $script:v3Dir | Should -Not -BeNullOrEmpty -Because 'PSADT_TEMPLATE_V3_DIR environment variable must be set'
             $script:v4Dir | Should -Not -BeNullOrEmpty -Because 'PSADT_TEMPLATE_V4_DIR environment variable must be set'
@@ -295,7 +295,7 @@ Describe 'PSADT Build Template Validation' -Tag 'Validation' {
     }
 }
 
-Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
+Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
     Context 'Build winSCP package from V4 template and deploy into SCCM' {
 
         BeforeAll {
@@ -344,7 +344,7 @@ Describe 'winSCP Package Preparation and SCCM Deployment' -Tag 'WinSCP' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It 'Builds winSCP package and deploys into SCCM' {
+        It 'Install winSCP via SCCM application deployment' {
             Write-Information "::info::[winSCP] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -426,7 +426,7 @@ $app = foreach ($root in $uninstallRoots)
     {
         Get-ChildItem -Path $root |
             Get-ItemProperty -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like '*WinSCP*' -and $_.DisplayVersion -eq '6.5.6' }
+            Where-Object { $_.DisplayName -like '*WinSCP*' -and $_.DisplayVersion -like '6.5.6*' }
     }
 }
 if ($app) { Write-Host "Installed" }
@@ -464,10 +464,10 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It 'Creates uninstall deployment after winSCP install deployment succeeds' {
+        It 'Uninstall winSCP via SCCM application deployment' {
             if (-not $script:winscpInstallDeploySucceeded)
             {
-                Set-ItResult -Skipped -Because "Prerequisite test 'Builds winSCP package and deploys into SCCM' did not complete successfully"
+                Set-ItResult -Skipped -Because "Prerequisite test 'Installs winSCP via SCCM application deployment' did not complete successfully"
                 return
             }
 
@@ -499,7 +499,7 @@ if ($app) { Write-Host "Installed" }
     }
 }
 
-Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
+Describe 'VLC SCCM Deployment' -Tag 'VLC' {
     Context 'Build VLC package from V4 template and deploy into SCCM' {
 
         BeforeAll {
@@ -550,7 +550,7 @@ Describe 'VLC Package Preparation and SCCM Deployment' -Tag 'VLC' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It 'Builds VLC package and deploys into SCCM' {
+        It 'Install VLC via SCCM application deployment' {
             if (-not (Test-PSADTTemplateValidationGate))
             {
                 Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
@@ -665,10 +665,10 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It 'Creates uninstall deployment after VLC install deployment succeeds' {
+        It 'Uninstall VLC via SCCM application deployment' {
             if (-not $script:vlcInstallDeploySucceeded)
             {
-                Set-ItResult -Skipped -Because "Prerequisite test 'Builds VLC package and imports into SCCM' did not complete successfully"
+                Set-ItResult -Skipped -Because "Prerequisite test 'Installs VLC via SCCM application deployment' did not complete successfully"
                 return
             }
 

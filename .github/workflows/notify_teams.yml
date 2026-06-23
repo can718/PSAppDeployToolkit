@@ -472,18 +472,22 @@ jobs:
           }
 
           $ciPanel = New-WorkflowStagePanel -Title 'Stage: Pipeline Info' -Rows $ciStageRows
-          $stepsPanel = if ($stepRows.Count -gt 0) {
-            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $stepRows
+          $maxVisibleStepRows = 5
+          $visibleStepRows = @($stepRows | Select-Object -First $maxVisibleStepRows)
+          $hasAdditionalStepRows = $stepRows.Count -gt $maxVisibleStepRows
+          $stepsPanel = if ($visibleStepRows.Count -gt 0) {
+            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $visibleStepRows
           }
           else {
             $null
           }
-          $pesterPanel = if ($pesterStageRows.Count -gt 0) {
-            New-WorkflowStagePanel -Title 'Stage: Pester Test Results' -Rows $pesterStageRows
+          $allStepsPanel = if ($hasAdditionalStepRows) {
+            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps (All)' -Rows $stepRows
           }
           else {
             $null
           }
+          $pesterPanel = $null
           $casesPanel = if ($caseRows.Count -gt 0) {
             New-WorkflowStagePanel -Title 'Stage: Test Cases' -Rows $caseRows
           }
@@ -491,7 +495,7 @@ jobs:
             $null
           }
 
-          $hasAnyDetailData = ($stepRows.Count -gt 0) -or ($pesterStageRows.Count -gt 0) -or ($caseRows.Count -gt 0)
+          $hasAnyDetailData = ($stepRows.Count -gt 0) -or ($caseRows.Count -gt 0)
 
           $adaptiveActions = @()
           if ($runUrl) {
@@ -567,9 +571,59 @@ jobs:
             }
 
             if ($stepsPanel) {
-              $cardBody += @{
-                type = 'Container'
-                items = @($stepsPanel)
+              if ($allStepsPanel) {
+                $cardBody += @(
+                  @{
+                    type = 'Container'
+                    id = 'pipeline-steps-summary-panel'
+                    items = @($stepsPanel)
+                  },
+                  @{
+                    type = 'Container'
+                    id = 'pipeline-steps-all-panel'
+                    isVisible = $false
+                    items = @($allStepsPanel)
+                  },
+                  @{
+                    type = 'ActionSet'
+                    id = 'pipeline-steps-view-all-action'
+                    actions = @(
+                      @{
+                        type = 'Action.ToggleVisibility'
+                        title = 'View All Steps'
+                        targetElements = @(
+                          'pipeline-steps-summary-panel',
+                          'pipeline-steps-all-panel',
+                          'pipeline-steps-view-all-action',
+                          'pipeline-steps-view-fewer-action'
+                        )
+                      }
+                    )
+                  },
+                  @{
+                    type = 'ActionSet'
+                    id = 'pipeline-steps-view-fewer-action'
+                    isVisible = $false
+                    actions = @(
+                      @{
+                        type = 'Action.ToggleVisibility'
+                        title = 'Show Fewer Steps'
+                        targetElements = @(
+                          'pipeline-steps-summary-panel',
+                          'pipeline-steps-all-panel',
+                          'pipeline-steps-view-all-action',
+                          'pipeline-steps-view-fewer-action'
+                        )
+                      }
+                    )
+                  }
+                )
+              }
+              else {
+                $cardBody += @{
+                  type = 'Container'
+                  items = @($stepsPanel)
+                }
               }
             }
           }

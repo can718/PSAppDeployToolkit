@@ -155,6 +155,94 @@ $PostRepair = {
 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
 $ProgressPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue
 Set-StrictMode -Version 1
+
+$recordingStarted = $false
+$recordingStopAttempted = $false
+$recordingOutputFile = $null
+$helperLoaded = $false
+
+function Start-AdditionalTestRecording
+{
+    if ($script:recordingStarted)
+    {
+        return
+    }
+
+    try
+    {
+        if ($script:helperLoaded -and (Get-Command -Name Start-TerraForgeRecording -ErrorAction SilentlyContinue))
+        {
+            $currentSession = Get-ADTSession
+            Write-ADTLogEntry -Message "Starting recording for [$($currentSession.AppName)] deployment type [$($currentSession.DeploymentType)]." -Severity Info
+            $recordingContext = Start-TerraForgeRecording -AppName $currentSession.AppName -DeploymentType $currentSession.DeploymentType
+            $script:recordingStarted = $recordingContext.Started
+            $script:recordingOutputFile = $recordingContext.OutputFile
+
+            if ($script:recordingStarted)
+            {
+                Write-ADTLogEntry -Message "Recording started successfully. Output file: [$($script:recordingOutputFile)]." -Severity Info
+            }
+            else
+            {
+                Write-ADTLogEntry -Message "Recording start completed without starting an active recording." -Severity Warning
+            }
+        }
+    }
+    catch
+    {
+        Write-ADTLogEntry -Message "Failed to start recording. Deployment will continue. $($_.Exception.Message)" -Severity Warning
+    }
+}
+
+function Stop-AdditionalTestRecording
+{
+    if ($script:recordingStopAttempted -or !$script:recordingStarted)
+    {
+        return
+    }
+
+    $script:recordingStopAttempted = $true
+
+    if ($script:helperLoaded -and (Get-Command -Name Stop-TerraForgeRecording -ErrorAction SilentlyContinue))
+    {
+        Start-Sleep -Seconds 3
+        $uploadEnvironmentStatus = @(
+            "TERRAFORGE_API_BASE_URL=$(-not [System.String]::IsNullOrWhiteSpace($env:TERRAFORGE_API_BASE_URL))"
+            "TEST_RUN_ID=$(-not [System.String]::IsNullOrWhiteSpace($env:TEST_RUN_ID))"
+            "INFRA_MI_CLIENT_ID=$(-not [System.String]::IsNullOrWhiteSpace($env:INFRA_MI_CLIENT_ID))"
+            "INFRA_KEYVAULT=$(-not [System.String]::IsNullOrWhiteSpace($env:INFRA_KEYVAULT))"
+            "TERRAFORGE_API_KEY_SECRET=$(-not [System.String]::IsNullOrWhiteSpace($env:TERRAFORGE_API_KEY_SECRET))"
+        ) -join ', '
+        Write-ADTLogEntry -Message "TerraForge upload environment status: $uploadEnvironmentStatus" -Severity Info
+        Write-ADTLogEntry -Message "Stopping recording for [$($script:adtSession.AppName)] deployment type [$($script:adtSession.DeploymentType)]." -Severity Info
+        $recordingResult = Stop-TerraForgeRecording -RecordingStarted:$script:recordingStarted -RecordingOutputFile $script:recordingOutputFile
+        if ($recordingResult.Error)
+        {
+            Write-ADTLogEntry -Message "Recording stop/upload completed with warning for output file [$($script:recordingOutputFile)]: $($recordingResult.Error)" -Severity Warning
+        }
+        elseif ($recordingResult.UploadRequested -and $recordingResult.UploadSucceeded)
+        {
+            Write-ADTLogEntry -Message "Recording stopped and uploaded successfully for output file [$($script:recordingOutputFile)]." -Severity Info
+        }
+        elseif (-not $recordingResult.UploadRequested)
+        {
+            Append-RegistryValue -Name 'RecordingUploadNotRequested' -Value $script:recordingOutputFile
+            Write-ADTLogEntry -Message "Set registry value for output file [$($script:recordingOutputFile)] successfully." -Severity info
+        }
+        else
+        {
+            Write-ADTLogEntry -Message "Recording stop request completed for output file [$($script:recordingOutputFile)]." -Severity Info
+        }
+    }
+}
+
+function Register-AdditionalTestRecordingCallbacks
+{
+    Add-ADTModuleCallback -Hookpoint PostOpen -Callback (Get-Command -Name Start-AdditionalTestRecording)
+    Add-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-Command -Name Stop-AdditionalTestRecording)
+}
+
+
 try
 {
     if (Test-Path -LiteralPath "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1" -PathType Leaf)
@@ -166,8 +254,32 @@ try
     {
         Import-Module -FullyQualifiedName @{ ModuleName = 'PSAppDeployToolkit'; Guid = '8c3c366b-8606-4576-9f2d-4051144f7ca2'; ModuleVersion = '4.2.0' } -Force
     }
+
+    try
+    {
+        $helperScriptPath = "C:\PSADTScripts\TerraForge-AgentHelper.ps1"
+        if ([System.String]::IsNullOrWhiteSpace($helperScriptPath) -or -not (Test-Path -LiteralPath $helperScriptPath -PathType Leaf))
+        {
+            $helperScriptPath = Join-Path $PSScriptRoot '..\..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'
+        }
+        if (Test-Path -LiteralPath $helperScriptPath -PathType Leaf)
+        {
+            . $helperScriptPath
+            $helperLoaded = $true
+        }
+        else
+        {
+            Write-ADTLogEntry -Message "TerraForge-AgentHelper.ps1 not found at path: $helperScriptPath. Skipping recording start." -Severity Warning
+        }
+    }
+    catch
+    {
+        Write-ADTLogEntry -Message "Failed to load TerraForge-AgentHelper.ps1. Skipping recording integration. $($_.Exception.Message)" -Severity Warning
+    }
+
     $iadtParams = Get-ADTBoundParametersAndDefaultValues -Invocation $MyInvocation
     $adtSession = Remove-ADTHashtableNullOrEmptyValues -Hashtable $adtSession
+    Register-AdditionalTestRecordingCallbacks
     $adtSession = Open-ADTSession @adtSession @iadtParams -PassThru
 }
 catch
