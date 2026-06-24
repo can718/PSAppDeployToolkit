@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 This script invokes a PSAppDeployToolkit deployment.
 
