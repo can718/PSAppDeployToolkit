@@ -480,6 +480,15 @@ jobs:
         . $tfHelper
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml'
 
+        $recordFile = Get-RegistryValue -Name 'RecordingUploadNotRequested'
+        if ($recordFile) {
+          Write-Host "Uploading recording file(s) to blob storage: $recordFile"
+          $recordFiles = $recordFile -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles
+        } else {
+          Write-Host "No recording file found for upload."
+        }
+
     - name: Collect step outcomes
       id: collect-outputs
       if: always()
@@ -521,7 +530,7 @@ jobs:
           throw "TerraForge helper script not found: $tfHelper"
         }
         . $tfHelper
-        Invoke-TFResetSessionVM
+        Invoke-TFResetSessionVM -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml'
 
   notify-teams:
     name: Notify Teams (Intune)

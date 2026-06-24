@@ -699,3 +699,206 @@ if ($app) { Write-Host "Installed" }
         }
     }
 }
+
+Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
+    Context 'Build Notepad++ package from V4 template and deploy into SCCM' {
+
+        BeforeAll {
+            $ctx = New-PSADTAppTestContext `
+                -SourceScriptRelativePath 'Notepad++\Invoke-AppDeployToolkit.ps1' `
+                -PackageDir 'C:\PSADT\NotepadPlusPlus' `
+                -AppName 'Notepad++ (PSADT v4 Notepad++)' `
+                -AppVendor 'Don HO don.h@free.fr' `
+                -AppVersion '6.6.4' `
+                -DeploymentTypeName 'Notepad++ 6.6.4 (v4 Notepad++)' `
+                -ContentSubPath 'NotepadPlusPlus'
+
+            $script:v4Dir = $ctx.V4Dir
+            $script:notepadSourceScript = $ctx.SourceScript
+            $script:notepadPackageDir = $ctx.PackageDir
+            $script:notepadAppName = $ctx.AppName
+            $script:notepadAppVendor = $ctx.AppVendor
+            $script:notepadAppVersion = $ctx.AppVersion
+            $script:notepadDTName = $ctx.DeploymentTypeName
+            $script:notepadContentUNC = $ctx.ContentUNC
+            $script:targetCollection = $ctx.TargetCollection
+            $script:notepadInstallDeploySucceeded = $false
+            $script:siteCode = $ctx.SiteCode
+            $script:siteServer = $ctx.SiteServer
+            $script:cmModulePath = $ctx.CmModulePath
+        }
+
+        AfterAll {
+            # if (Test-Path $script:notepadPackageDir)
+            # {
+            #     Remove-Item $script:notepadPackageDir -Recurse -Force -ErrorAction SilentlyContinue
+            #     Write-Verbose "  [teardown] Removed Notepad++ package directory: $($script:notepadPackageDir)"
+            # }
+        }
+
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass = 'Notepad++ Package Preparation and SCCM Deployment / Build Notepad++ package from V4 template and deploy into SCCM'
+            $script:CurrentTestMethod = $testInfo.Name
+            $script:CurrentTestKey = New-TFTestCaseKey -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod -TestKey $script:CurrentTestKey
+        }
+
+        AfterEach {
+            $currentTest = $____Pester.CurrentTest
+            Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
+        }
+
+        It 'Install Notepad++ via SCCM application deployment' {
+            Write-Information '::info::[Notepad++] Step 0: Verifying template validation gate...'
+            if (-not (Test-PSADTTemplateValidationGate))
+            {
+                Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
+                return
+            }
+            Write-Information '::info::[Notepad++] Template validation gate satisfied.' -InformationAction Continue
+
+            # ----------------------------------------------------------------
+            # Step 1 - Prepare local Notepad++ upgrade environment
+            # ----------------------------------------------------------------
+            $notepadEnvironment = Initialize-NotepadPlusPlusSccmEnvironment -LaunchLegacyProcess -LogPrefix 'Notepad++'
+
+            # ----------------------------------------------------------------
+            # Step 2 - Verify prerequisites
+            # ----------------------------------------------------------------
+            if (-not (Test-PSADTPackageBuildPrerequisites `
+                        -TemplateDir $script:v4Dir `
+                        -TemplateEnvName 'PSADT_TEMPLATE_V4_DIR' `
+                        -SiteCode $script:siteCode `
+                        -SiteServer $script:siteServer `
+                        -SourceScript $script:notepadSourceScript `
+                        -SourceScriptLabel 'Notepad++\Invoke-AppDeployToolkit.ps1' `
+                        -LogPrefix 'Notepad++' `
+                        -UseInformationLogs))
+            {
+                return
+            }
+
+            # ----------------------------------------------------------------
+            # Step 3 - Copy V4 template to Notepad++ package directory
+            # ----------------------------------------------------------------
+            Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v4Dir -PackageDir $script:notepadPackageDir -LogPrefix 'Notepad++' -UseInformationLogs
+
+            # ----------------------------------------------------------------
+            # Step 4 - Replace Invoke-AppDeployToolkit.ps1 with Notepad++ version
+            # ----------------------------------------------------------------
+            $destScript = Update-PSADTPackageDeployScript `
+                -PackageDir $script:notepadPackageDir `
+                -SourceScript $script:notepadSourceScript `
+                -ExpectedContentPattern 'Notepad\+\+' `
+                -LogPrefix 'Notepad++' `
+                -UseInformationLogs
+
+            # ----------------------------------------------------------------
+            # Step 5 - Copy Notepad++ installer into Files folder
+            # ----------------------------------------------------------------
+            Copy-PSADTPackageInstallerToFiles `
+                -DeployScriptPath $destScript.FullName `
+                -InstallerSource $notepadEnvironment.TargetInstallerPath `
+                -InstallerLabel 'installer' `
+                -LogPrefix 'Notepad++' `
+                -UseInformationLogs `
+                -ExpectedFileName 'npp.6.6.4.Installer.exe'
+
+            # ----------------------------------------------------------------
+            # Step 6 - Verify SMB content share and directories exist
+            # ----------------------------------------------------------------
+            if (-not (Assert-PSADTContentPathReady `
+                        -CmModulePath $script:cmModulePath `
+                        -PackageDir $script:notepadPackageDir `
+                        -ContentUNC $script:notepadContentUNC `
+                        -LogPrefix 'Notepad++' `
+                        -UseInformationLogs))
+            {
+                return
+            }
+
+            # ----------------------------------------------------------------
+            # Step 7 - Import application into SCCM
+            # ----------------------------------------------------------------
+            Write-Verbose '[Notepad++] Step 7: Importing Notepad++ application into SCCM...'
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                Write-Information '::info::[Notepad++] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
+                $detectScript = @'
+$uninstallKey = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++'
+if (Test-Path $uninstallKey)
+{
+    $app = Get-ItemProperty -Path $uninstallKey -ErrorAction SilentlyContinue
+    if ($app.DisplayVersion -like '6.6.4*')
+    {
+        Write-Host "Installed"
+    }
+}
+'@
+
+                New-PSADTApplicationWithDeploymentType `
+                    -AppName $script:notepadAppName `
+                    -Vendor $script:notepadAppVendor `
+                    -Version $script:notepadAppVersion `
+                    -DeploymentTypeName $script:notepadDTName `
+                    -ContentUNC $script:notepadContentUNC `
+                    -PackageDir $script:notepadPackageDir `
+                    -DetectScript $detectScript `
+                    -Description "PSADT v4 Notepad++ template - Notepad++ $script:notepadAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+
+                # ----------------------------------------------------------------
+                # Step 8 - Distribute content
+                # ----------------------------------------------------------------
+                Write-Verbose '[Notepad++] Step 8: Triggering content distribution...'
+                Start-PSADTContentDistributionAndAssert -AppName $script:notepadAppName -LogPrefix 'Notepad++'
+
+                # ----------------------------------------------------------------
+                # Step 8b - Deploy application to collection
+                # ----------------------------------------------------------------
+                Write-Verbose "[Notepad++] Step 8b: Deploying application to collection '$($script:targetCollection)'..."
+                New-PSADTRequiredDeployment -AppName $script:notepadAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'Notepad++'
+
+                # ----------------------------------------------------------------
+                # Step 9 - Poll application deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[Notepad++] Step 9: Polling application deployment status...' -InformationAction Continue
+                $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Deployment'
+                Write-Information $deploymentSummary -InformationAction Continue
+                $script:notepadInstallDeploySucceeded = $true
+            }
+        }
+
+        It 'Uninstall Notepad++ via SCCM application deployment' {
+            if (-not $script:notepadInstallDeploySucceeded)
+            {
+                Set-ItResult -Skipped -Because "Prerequisite test 'Installs Notepad++ via SCCM application deployment' did not complete successfully"
+                return
+            }
+
+            if (-not $script:cmModulePath)
+            {
+                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
+                return
+            }
+
+            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
+                return
+            }
+
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                $app = Get-CMApplication -Name $script:notepadAppName -ErrorAction SilentlyContinue
+                $app | Should -Not -BeNullOrEmpty -Because 'Notepad++ application must exist before creating uninstall deployment'
+
+                New-PSADTRequiredDeployment -AppName $script:notepadAppName -TargetCollection $script:targetCollection -DeployAction Uninstall -LogPrefix 'Notepad++'
+
+                # ----------------------------------------------------------------
+                # Step 10 - Poll uninstall deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[Notepad++] Step 10: Polling uninstall deployment status...' -InformationAction Continue
+                [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+            }
+        }
+    }
+}

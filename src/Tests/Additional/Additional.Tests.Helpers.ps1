@@ -333,6 +333,108 @@ function script:Copy-PSADTPackageInstallerToFiles
     Test-Path (Join-Path $filesDir $expectedName) | Should -BeTrue
 }
 
+function script:Save-PSADTTestInstaller
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationDirectory,
+        [Parameter(Mandatory = $true)]
+        [string]$FileName,
+        [Parameter(Mandatory = $true)]
+        [string]$Uri,
+        [string]$LogPrefix = 'Test'
+    )
+
+    if (-not (Test-Path -LiteralPath $DestinationDirectory -PathType Container))
+    {
+        New-Item -Path $DestinationDirectory -ItemType Directory -Force | Out-Null
+        Write-Information "::info::[$LogPrefix] Created installer cache directory '$DestinationDirectory'." -InformationAction Continue
+    }
+
+    $destinationPath = Join-Path $DestinationDirectory $FileName
+    if (-not (Test-Path -LiteralPath $destinationPath -PathType Leaf))
+    {
+        Write-Information "::info::[$LogPrefix] Downloading installer '$FileName' from '$Uri'..." -InformationAction Continue
+        Invoke-WebRequest -Uri $Uri -OutFile $destinationPath -UseBasicParsing
+    }
+    else
+    {
+        Write-Information "::info::[$LogPrefix] Reusing cached installer '$destinationPath'." -InformationAction Continue
+    }
+
+    return $destinationPath
+}
+
+function script:Initialize-NotepadPlusPlusSccmEnvironment
+{
+    <#
+        Prepares the local machine for the SCCM Notepad++ upgrade scenario by
+        ensuring the legacy installer is available, installing the legacy version
+        when needed, launching it to simulate an in-use app, and caching the
+        target installer for package creation.
+    #>
+    param (
+        [string]$LegacyInstallerDir = 'C:\Tools\SCCM\NotepadPlusPlus\6.2.3',
+        [string]$LegacyInstallerName = 'npp.6.2.3.Installer.exe',
+        [string]$LegacyInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-2/npp.6.2.3.Installer.exe',
+        [string]$TargetInstallerDir = 'C:\Tools\SCCM\NotepadPlusPlus\6.6.4',
+        [string]$TargetInstallerName = 'npp.6.6.4.Installer.exe',
+        [string]$TargetInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-5/npp.6.6.4.Installer.exe',
+        [string]$LegacyVersionPattern = '^6\.(23|2\.3)(\.|$)',
+        [string]$LogPrefix = 'Notepad++',
+        [switch]$LaunchLegacyProcess
+    )
+
+    $legacyInstallerPath = Save-PSADTTestInstaller `
+        -DestinationDirectory $LegacyInstallerDir `
+        -FileName $LegacyInstallerName `
+        -Uri $LegacyInstallerUri `
+        -LogPrefix $LogPrefix
+
+    $legacyExePath = Join-Path ${env:ProgramFiles(x86)} 'Notepad++\notepad++.exe'
+    $installedLegacyVersion = $null
+    if (Test-Path -LiteralPath $legacyExePath -PathType Leaf)
+    {
+        $installedLegacyVersion = (Get-Item -LiteralPath $legacyExePath).VersionInfo.FileVersion
+    }
+
+    if ($installedLegacyVersion -match $LegacyVersionPattern)
+    {
+        Write-Information "::info::[$LogPrefix] Legacy version already installed: $installedLegacyVersion" -InformationAction Continue
+    }
+    else
+    {
+        Write-Information "::info::[$LogPrefix] Installing legacy Notepad++ prerequisite from '$legacyInstallerPath'." -InformationAction Continue
+        Start-Process -FilePath $legacyInstallerPath -ArgumentList '/S' -Wait -NoNewWindow
+    }
+
+    if ($LaunchLegacyProcess)
+    {
+        if (Test-Path -LiteralPath $legacyExePath -PathType Leaf)
+        {
+            Write-Information "::info::[$LogPrefix] Launching legacy Notepad++ process from '$legacyExePath'." -InformationAction Continue
+            Start-Process -FilePath $legacyExePath
+        }
+        else
+        {
+            Write-Warning "[$LogPrefix] Launch path not found: $legacyExePath"
+        }
+    }
+
+    $targetInstallerPath = Save-PSADTTestInstaller `
+        -DestinationDirectory $TargetInstallerDir `
+        -FileName $TargetInstallerName `
+        -Uri $TargetInstallerUri `
+        -LogPrefix $LogPrefix
+
+    return @{
+        LegacyInstallerPath = $legacyInstallerPath
+        LegacyExePath = $legacyExePath
+        TargetInstallerPath = $targetInstallerPath
+        TargetInstallerDir = $TargetInstallerDir
+    }
+}
+
 function script:Get-PSADTCmModulePath
 {
     $cmModulePath = @(
