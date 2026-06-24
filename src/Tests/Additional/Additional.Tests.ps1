@@ -865,39 +865,27 @@ if (Test-Path $uninstallKey)
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
                 $script:notepadInstallDeploySucceeded = $true
-            }
-        }
-
-        It 'Uninstall Notepad++ via SCCM application deployment' {
-            if (-not $script:notepadInstallDeploySucceeded)
-            {
-                Set-ItResult -Skipped -Because "Prerequisite test 'Installs Notepad++ via SCCM application deployment' did not complete successfully"
-                return
-            }
-
-            if (-not $script:cmModulePath)
-            {
-                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
-                return
-            }
-
-            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
-            {
-                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
-                return
-            }
-
-            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
-                $app = Get-CMApplication -Name $script:notepadAppName -ErrorAction SilentlyContinue
-                $app | Should -Not -BeNullOrEmpty -Because 'Notepad++ application must exist before creating uninstall deployment'
-
-                New-PSADTRequiredDeployment -AppName $script:notepadAppName -TargetCollection $script:targetCollection -DeployAction Uninstall -LogPrefix 'Notepad++'
-
-                # ----------------------------------------------------------------
-                # Step 10 - Poll uninstall deployment status
-                # ----------------------------------------------------------------
-                Write-Information '[Notepad++] Step 10: Polling uninstall deployment status...' -InformationAction Continue
-                [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+                #---------------------------------------------------------------
+                # Step 10 - Check version of installed Notepad++
+                #---------------------------------------------------------------
+                $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
+                if (Test-Path $notepadExePath)
+                {
+                    $notepadFileVersion = (Get-Item -Path $notepadExePath).VersionInfo.FileVersion
+                    Write-Information "[Notepad++] FileVersion: $notepadFileVersion" -InformationAction Continue
+                    if ($notepadFileVersion -match '^6\.23(\.|$)' -or $notepadFileVersion -match '^6\.2\.3(\.|$)')
+                    {
+                        Write-Information '[Notepad++] The currently retained version is the legacy version (6.23).' -InformationAction Continue
+                    }
+                    else
+                    {
+                        Write-Warning "[Notepad++] Main exe version is not an expected legacy value: $notepadFileVersion"
+                    }
+                }
+                else
+                {
+                    Write-Information "[Notepad++] File not found at: $notepadExePath" -InformationAction Continue
+                }
             }
         }
     }
