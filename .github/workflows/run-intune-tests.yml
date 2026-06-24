@@ -522,7 +522,8 @@ jobs:
 
     - name: Reset Azure Session VM
       id: reset-sessionvm
-      if: always()
+      if: false
+      # if: always()
       shell: pwsh
       run: |
         $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
