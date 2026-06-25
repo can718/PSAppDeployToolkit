@@ -171,7 +171,7 @@ function Start-AdditionalTestRecording
 
         if (-not (Get-Command -Name Start-TerraForgeRecording -ErrorAction SilentlyContinue))
         {
-            Write-ADTLogEntry -Message 'Recording start skipped because Start-TerraForgeRecording is unavailable.' -Severity Warning
+            Write-ADTLogEntry -Message 'Recording start skipped because Start-TerraForgeRecording is unavailable.' -Severity Info
             return
         }
 
@@ -187,12 +187,13 @@ function Start-AdditionalTestRecording
         }
         else
         {
-            Write-ADTLogEntry -Message 'Recording start completed without starting an active recording. Verify the StartRecord endpoint is available.' -Severity Warning
+            $recordingReason = if ([System.String]::IsNullOrWhiteSpace($recordingContext.Reason)) { 'No additional detail was returned by the TerraForge helper.' } else { $recordingContext.Reason }
+            Write-ADTLogEntry -Message "Recording start completed without starting an active recording. $recordingReason" -Severity Info
         }
     }
     catch
     {
-        Write-ADTLogEntry -Message "Failed to start recording. Deployment will continue. $($_.Exception.Message)" -Severity Warning
+        Write-ADTLogEntry -Message "Failed to start recording. Deployment will continue. $($_.Exception.Message)" -Severity Info
     }
 }
 
@@ -310,18 +311,39 @@ catch
 ## MARK: Main Execution
 try
 {
-    & "${DeploymentType}"
+    # Import any PSAppDeployToolkit.* extensions
+    Get-ChildItem -LiteralPath $PSScriptRoot -Directory | & {
+        process
+        {
+            if ($_.Name -match 'PSAppDeployToolkit\..+$')
+            {
+                Get-ChildItem -LiteralPath $_.FullName -Recurse -File | Unblock-File -ErrorAction Ignore
+                Import-Module -Name ([System.Management.Automation.WildcardPattern]::Escape("$($_.FullName)\$($_.BaseName).psd1")) -Force
+            }
+        }
+    }
+    foreach ($prefix in 'Pre-', '', 'Post-')
+    {
+        $installPhase = "$prefix$($adtSession.DeploymentType)"
+        $scriptBlock = Get-Variable -Name $installPhase.Replace('-', '') -ValueOnly -ErrorAction Ignore
+        if (![System.String]::IsNullOrWhiteSpace($scriptBlock))
+        {
+            $adtSession.InstallPhase = $installPhase
+            . $scriptBlock
+        }
+    }
     Close-ADTSession
 }
 catch
 {
-    Write-Error $_
-    try
-    {
-        Close-ADTSession -ExitCode 60001
-    }
-    catch
-    {
-    }
-    exit 60001
+    $mainErrorMessage = "An unhandled error within [$($MyInvocation.MyCommand.Name)] has occurred.`n$(Resolve-ADTErrorRecord -ErrorRecord $_)"
+    Write-ADTLogEntry -Message $mainErrorMessage -Severity Error
+
+    ## Error details hidden from the user by default. Show a simple dialog with full stack trace:
+    # Show-ADTDialogBox -Text $mainErrorMessage -Icon Stop -NoWait
+
+    ## Or, a themed dialog with basic error message:
+    # Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) failed at line $($_.InvocationInfo.ScriptLineNumber), char $($_.InvocationInfo.OffsetInLine):`n$($_.InvocationInfo.Line.Trim())`n`nMessage:`n$($_.Exception.Message)" -ButtonRightText OK -NoWait
+
+    Close-ADTSession -ExitCode 60001
 }

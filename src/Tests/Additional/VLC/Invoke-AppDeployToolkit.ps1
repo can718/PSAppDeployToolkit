@@ -175,13 +175,14 @@ function Start-AdditionalTestRecording
             }
             else
             {
-                Write-ADTLogEntry -Message "Recording start completed without starting an active recording." -Severity Warning
+                $recordingReason = if ([System.String]::IsNullOrWhiteSpace($recordingContext.Reason)) { 'No additional detail was returned by the TerraForge helper.' } else { $recordingContext.Reason }
+                Write-ADTLogEntry -Message "Recording start completed without starting an active recording. $recordingReason" -Severity Info
             }
         }
     }
     catch
     {
-        Write-ADTLogEntry -Message "Failed to start recording. Deployment will continue. $($_.Exception.Message)" -Severity Warning
+        Write-ADTLogEntry -Message "Failed to start recording. Deployment will continue. $($_.Exception.Message)" -Severity Info
     }
 }
 

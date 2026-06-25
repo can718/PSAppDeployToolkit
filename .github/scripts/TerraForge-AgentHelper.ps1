@@ -366,11 +366,13 @@ function Start-TerraForgeRecording
     $result = [PSCustomObject]@{
         Started    = $false
         OutputFile = $null
+        Reason     = $null
     }
 
     if (-not (Get-Command -Name StartRecord -ErrorAction SilentlyContinue))
     {
-        Write-Warning 'StartRecord function not found. Skipping recording start.'
+        $result.Reason = 'StartRecord function not found.'
+        Write-Verbose 'StartRecord function not found. Skipping recording start.'
         return $result
     }
 
@@ -399,7 +401,8 @@ function Start-TerraForgeRecording
     }
     catch
     {
-        Write-Warning "StartRecord failed but deployment will continue: $($_.Exception.Message)"
+        $result.Reason = "StartRecord failed: $($_.Exception.Message)"
+        Write-Verbose "StartRecord failed but deployment will continue: $($_.Exception.Message)"
         return $result
     }
 }
