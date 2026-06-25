@@ -344,6 +344,70 @@ function Resolve-TerraForgeLocalIPv4
     return $machineIp
 }
 
+function Lock-TerraForgeRecording
+{
+    [CmdletBinding()]
+    [OutputType([System.Threading.Mutex])]
+    param
+    (
+        [Parameter()]
+        [string]$Name = 'Global\TerraForgeRecording',
+
+        [Parameter()]
+        [int]$TimeoutSeconds = 300
+    )
+
+    if ($script:TerraForgeRecordingMutexOwned)
+    {
+        return $script:TerraForgeRecordingMutex
+    }
+
+    $createdNew = $false
+    $mutex = [System.Threading.Mutex]::new($false, $Name, [ref]$createdNew)
+    try
+    {
+        Write-Host "Waiting for TerraForge recording lock '$Name'..."
+        $lockAcquired = $mutex.WaitOne([System.TimeSpan]::FromSeconds($TimeoutSeconds))
+        if (-not $lockAcquired)
+        {
+            $mutex.Dispose()
+            throw "Timed out waiting for TerraForge recording lock '$Name' after $TimeoutSeconds seconds."
+        }
+    }
+    catch [System.Threading.AbandonedMutexException]
+    {
+        Write-Warning "TerraForge recording lock '$Name' was abandoned by another process; continuing with the recovered lock."
+    }
+
+    $script:TerraForgeRecordingMutex = $mutex
+    $script:TerraForgeRecordingMutexOwned = $true
+    Write-Host "Acquired TerraForge recording lock '$Name'."
+    return $mutex
+}
+
+function Unlock-TerraForgeRecording
+{
+    [CmdletBinding()]
+    param ()
+
+    if (-not $script:TerraForgeRecordingMutexOwned -or -not $script:TerraForgeRecordingMutex)
+    {
+        return
+    }
+
+    try
+    {
+        $script:TerraForgeRecordingMutex.ReleaseMutex()
+        Write-Host 'Released TerraForge recording lock.'
+    }
+    finally
+    {
+        $script:TerraForgeRecordingMutex.Dispose()
+        $script:TerraForgeRecordingMutex = $null
+        $script:TerraForgeRecordingMutexOwned = $false
+    }
+}
+
 function Start-TerraForgeRecording
 {
     [CmdletBinding()]
@@ -360,7 +424,13 @@ function Start-TerraForgeRecording
         [string]$FallbackRecordName = 'recording',
 
         [Parameter()]
-        [string]$RecordingDirectory = 'C:\Recordings'
+        [string]$RecordingDirectory = 'C:\Recordings',
+
+        [Parameter()]
+        [string]$RecordingLockName = 'Global\TerraForgeRecording',
+
+        [Parameter()]
+        [int]$RecordingLockTimeoutSeconds = 300
     )
 
     $result = [PSCustomObject]@{
@@ -378,6 +448,8 @@ function Start-TerraForgeRecording
 
     try
     {
+        $null = Lock-TerraForgeRecording -Name $RecordingLockName -TimeoutSeconds $RecordingLockTimeoutSeconds
+
         if ([System.String]::IsNullOrWhiteSpace($DeploymentType))
         {
             $DeploymentType = 'Install'
@@ -401,6 +473,7 @@ function Start-TerraForgeRecording
     }
     catch
     {
+        Unlock-TerraForgeRecording
         $result.Reason = "StartRecord failed: $($_.Exception.Message)"
         Write-Verbose "StartRecord failed but deployment will continue: $($_.Exception.Message)"
         return $result
@@ -442,6 +515,7 @@ function Stop-TerraForgeRecording
     {
         $result.Error = 'StopRecord function not found. Skipping recording stop and upload.'
         Write-Warning $result.Error
+        Unlock-TerraForgeRecording
         return $result
     }
 
@@ -477,6 +551,10 @@ function Stop-TerraForgeRecording
         $result.Error = "StopRecord failed but deployment completion will continue: $($_.Exception.Message)"
         Write-Warning $result.Error
         return $result
+    }
+    finally
+    {
+        Unlock-TerraForgeRecording
     }
 }
 
