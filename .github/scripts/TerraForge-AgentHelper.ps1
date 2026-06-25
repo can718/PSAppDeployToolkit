@@ -177,7 +177,8 @@ function StartRecord
     #$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     #$RecordSavePath = 'C:\Recordings\{0}_{1}.mp4' -f $recordSavePath, $timestamp
     $RecordSavePath = 'C:\Recordings\{0}.mp4' -f $recordSavePath
-    Invoke-RestMethod -Uri ('http://{0}:8088/start?savingPath={1}' -f $MachineIp, $RecordSavePath)
+    $encodedRecordSavePath = [System.Uri]::EscapeDataString($RecordSavePath)
+    Invoke-RestMethod -Uri ('http://{0}:8088/start?savingPath={1}' -f $MachineIp, $encodedRecordSavePath)
 }
 
 function StopRecord
@@ -365,11 +366,13 @@ function Start-TerraForgeRecording
     $result = [PSCustomObject]@{
         Started    = $false
         OutputFile = $null
+        Reason     = $null
     }
 
     if (-not (Get-Command -Name StartRecord -ErrorAction SilentlyContinue))
     {
-        Write-Warning 'StartRecord function not found. Skipping recording start.'
+        $result.Reason = 'StartRecord function not found.'
+        Write-Verbose 'StartRecord function not found. Skipping recording start.'
         return $result
     }
 
@@ -398,7 +401,8 @@ function Start-TerraForgeRecording
     }
     catch
     {
-        Write-Warning "StartRecord failed but deployment will continue: $($_.Exception.Message)"
+        $result.Reason = "StartRecord failed: $($_.Exception.Message)"
+        Write-Verbose "StartRecord failed but deployment will continue: $($_.Exception.Message)"
         return $result
     }
 }

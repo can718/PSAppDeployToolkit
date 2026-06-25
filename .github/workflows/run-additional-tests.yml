@@ -393,11 +393,12 @@ jobs:
         # Create subdirectories for WinSCP and VLC
         New-Item -ItemType Directory -Path "$shareRootPath\winSCP" -Force | Out-Null
         New-Item -ItemType Directory -Path "$shareRootPath\VLC" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$shareRootPath\NotepadPlusPlus" -Force | Out-Null
 
         # Discover all targeted tests first so we can report how many were not executed.
         $discoveryConfig = New-PesterConfiguration
         $discoveryConfig.Run.Path = $additionalTestsPath
-        $discoveryConfig.Filter.Tag = @('Validation', 'WinSCP', 'VLC')
+        $discoveryConfig.Filter.Tag = @('Validation', 'WinSCP', 'VLC', 'Notepad++')
         $discoveryConfig.Run.SkipRun = $true
         $discoveryConfig.Run.PassThru = $true
         $discoveryResult = Invoke-Pester -Configuration $discoveryConfig
@@ -427,8 +428,8 @@ jobs:
           throw 'Validation tests failed. WinSCP/VLC test suites were not started.'
         }
 
-        # 2) Run WinSCP and VLC in parallel after validation succeeds.
-        $tagsToRun = @('WinSCP', 'VLC')
+        # 2) Run the SCCM package suites in parallel after validation succeeds.
+        $tagsToRun = @('WinSCP', 'VLC', 'Notepad++')
         $indexedTags = for ($i = 0; $i -lt $tagsToRun.Count; $i++) {
           [pscustomobject]@{ Index = $i; Tag = $tagsToRun[$i] }
         }
