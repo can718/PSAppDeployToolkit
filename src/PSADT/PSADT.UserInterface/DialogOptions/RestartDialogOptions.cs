@@ -25,23 +25,26 @@ namespace PSADT.UserInterface.DialogOptions
         /// settings. Must not be null.</param>
         /// <exception cref="ArgumentNullException">Thrown if the options dictionary is null.</exception>
         public RestartDialogOptions(DeploymentType deploymentType, IDictionary options) : this(
-            (options ?? throw new ArgumentNullException(nameof(options)))["AppTitle"] as string ?? null!,
-            options["Subtitle"] as string ?? null!,
-            options["AppIconImage"] as string ?? null!,
-            options["AppIconDarkImage"] as string,
-            options["AppBannerImage"] as string ?? null!,
-            options["AppTaskbarIconImage"] as string,
-            options["DialogTopMost"] as bool? ?? false,
-            options["Language"] as CultureInfo ?? null!,
-            options["FluentAccentColor"] as int?,
-            options["DialogPosition"] as DialogPosition?,
-            options["DialogAllowMove"] as bool?,
-            options["DialogExpiryDuration"] as TimeSpan?,
-            options["DialogPersistInterval"] as TimeSpan?,
-            options["Strings"] as IDictionary is { Count: > 0 } strings ? new(strings, deploymentType) : null!,
-            options["CountdownDuration"] as TimeSpan?,
-            options["CountdownNoMinimizeDuration"] as TimeSpan?,
-            options["CustomMessageText"] as string)
+            (string?)(options ?? throw new ArgumentNullException(nameof(options)))["AppTitle"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppTitle' is missing."),
+            (string?)options["Subtitle"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'Subtitle' is missing."),
+            (string?)options["AppIconImage"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppIconImage' is missing."),
+            (string?)options["AppIconDarkImage"],
+            (string?)options["AppBannerImage"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppBannerImage' is missing."),
+            (string?)options["AppTaskbarIconImage"],
+            (bool?)options["DialogTopMost"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'DialogTopMost' is missing."),
+            (CultureInfo?)options["Language"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'Language' is missing."),
+            (int?)options["FluentAccentColor"],
+            (int?)options["FluentAccentColorDark"],
+            (DialogPosition?)options["DialogPosition"],
+            (bool?)options["DialogAllowMove"],
+            (bool?)options["DialogAllowMinimize"],
+            (TimeSpan?)options["DialogExpiryDuration"],
+            (TimeSpan?)options["DialogPersistInterval"],
+            new((IDictionary?)options["Strings"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'Strings' is missing."), deploymentType),
+            (TimeSpan?)options["CountdownDuration"],
+            (TimeSpan?)options["CountdownNoMinimizeDuration"],
+            (string?)options["ShutdownReasonText"],
+            (string?)options["CustomMessageText"])
         {
         }
 
@@ -59,9 +62,12 @@ namespace PSADT.UserInterface.DialogOptions
         /// <param name="language">The culture information used for localizing the dialog.</param>
         /// <param name="fluentAccentColor">The accent color used for Fluent design elements in the dialog. If <see langword="null"/>, the default
         /// accent color is used.</param>
+        /// <param name="fluentAccentColorDark">The accent color used for Fluent design elements in the dialog when in dark mode. If <see langword="null"/>, the default dark accent color is used.</param>
         /// <param name="dialogPosition">The position of the dialog on the screen. If <see langword="null"/>, the default position is used.</param>
         /// <param name="dialogAllowMove">Indicates whether the dialog can be moved by the user. If <see langword="null"/>, the default behavior is
         /// used.</param>
+        /// <param name="dialogAllowMinimize">Indicates whether the dialog exposes a minimize button in its caption area. If <see langword="null"/> or
+        /// <see langword="false"/>, the minimize button remains hidden.</param>
         /// <param name="dialogExpiryDuration">The duration after which the dialog expires and closes automatically. If <see langword="null"/>, the dialog
         /// does not expire.</param>
         /// <param name="dialogPersistInterval">The interval at which the dialog persists its state. If <see langword="null"/>, the default interval is
@@ -71,9 +77,10 @@ namespace PSADT.UserInterface.DialogOptions
         /// is displayed.</param>
         /// <param name="countdownNoMinimizeDuration">The duration during which the countdown timer cannot be minimized. If <see langword="null"/>, the default
         /// behavior is used.</param>
+        /// <param name="shutdownReasonText">Represents the reason for shutdown, which can be optionally provided to give users more context about why a restart is necessary. If provided, this text can be displayed in the dialog to inform users about the specific reason for the restart, such as "System updates require a restart" or "A critical error occurred that requires a restart". If <see langword="null"/>, no specific shutdown reason is displayed.</param>
         /// <param name="customMessageText">Custom text displayed in the dialog. If <see langword="null"/>, no custom message is displayed.</param>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="strings"/> is <see langword="null"/>.</exception>
-        private RestartDialogOptions(string appTitle, string subtitle, string appIconImage, string? appIconDarkImage, string appBannerImage, string? appTaskbarIconImage, bool dialogTopMost, CultureInfo language, int? fluentAccentColor, DialogPosition? dialogPosition, bool? dialogAllowMove, TimeSpan? dialogExpiryDuration, TimeSpan? dialogPersistInterval, RestartDialogStrings strings, TimeSpan? countdownDuration, TimeSpan? countdownNoMinimizeDuration, string? customMessageText) : base(appTitle, subtitle, appIconImage, appIconDarkImage, appBannerImage, appTaskbarIconImage, dialogTopMost, language, fluentAccentColor, dialogPosition, dialogAllowMove, dialogExpiryDuration, dialogPersistInterval)
+        private RestartDialogOptions(string appTitle, string subtitle, string appIconImage, string? appIconDarkImage, string appBannerImage, string? appTaskbarIconImage, bool dialogTopMost, CultureInfo language, int? fluentAccentColor, int? fluentAccentColorDark, DialogPosition? dialogPosition, bool? dialogAllowMove, bool? dialogAllowMinimize, TimeSpan? dialogExpiryDuration, TimeSpan? dialogPersistInterval, RestartDialogStrings strings, TimeSpan? countdownDuration, TimeSpan? countdownNoMinimizeDuration, string? shutdownReasonText, string? customMessageText) : base(appTitle, subtitle, appIconImage, appIconDarkImage, appBannerImage, appTaskbarIconImage, dialogTopMost, language, fluentAccentColor, fluentAccentColorDark, dialogPosition, dialogAllowMove, dialogAllowMinimize, dialogExpiryDuration, dialogPersistInterval)
         {
             if (customMessageText is not null)
             {
@@ -83,34 +90,37 @@ namespace PSADT.UserInterface.DialogOptions
             Strings = strings;
             CountdownDuration = countdownDuration;
             CountdownNoMinimizeDuration = countdownNoMinimizeDuration;
+            ShutdownReasonText = shutdownReasonText;
             CustomMessageText = customMessageText;
         }
 
         /// <summary>
         /// The strings used for the RestartDialog.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly RestartDialogStrings Strings;
 
         /// <summary>
         /// The duration for which the countdown will be displayed.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly TimeSpan? CountdownDuration;
 
         /// <summary>
         /// The duration for which the countdown will be displayed without minimizing the dialog.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly TimeSpan? CountdownNoMinimizeDuration;
 
         /// <summary>
+        /// Represents the reason for shutdown, which can be optionally provided to give users more context about why a restart is necessary. If provided, this text can be displayed in the dialog to inform users about the specific reason for the restart, such as "System updates require a restart" or "A critical error occurred that requires a restart". If <see langword="null"/>, no specific shutdown reason is displayed.
+        /// </summary>
+        [DataMember]
+        public readonly string? ShutdownReasonText;
+
+        /// <summary>
         /// Represents a custom message text that can be optionally provided.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string? CustomMessageText;
 
@@ -132,13 +142,13 @@ namespace PSADT.UserInterface.DialogOptions
             /// messages, and button labels. Keys must match the expected resource names.</param>
             /// <param name="deploymentType">The deployment type that determines which localized message string to use in the dialog.</param>
             internal RestartDialogStrings(IDictionary strings, DeploymentType deploymentType) : this(
-                strings["Title"] as string ?? null!,
-                ((IDictionary?)strings["Message"])?[deploymentType.ToString()] as string ?? null!,
-                strings["MessageTime"] as string ?? null!,
-                strings["MessageRestart"] as string ?? null!,
-                strings["TimeRemaining"] as string ?? null!,
-                strings["ButtonRestartNow"] as string ?? null!,
-                strings["ButtonRestartLater"] as string ?? null!)
+                (string?)(strings ?? throw new ArgumentNullException(nameof(strings)))["Title"] ?? throw new ArgumentNullException(nameof(strings), "The specified key 'Title' is missing."),
+                (string?)((IDictionary?)strings["Message"] ?? throw new ArgumentNullException(nameof(strings), "The specified key 'Message' is missing."))[deploymentType.ToString()] ?? throw new ArgumentNullException(nameof(strings), $"The specified key 'Message.{deploymentType}' is missing."),
+                (string?)strings["MessageTime"] ?? throw new ArgumentNullException(nameof(strings), "The specified key 'MessageTime' is missing."),
+                (string?)strings["MessageRestart"] ?? throw new ArgumentNullException(nameof(strings), "The specified key 'MessageRestart' is missing."),
+                (string?)strings["TimeRemaining"] ?? throw new ArgumentNullException(nameof(strings), "The specified key 'TimeRemaining' is missing."),
+                (string?)strings["ButtonRestartNow"] ?? throw new ArgumentNullException(nameof(strings), "The specified key 'ButtonRestartNow' is missing."),
+                (string?)strings["ButtonRestartLater"] ?? throw new ArgumentNullException(nameof(strings), "The specified key 'ButtonRestartLater' is missing."))
             {
             }
 
@@ -177,49 +187,42 @@ namespace PSADT.UserInterface.DialogOptions
             /// <summary>
             /// Text displayed in the title of the restart prompt which helps the script identify whether there is already a restart prompt being displayed and not to duplicate it.
             /// </summary>
-            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
             [DataMember]
             public readonly string Title;
 
             /// <summary>
             /// Text displayed when the device requires a restart.
             /// </summary>
-            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
             [DataMember]
             public readonly string Message;
 
             /// <summary>
             /// Text displayed as a prefix to the time remaining, indicating that users should save their work, etc.
             /// </summary>
-            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
             [DataMember]
             public readonly string MessageTime;
 
             /// <summary>
             /// Text displayed when indicating when the device will be restarted.
             /// </summary>
-            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
             [DataMember]
             public readonly string MessageRestart;
 
             /// <summary>
             /// Text displayed to indicate the amount of time remaining until a restart will occur.
             /// </summary>
-            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
             [DataMember]
             public readonly string TimeRemaining;
 
             /// <summary>
             /// Button text for when wanting to restart the device now.
             /// </summary>
-            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
             [DataMember]
             public readonly string ButtonRestartNow;
 
             /// <summary>
             /// Button text for allowing the user to restart later.
             /// </summary>
-            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
             [DataMember]
             public readonly string ButtonRestartLater;
         }

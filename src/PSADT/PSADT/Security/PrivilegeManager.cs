@@ -25,27 +25,21 @@ namespace PSADT.Security
         /// <param name="attributes">Optional attributes used to filter the privileges. If specified, only privileges matching the given <see
         /// cref="TOKEN_PRIVILEGES_ATTRIBUTES"/> will be included in the result.</param>
         /// <returns>A <see cref="ReadOnlyCollection{T}"/> containing the privileges associated with the token.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown if a privilege name retrieved from the token cannot be mapped to a known <see cref="SE_PRIVILEGE"/>
-        /// value.</exception>
+        /// <exception cref="InvalidProgramException">Thrown if a privilege name retrieved from the token cannot be mapped to a known <see cref="SE_PRIVILEGE"/> value.</exception>
         private static ReadOnlyCollection<SE_PRIVILEGE> GetPrivileges(SafeFileHandle token, TOKEN_PRIVILEGES_ATTRIBUTES? attributes = null)
         {
             // Internal worker function to retrieve the privilege name from the token attributes.
             static SE_PRIVILEGE GetPrivilege(in LUID_AND_ATTRIBUTES attr, Span<char> buffer)
             {
                 _ = NativeMethods.LookupPrivilegeName(attr.Luid, buffer, out uint retLength);
-                ReadOnlySpan<char> refBuf = buffer.Slice(0, (int)retLength).Trim();
-                if (refBuf.IsEmpty)
-                {
-                    throw new InvalidProgramException($"Privilege name for LUID: {attr.Luid} is empty.");
-                }
-                string privilegeName = refBuf.ToString();
-                return !Enum.TryParse(privilegeName, true, out SE_PRIVILEGE privilege)
+                string privilegeName = buffer[..(int)retLength].Trim().ToString();
+                return !Enum.TryParse(privilegeName, ignoreCase: true, out SE_PRIVILEGE privilege)
                     ? throw new InvalidProgramException($"Failed to map privilege name [{privilegeName}] to a known SE_PRIVILEGE value.")
                     : privilege;
             }
 
             // Get the size of the buffer required to hold the token privileges.
-            _ = NativeMethods.GetTokenInformation(token, TOKEN_INFORMATION_CLASS.TokenPrivileges, null, out uint returnLength);
+            _ = NativeMethods.GetTokenInformation(token, TOKEN_INFORMATION_CLASS.TokenPrivileges, TokenInformation: null, out uint returnLength);
             Span<byte> buffer = stackalloc byte[(int)returnLength];
 
             // Retrieve the token privileges and filter them based on the specified attributes before returning them.
@@ -58,7 +52,7 @@ namespace PSADT.Security
             {
                 for (int i = 0; i < tokenPrivileges.PrivilegeCount; i++)
                 {
-                    ref readonly LUID_AND_ATTRIBUTES attr = ref buffer.Slice(bufferOffset + (increment * i)).AsReadOnlyStructure<LUID_AND_ATTRIBUTES>();
+                    ref readonly LUID_AND_ATTRIBUTES attr = ref buffer[(bufferOffset + (increment * i))..].AsReadOnlyStructure<LUID_AND_ATTRIBUTES>();
                     if ((attr.Attributes & attributes) == attributes)
                     {
                         privileges.Add(GetPrivilege(in attr, charSpan));
@@ -69,7 +63,7 @@ namespace PSADT.Security
             {
                 for (int i = 0; i < tokenPrivileges.PrivilegeCount; i++)
                 {
-                    ref readonly LUID_AND_ATTRIBUTES attr = ref buffer.Slice(bufferOffset + (increment * i)).AsReadOnlyStructure<LUID_AND_ATTRIBUTES>();
+                    ref readonly LUID_AND_ATTRIBUTES attr = ref buffer[(bufferOffset + (increment * i))..].AsReadOnlyStructure<LUID_AND_ATTRIBUTES>();
                     privileges.Add(GetPrivilege(in attr, charSpan));
                 }
             }
@@ -106,7 +100,6 @@ namespace PSADT.Security
         /// <param name="privilege">The privilege to check for in the access token. This should be a valid value of the SE_PRIVILEGE
         /// enumeration.</param>
         /// <returns>true if the access token contains the specified privilege; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool HasPrivilege(SafeFileHandle token, SE_PRIVILEGE privilege)
         {
             return GetPrivileges(token).Contains(privilege);
@@ -119,7 +112,6 @@ namespace PSADT.Security
         /// before performing operations that require elevated permissions.</remarks>
         /// <param name="privilege">The privilege to check for in the current caller's set of privileges.</param>
         /// <returns>true if the current caller has the specified privilege; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool HasPrivilege(SE_PRIVILEGE privilege)
         {
             return GetPrivileges().Contains(privilege);
@@ -135,7 +127,6 @@ namespace PSADT.Security
         /// rights.</param>
         /// <param name="privilege">The privilege to check for its enabled status within the specified access token.</param>
         /// <returns>true if the specified privilege is enabled for the access token; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsPrivilegeEnabled(SafeFileHandle token, SE_PRIVILEGE privilege)
         {
             return GetPrivileges(token, TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED).Contains(privilege);
@@ -148,7 +139,6 @@ namespace PSADT.Security
         /// the process token. It uses the current process's token to check the privilege status.</remarks>
         /// <param name="privilege">The privilege to check for its enabled status in the current process.</param>
         /// <returns>true if the specified privilege is enabled; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsPrivilegeEnabled(SE_PRIVILEGE privilege)
         {
             return GetPrivileges(TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED).Contains(privilege);
@@ -179,7 +169,7 @@ namespace PSADT.Security
             tp.Privileges[0] = new()
             {
                 Luid = luid,
-                Attributes = TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED
+                Attributes = TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED,
             };
             _ = NativeMethods.AdjustTokenPrivileges(token, tp);
         }

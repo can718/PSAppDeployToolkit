@@ -1,9 +1,8 @@
 ﻿using System;
+using System.Collections;
 using System.Management.Automation;
-using System.Management.Automation.Internal;
-using System.Management.Automation.Language;
 using System.Reflection;
-using System.Runtime.CompilerServices;
+using PSAppDeployToolkit.Utilities;
 
 namespace PSAppDeployToolkit.Attributes
 {
@@ -13,7 +12,8 @@ namespace PSAppDeployToolkit.Attributes
     /// <remarks>
     /// This attribute validates comparable value types against their default value (for example, numeric types against
     /// 0 and <see cref="TimeSpan"/> against <see cref="TimeSpan.Zero"/>). For non-value types, it validates values
-    /// that expose a public static <c>Zero</c> property and implement <see cref="IComparable"/>.
+    /// that expose a public static <c>Zero</c> property and implement <see cref="IComparable"/>. For collections, each
+    /// element is validated individually.
     /// </remarks>
     public sealed class ValidateGreaterThanZeroAttribute : ValidateArgumentsAttribute
     {
@@ -22,27 +22,62 @@ namespace PSAppDeployToolkit.Attributes
         /// </summary>
         /// <param name="arguments">The argument value to validate.</param>
         /// <param name="engineIntrinsics">Provides access to the PowerShell engine APIs.</param>
-        /// <exception cref="ValidationMetadataException">
+        /// <exception cref="ArgumentNullException">
         /// Thrown when <paramref name="arguments"/> is null, cannot be compared to zero, or is less than or equal to
         /// zero.
         /// </exception>
-        protected override void Validate(object arguments, EngineIntrinsics engineIntrinsics)
+        protected override void Validate(object? arguments, EngineIntrinsics engineIntrinsics)
         {
-            while (arguments is PSObject psObject)
+            if (!PowerShellUtilities.TryGetBaseObject(arguments, out arguments))
             {
-                arguments = psObject.BaseObject;
+                throw new ArgumentNullException(paramName: null, "The argument is null. Provide an argument that is greater than zero, and then try running the command again.");
             }
-            if (IsNull(arguments))
+            if (arguments is not string && LanguagePrimitives.GetEnumerator(arguments) is IEnumerator enumerator)
             {
-                throw new ArgumentNullException(null, "The argument is null. Provide an argument that is greater than zero, and then try running the command again.");
+                ValidateElements(enumerator);
+                return;
             }
-            if (!TryIsGreaterThanZero(arguments, out bool isGreaterThanZero))
+            ValidateValue(arguments);
+        }
+
+        /// <summary>
+        /// Validates that each element in the specified collection is greater than zero.
+        /// </summary>
+        /// <param name="enumerator">The enumerator for the collection to validate.</param>
+        /// <exception cref="ArgumentNullException">Thrown when any element in the collection is null.</exception>
+        private static void ValidateElements(IEnumerator enumerator)
+        {
+            while (enumerator.MoveNext())
             {
-                throw new ArgumentException($"The argument type '{arguments.GetType().FullName}' does not support greater-than-zero validation.");
+                if (!PowerShellUtilities.TryGetBaseObject(enumerator.Current, out object? element))
+                {
+                    throw new ArgumentNullException(paramName: null, "The argument collection contains a null element. Provide a collection whose elements are greater than zero, and then try running the command again.");
+                }
+                ValidateValue(element);
+            }
+        }
+
+        /// <summary>
+        /// Validates that the specified argument is greater than zero.
+        /// </summary>
+        /// <param name="value">The argument value to validate.</param>
+        /// <exception cref="ArgumentNullException">Thrown when the argument is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the argument type does not support greater-than-zero validation.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the argument is less than or equal to zero.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0015:Specify the parameter name in ArgumentException", Justification = "We don't want a paramter name on these exceptions.")]
+        private static void ValidateValue(object? value)
+        {
+            if (!PowerShellUtilities.TryGetBaseObject(value, out value))
+            {
+                throw new ArgumentNullException(paramName: null, "The argument is null. Provide an argument that is greater than zero, and then try running the command again.");
+            }
+            if (!TryIsGreaterThanZero(value, out bool isGreaterThanZero))
+            {
+                throw new ArgumentException($"The argument type '{value.GetType().FullName}' does not support greater-than-zero validation.");
             }
             if (!isGreaterThanZero)
             {
-                throw new ArgumentOutOfRangeException(null, arguments, "The argument is less than or equal to zero. Provide an argument that is greater than zero, and then try running the command again.");
+                throw new ArgumentOutOfRangeException(paramName: null, value, "The argument is less than or equal to zero. Provide an argument that is greater than zero, and then try running the command again.");
             }
         }
 
@@ -73,20 +108,6 @@ namespace PSAppDeployToolkit.Attributes
             }
             isGreaterThanZero = false;
             return false;
-        }
-
-        /// <summary>
-        /// Determines whether the specified object represents a null or special null-equivalent value.
-        /// </summary>
-        /// <remarks>This method treats standard null, database null (DBNull), and certain
-        /// PowerShell-specific null representations as equivalent for the purpose of null checking.</remarks>
-        /// <param name="value">The object to test for null or special null-equivalent values. This can be any object, including database or
-        /// PowerShell-specific null representations.</param>
-        /// <returns>true if the value is null, a database null, or a recognized special null-equivalent; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsNull(object? value)
-        {
-            return value is null || value is DBNull || value == AutomationNull.Value || value == NullString.Value;
         }
     }
 }

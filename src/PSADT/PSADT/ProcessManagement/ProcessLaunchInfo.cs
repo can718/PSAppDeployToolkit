@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
@@ -16,6 +15,7 @@ using PSADT.Interop;
 using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using PSADT.Security;
+using PSADT.Utilities;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 
@@ -59,7 +59,7 @@ namespace PSADT.ProcessManagement
         /// <exception cref="ArgumentNullException">Thrown if filePath is null.</exception>
         /// <exception cref="DriveNotFoundException">Thrown if filePath is not a fully qualified path when required.</exception>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3254:Default parameter values should not be passed as arguments", Justification = "This overload intentionally selects the internal constructor and must pass explicit defaults for the intermediate internal-only parameters.")]
-        public ProcessLaunchInfo(string filePath, IEnumerable<string>? argumentList, string? workingDirectory, RunAsActiveUser? runAsActiveUser, bool inheritEnvironmentVariables, bool expandEnvironmentVariables, bool denyUserTermination, ElevatedTokenType? elevatedTokenType, IReadOnlyList<string>? standardInput, bool useShellExecute, string? verb, bool createNoWindow, bool waitForChildProcesses, bool killChildProcessesWithParent, Encoding? streamEncoding, ProcessWindowStyle? windowStyle, ProcessPriorityClass? priorityClass, CancellationToken? cancellationToken, bool noTerminateOnTimeout) : this(filePath, argumentList, workingDirectory, runAsActiveUser, inheritEnvironmentVariables, expandEnvironmentVariables, denyUserTermination, elevatedTokenType, runAsInvoker: false, uiAccess: false, standardInput, handlesToInherit: null, useShellExecute, verb, createNoWindow, waitForChildProcesses, killChildProcessesWithParent, streamEncoding, windowStyle, priorityClass, cancellationToken, noTerminateOnTimeout)
+        public ProcessLaunchInfo(string filePath, IEnumerable<string>? argumentList, string? workingDirectory, RunAsActiveUser? runAsActiveUser, bool inheritEnvironmentVariables, bool expandEnvironmentVariables, bool denyUserTermination, ElevatedTokenType? elevatedTokenType, IReadOnlyList<string>? standardInput, bool useShellExecute, string? verb, bool createNoWindow, bool waitForChildProcesses, bool killChildProcessesWithParent, Encoding? streamEncoding, ProcessWindowStyle? windowStyle, ProcessPriorityClass? priorityClass, CancellationToken? cancellationToken, bool noTerminateOnTimeout) : this(filePath, argumentList, workingDirectory, runAsActiveUser, inheritEnvironmentVariables, expandEnvironmentVariables, denyUserTermination, elevatedTokenType, runAsInvoker: false, uiAccess: false, bypassIfeo: false, standardInput, handlesToInherit: null, useShellExecute, verb, createNoWindow, waitForChildProcesses, killChildProcessesWithParent, streamEncoding, windowStyle, priorityClass, cancellationToken, noTerminateOnTimeout)
         {
         }
 
@@ -79,6 +79,7 @@ namespace PSADT.ProcessManagement
         /// <param name="elevatedTokenType">The type of elevated token to use when starting a process for another user. If null, no elevation is performed.</param>
         /// <param name="runAsInvoker">true to launch the process with the same token as the parent process; otherwise, false.</param>
         /// <param name="uiAccess">true to launch the process with UI access privileges; otherwise, false.</param>
+        /// <param name="bypassIfeo">true to append DEBUG_ONLY_THIS_PROCESS to the process creation flags so that any IFEO debuggers are bypassed and do not interfere with the launched process; otherwise, false.</param>
         /// <param name="standardInput">Optional string to write to the process's standard input stream. If null or empty, no data is written.
         /// The string is encoded using the specified <paramref name="streamEncoding"/> (or the default encoding if not specified).</param>
         /// <param name="handlesToInherit">An optional collection of handles to inherit by the new process. If null, no additional handles are
@@ -98,7 +99,8 @@ namespace PSADT.ProcessManagement
         /// <param name="noTerminateOnTimeout">true to prevent the process from being terminated when a timeout occurs; otherwise, false.</param>
         /// <exception cref="ArgumentNullException">Thrown if filePath is null.</exception>
         /// <exception cref="DriveNotFoundException">Thrown if filePath is not a fully qualified path when required.</exception>
-        internal ProcessLaunchInfo(string filePath, IEnumerable<string>? argumentList = null, string? workingDirectory = null, RunAsActiveUser? runAsActiveUser = null, bool inheritEnvironmentVariables = false, bool expandEnvironmentVariables = false, bool denyUserTermination = false, ElevatedTokenType? elevatedTokenType = null, bool runAsInvoker = false, bool uiAccess = false, IReadOnlyList<string>? standardInput = null, IReadOnlyList<nint>? handlesToInherit = null, bool useShellExecute = false, string? verb = null, bool createNoWindow = false, bool waitForChildProcesses = false, bool killChildProcessesWithParent = false, Encoding? streamEncoding = null, ProcessWindowStyle? windowStyle = null, ProcessPriorityClass? priorityClass = null, CancellationToken? cancellationToken = null, bool noTerminateOnTimeout = false)
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "There's no async support during construction.")]
+        internal ProcessLaunchInfo(string filePath, IEnumerable<string>? argumentList = null, string? workingDirectory = null, RunAsActiveUser? runAsActiveUser = null, bool inheritEnvironmentVariables = false, bool expandEnvironmentVariables = false, bool denyUserTermination = false, ElevatedTokenType? elevatedTokenType = null, bool runAsInvoker = false, bool uiAccess = false, bool bypassIfeo = false, IReadOnlyList<string>? standardInput = null, IReadOnlyList<nint>? handlesToInherit = null, bool useShellExecute = false, string? verb = null, bool createNoWindow = false, bool waitForChildProcesses = false, bool killChildProcessesWithParent = false, Encoding? streamEncoding = null, ProcessWindowStyle? windowStyle = null, ProcessPriorityClass? priorityClass = null, CancellationToken? cancellationToken = null, bool noTerminateOnTimeout = false)
         {
             // Validate all string parameters are properly set up.
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
@@ -123,10 +125,14 @@ namespace PSADT.ProcessManagement
                 {
                     throw new NotSupportedException("Cannot specify UseShellExecute while specifying RunAsInvoker.");
                 }
+                if (bypassIfeo)
+                {
+                    throw new NotSupportedException("Cannot specify UseShellExecute while specifying BypassIfeo.");
+                }
             }
 
             // Initially set ArgumentList and FilePath, and test that the caller hasn't done something weird by quoting the path.
-            ArgumentList = new ReadOnlyCollection<string>([.. argumentList ?? []]);
+            ArgumentList = new ReadOnlyCollection<string>(argumentList is not null ? [.. argumentList] : []);
             FilePath = filePath.TrimStart('"').TrimEnd('"');
 
             // Set up all token-related variables. Allow useLinkedAdminToken to clobber useHighestAvailableToken.
@@ -136,14 +142,19 @@ namespace PSADT.ProcessManagement
             }
             InheritEnvironmentVariables = inheritEnvironmentVariables;
             RunAsActiveUser = runAsActiveUser;
+            BypassIfeo = bypassIfeo;
             UIAccess = uiAccess;
 
             // Expand out environment variables for FilePath/ArgumentList as required.
             if (ExpandEnvironmentVariables = expandEnvironmentVariables)
             {
-                if (RunAsActiveUser is not null && RunAsActiveUser != AccountUtilities.CallerRunAsActiveUser)
+                if (RunAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser) == false)
                 {
-                    using SafeFileHandle hPrimaryToken = TokenManager.GetUserPrimaryToken(RunAsActiveUser.SessionId);
+                    if (!TokenManager.CanGetUserPrimaryToken)
+                    {
+                        throw new NotSupportedException("Cannot retrieve necessary user token as SYSTEM account does not have access to PSAppDeployToolkit module.");
+                    }
+                    using SafeFileHandle hPrimaryToken = TokenManager.GetUserPrimaryTokenAsync(RunAsActiveUser.SessionId).ConfigureAwait(false).GetAwaiter().GetResult();
                     _ = NativeMethods.CreateEnvironmentBlock(out SafeEnvironmentBlockHandle lpEnvironment, hPrimaryToken, InheritEnvironmentVariables);
                     using (lpEnvironment)
                     {
@@ -178,10 +189,10 @@ namespace PSADT.ProcessManagement
                     if (workingDirectory is not null)
                     {
                         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
-                        WorkingDirectory = new(Environment.ExpandEnvironmentVariables(workingDirectory));
+                        WorkingDirectory = new(EnvironmentUtilities.ExpandEnvironmentVariables(workingDirectory) ?? throw new InvalidOperationException($"The expansion of working directory [{workingDirectory}] returned a null result."));
                     }
-                    ArgumentList = new ReadOnlyCollection<string>([.. ArgumentList.Select(Environment.ExpandEnvironmentVariables)]);
-                    FilePath = Environment.ExpandEnvironmentVariables(FilePath);
+                    ArgumentList = new ReadOnlyCollection<string>([.. ArgumentList.Select(static arg => EnvironmentUtilities.ExpandEnvironmentVariables(arg) ?? throw new InvalidOperationException($"The expansion of argument [{arg}] returned a null result."))]);
+                    FilePath = EnvironmentUtilities.ExpandEnvironmentVariables(FilePath) ?? throw new InvalidOperationException($"The expansion of file path [{FilePath}] returned a null result.");
                 }
             }
 
@@ -245,8 +256,8 @@ namespace PSADT.ProcessManagement
             // Set remaining parameters.
             DenyUserTermination = denyUserTermination;
             RunAsInvoker = runAsInvoker;
-            StandardInput = new ReadOnlyCollection<string>([.. standardInput ?? []]);
-            HandlesToInheritValues = new ReadOnlyCollection<long>([.. handlesToInherit?.Select(static h => (long)h) ?? []]);
+            StandardInput = new ReadOnlyCollection<string>(standardInput is not null ? [.. standardInput] : []);
+            HandlesToInheritValues = new ReadOnlyCollection<long>(handlesToInherit?.Select(static h => (long)h) is IEnumerable<long> handlesToInheritValues ? [.. handlesToInheritValues] : []);
             WaitForChildProcesses = waitForChildProcesses;
             KillChildProcessesWithParent = killChildProcessesWithParent;
             NoTerminateOnTimeout = noTerminateOnTimeout;
@@ -255,70 +266,60 @@ namespace PSADT.ProcessManagement
         /// <summary>
         /// Gets the file path of the process to launch.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string FilePath;
 
         /// <summary>
         /// Gets the arguments to pass to the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string? Arguments;
 
         /// <summary>
         /// Gets the arguments to pass to the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly IReadOnlyList<string> ArgumentList;
 
         /// <summary>
         /// Gets the working directory of the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly DirectoryInfo? WorkingDirectory;
 
         /// <summary>
         /// Gets the username to use when starting the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly RunAsActiveUser? RunAsActiveUser;
 
         /// <summary>
         /// Gets a value indicating the token type to use when starting a process for another user.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly ElevatedTokenType? ElevatedTokenType;
 
         /// <summary>
         /// Gets a value indicating whether to inherit the environment variables of the current process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool InheritEnvironmentVariables;
 
         /// <summary>
         /// Indicates whether environment variables in the input should be expanded.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool ExpandEnvironmentVariables;
 
         /// <summary>
         /// Indicates whether user termination is denied.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool DenyUserTermination;
 
         /// <summary>
         /// Indicates whether an unelevated token should be used for operations.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool RunAsInvoker;
 
@@ -328,15 +329,19 @@ namespace PSADT.ProcessManagement
         /// <remarks>UI access allows the process to interact with higher-privileged windows, such as
         /// those running as administrator. This is typically required for accessibility tools or applications that need
         /// to interact with secure desktop elements.</remarks>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool UIAccess;
+
+        /// <summary>
+        /// Appends DEBUG_ONLY_THIS_PROCESS to the process creation flags so that any IFEO debuggers are bypassed and do not interfere with the launched process.
+        /// </summary>
+        [DataMember]
+        public readonly bool BypassIfeo;
 
         /// <summary>
         /// Gets the lines to write to the process's standard input stream.
         /// </summary>
         /// <remarks>Each string in the collection is written as a separate line, encoded using <see cref="StreamEncoding"/>.</remarks>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly IReadOnlyList<string> StandardInput;
 
@@ -350,35 +355,30 @@ namespace PSADT.ProcessManagement
         /// <summary>
         /// Gets a value indicating whether to use the shell to execute the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool UseShellExecute;
 
         /// <summary>
         /// Gets the verb to use when starting the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string? Verb;
 
         /// <summary>
         /// Gets a value indicating whether to create a new window for the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool CreateNoWindow;
 
         /// <summary>
         /// Gets a value indicating whether the process should wait for child processes to exit before completing.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool WaitForChildProcesses;
 
         /// <summary>
         /// Gets a value indicating whether any child processes spawned with the parent should terminate when the parent closes.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool KillChildProcessesWithParent;
 
@@ -391,35 +391,30 @@ namespace PSADT.ProcessManagement
         /// <summary>
         /// Gets the window style of the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly ProcessWindowStyle? WindowStyle;
 
         /// <summary>
         /// Gets the priority class of the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly ProcessPriorityClass? PriorityClass;
 
         /// <summary>
         /// Gets the cancellation token to cancel the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [IgnoreDataMember]
         public readonly CancellationToken? CancellationToken;
 
         /// <summary>
         /// Gets whether to not end the process upon CancellationToken expiring.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool NoTerminateOnTimeout;
 
         /// <summary>
         /// Gets the subsystem required to run the image.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly IMAGE_SUBSYSTEM ImageSubsystem;
 
@@ -429,10 +424,9 @@ namespace PSADT.ProcessManagement
         /// <remarks>This method uses default options when generating the command-line. To customize the
         /// output, use the overload that accepts parameters.</remarks>
         /// <returns>A string containing the command-line arguments constructed from the current settings.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public string MakeCommandLine()
         {
-            return MakeCommandLine(false);
+            return MakeCommandLine(nullTerminated: false);
         }
 
         /// <summary>
@@ -443,7 +437,6 @@ namespace PSADT.ProcessManagement
         /// <returns>A string containing the command-line representation of the process, including the file path and any
         /// arguments. If <paramref name="nullTerminated"/> is <see langword="true"/>, the string will end with a null
         /// character.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal string MakeCommandLine(bool nullTerminated)
         {
             return $"\"{FilePath}\"{(!string.IsNullOrWhiteSpace(Arguments) ? $" {Arguments}" : null)}{(nullTerminated ? '\0' : null)}";
@@ -452,7 +445,6 @@ namespace PSADT.ProcessManagement
         /// <summary>
         /// Gets a value indicating whether the application is a command-line interface (CLI) application.
         /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal bool IsCliApplication()
         {
             return ImageSubsystem != IMAGE_SUBSYSTEM.IMAGE_SUBSYSTEM_WINDOWS_GUI;

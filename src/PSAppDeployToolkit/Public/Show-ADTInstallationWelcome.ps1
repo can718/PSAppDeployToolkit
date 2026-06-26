@@ -95,8 +95,11 @@ function Show-ADTInstallationWelcome
     .PARAMETER AllowMove
         Specifies that the user can move the dialog on the screen.
 
-    .PARAMETER CustomText
+    .PARAMETER CustomMessage
         Specify whether to display a custom message as specified in the `strings.psd1` file below the main preamble. Custom message must be populated for each language section in the `strings.psd1` file.
+
+    .PARAMETER CustomMessageText
+        Specifies a literal custom message to display, ignoring the custom message specified in the `strings.psd1` file.
 
     .PARAMETER CheckDiskSpace
         Specify whether to check if there is enough disk space for the deployment to proceed.
@@ -325,8 +328,8 @@ function Show-ADTInstallationWelcome
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, with a close processes countdown if the user has no available deferrals, and a free disk space check.', HelpMessage = 'Specify the number of times the deferral is allowed.')]
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, and with a close processes countdown irrespective of whether the user can defer or not.', HelpMessage = 'Specify the number of times the deferral is allowed.')]
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, with a close processes countdown irrespective of whether the user can defer or not, and a free disk space check.', HelpMessage = 'Specify the number of times the deferral is allowed.')]
-        [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
-        [System.UInt32]$DeferTimes,
+        [ValidateNotNullOrEmpty()]
+        [System.Nullable[System.UInt32]]$DeferTimes,
 
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, and with deferral allowed.', HelpMessage = 'Specify the number of days since first run that the deferral is allowed.')]
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with deferral allowed, and a free disk space check.', HelpMessage = 'Specify the number of days since first run that the deferral is allowed.')]
@@ -678,7 +681,40 @@ function Show-ADTInstallationWelcome
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, with a close processes countdown if the user has no available deferrals, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, and with a close processes countdown irrespective of whether the user can defer or not.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, with a close processes countdown irrespective of whether the user can defer or not, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
-        [System.Management.Automation.SwitchParameter]$CustomText,
+        [Alias('CustomText')]
+        [System.Management.Automation.SwitchParameter]$CustomMessage,
+
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with no modifying options.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, and with a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, and with processes to close.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, and with deferral allowed.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with deferral allowed, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with deferral allowed, and with a continue countdown irrespective of deferrals.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with deferral allowed, with a continue countdown irrespective of deferrals, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, and with a close processes countdown if the user has no available deferrals.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with a close processes countdown if the user has no available deferrals, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, and with a close processes countdown irrespective of whether the user can defer or not.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with a close processes countdown irrespective of whether the user can defer or not, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, and with deferral allowed irrespective of whether processes to close are open.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed irrespective of whether processes to close are open, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed irrespective of whether processes to close are open, and with a continue/defer countdown depending on whether processes to close are open or not.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed irrespective of whether processes to close are open, with a continue/defer countdown depending on whether processes to close are open or not, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed irrespective of whether processes to close are open, and with a close processes countdown if the user has no available deferrals.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed irrespective of whether processes to close are open, with a close processes countdown if the user has no available deferrals, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed irrespective of whether processes to close are open, and with a close processes countdown irrespective of whether the user can defer or not.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed irrespective of whether processes to close are open, with a close processes countdown irrespective of whether the user can defer or not, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, and with deferral allowed only if the processes to close are open.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, and with a continue/defer countdown depending on whether processes to close are open or not.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, with a continue/defer countdown depending on whether processes to close are open or not, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, and with a close processes countdown if the user has no available deferrals.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, with a close processes countdown if the user has no available deferrals, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, and with a close processes countdown irrespective of whether the user can defer or not.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, with a close processes countdown irrespective of whether the user can defer or not, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
+        [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
+        [System.String]$CustomMessageText,
+
 
         [Parameter(Mandatory = $true, ParameterSetName = 'Interactive, and with a free disk space check.', HelpMessage = 'Specify whether to check if there is enough disk space for the deployment to proceed. If this parameter is specified without the [-RequiredDiskSpace] parameter, the required disk space is calculated automatically based on the size of the script source and associated files.')]
         [Parameter(Mandatory = $true, ParameterSetName = 'Interactive, with processes to close, and a free disk space check.', HelpMessage = 'Specify whether to check if there is enough disk space for the deployment to proceed. If this parameter is specified without the [-RequiredDiskSpace] parameter, the required disk space is calculated automatically based on the size of the script source and associated files.')]
@@ -757,7 +793,7 @@ function Show-ADTInstallationWelcome
         # Initialise the string table.
         $sessionState = if ($adtSession)
         {
-            $adtSession.SessionState
+            $adtSession.DeployAppScriptSessionState
         }
         if ($null -eq $sessionState)
         {
@@ -944,23 +980,26 @@ function Show-ADTInstallationWelcome
                 }
 
                 # Check disk space requirements if specified
-                if ($adtSession -and $CheckDiskSpace -and ($scriptDir = try { Get-ADTSessionCacheScriptDirectory } catch { $null = $null }))
+                if ($adtSession -and $CheckDiskSpace)
                 {
-                    Write-ADTLogEntry -Message 'Evaluating disk space requirements.'
-                    if (!$PSBoundParameters.ContainsKey('RequiredDiskSpace'))
+                    if (!$PSBoundParameters.ContainsKey('RequiredDiskSpace') -and ($scriptDir = try { Get-ADTSessionCacheScriptDirectory } catch { $null = $null }) -and (Get-ChildItem -LiteralPath $scriptDir -Force -ErrorAction Ignore))
                     {
-                        $RequiredDiskSpace = [PSADT.FileSystem.FileSystemUtilities]::GetLogicalSizeBytes($scriptDir) / 1MB
+                        $RequiredDiskSpace = [System.Math]::Max([PSADT.FileSystem.FileSystemUtilities]::GetLogicalSizeBytes($scriptDir) / 1MB, 1)
                     }
-                    if (($freeDiskSpace = Get-ADTFreeDiskSpace) -lt $RequiredDiskSpace)
+                    if ($RequiredDiskSpace -gt 0)
                     {
-                        Write-ADTLogEntry -Message "Failed to meet minimum disk space requirement. Space Required [$RequiredDiskSpace MB], Space Available [$freeDiskSpace MB]." -Severity Error
-                        if (!$Silent)
+                        Write-ADTLogEntry -Message 'Evaluating disk space requirements.'
+                        if (($freeDiskSpace = Get-ADTFreeDiskSpace) -lt $RequiredDiskSpace)
                         {
-                            Show-ADTInstallationPrompt -Message ([System.String]::Format($adtStrings.DiskSpaceText.Message.($DeploymentType.ToString()), $PSBoundParameters.Title, $RequiredDiskSpace, $freeDiskSpace)) -ButtonLeftText OK -Icon Error
+                            Write-ADTLogEntry -Message "Failed to meet minimum disk space requirement. Space Required [$RequiredDiskSpace MB], Space Available [$freeDiskSpace MB]." -Severity Error
+                            if (!$Silent)
+                            {
+                                Show-ADTInstallationPrompt -Message ([System.String]::Format($adtStrings.DiskSpaceText.Message.($DeploymentType.ToString()), $PSBoundParameters.Title, $RequiredDiskSpace, $freeDiskSpace)) -ButtonLeftText OK -Icon Error
+                            }
+                            Close-ADTSession -ExitCode $adtConfig.UI.DefaultExitCode
                         }
-                        Close-ADTSession -ExitCode $adtConfig.UI.DefaultExitCode
+                        Write-ADTLogEntry -Message 'Successfully passed minimum disk space requirement check.'
                     }
-                    Write-ADTLogEntry -Message 'Successfully passed minimum disk space requirement check.'
                 }
 
                 # Prompt the user to close running applications and optionally defer if enabled.
@@ -1114,9 +1153,16 @@ function Show-ADTInstallationWelcome
                     {
                         $dialogOptions.Add('DialogAllowMinimize', !!$AllowMinimize)
                     }
-                    if ($CustomText)
+                    if ($CustomMessage)
                     {
-                        $dialogOptions.Add('CustomMessageText', $adtStrings.CloseAppsPrompt.CustomMessage)
+                        if (!$PSBoundParameters.ContainsKey('CustomMessageText'))
+                        {
+                            $dialogOptions.Add('CustomMessageText', $adtStrings.CloseAppsPrompt.CustomMessage)
+                        }
+                        else
+                        {
+                            $dialogOptions.Add('CustomMessageText', $CustomMessageText)
+                        }
                     }
                     if ($null -ne $CloseProcesses)
                     {
@@ -1129,6 +1175,10 @@ function Show-ADTInstallationWelcome
                     if ($null -ne $adtConfig.UI.FluentAccentColor)
                     {
                         $dialogOptions.Add('FluentAccentColor', $adtConfig.UI.FluentAccentColor)
+                    }
+                    if ($null -ne $adtConfig.UI.FluentAccentColorDark)
+                    {
+                        $dialogOptions.Add('FluentAccentColorDark', $adtConfig.UI.FluentAccentColorDark)
                     }
                     if ($ContinueOnProcessClosure -and !$dialogOptions.ContainsKey('ContinueOnProcessClosure'))
                     {
@@ -1144,7 +1194,7 @@ function Show-ADTInstallationWelcome
                         if ($AllowDefer)
                         {
                             # If there is deferral and closing apps is allowed but there are no apps to be closed, break the while loop.
-                            if ($AllowDeferCloseProcesses -and !$runningApps)
+                            if ($dialogOptions.ContinueOnProcessClosure -and !$runningApps)
                             {
                                 break
                             }
@@ -1182,7 +1232,7 @@ function Show-ADTInstallationWelcome
                         if ($promptResult.Equals([PSADT.UserInterface.DialogResults.CloseAppsDialogResult]::Continue))
                         {
                             # If the user has clicked OK, wait a few seconds for the process to terminate before evaluating the running processes again.
-                            if (!$AllowDeferCloseProcesses -and !($runningApps = Get-ADTRunningProcessesUserCanClose -InformationAction Ignore))
+                            if (!$dialogOptions.ContinueOnProcessClosure -and !($runningApps = Get-ADTRunningProcessesUserCanClose -InformationAction Ignore))
                             {
                                 Write-ADTLogEntry -Message 'The user selected to continue...'
                             }
@@ -1326,7 +1376,7 @@ function Show-ADTInstallationWelcome
                     }
 
                     # Close any remaining processes that are open that the user couldn't close.
-                    if (($runningApps = if ($CloseProcesses) { Get-ADTRunningProcesses -ProcessObjects $CloseProcesses }))
+                    if (($runningApps = if ($CloseProcesses) { Get-ADTRunningProcesses -ProcessObjects $CloseProcesses -InformationAction Ignore }))
                     {
                         # Force the processes to close silently, without prompting the user.
                         Write-ADTLogEntry -Message "Force closing application(s) ['$([System.String]::Join("', '", $runningApps.Description))'] that the user had no permissions to close."

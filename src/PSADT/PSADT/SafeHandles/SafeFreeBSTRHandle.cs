@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -21,10 +20,9 @@ namespace PSADT.SafeHandles
         /// <param name="str">The string to be copied into the allocated BSTR. Can be null, in which case an empty BSTR is allocated.</param>
         /// <returns>A SafeFreeBSTRHandle representing the allocated BSTR. The caller is responsible for releasing the handle
         /// when it is no longer needed.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static SafeFreeBSTRHandle Alloc(string str)
         {
-            return new(Marshal.StringToBSTR(str), true);
+            return new(Marshal.StringToBSTR(str), ownsHandle: true);
         }
 
         /// <summary>
@@ -47,7 +45,7 @@ namespace PSADT.SafeHandles
         /// <returns>true if the handle was released successfully; otherwise, false.</returns>
         protected override bool ReleaseHandle()
         {
-            if (default == handle)
+            if (handle == default)
             {
                 return true;
             }

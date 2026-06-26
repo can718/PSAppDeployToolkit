@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Collections.Frozen;
+using System.Collections.ObjectModel;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
@@ -24,7 +27,7 @@ namespace PSADT.ClientServer
         /// <returns>A byte array containing the binary XML representation of the object.</returns>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="obj"/> is null.</exception>
         /// <exception cref="SerializationException">Thrown if serialization fails.</exception>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S3236:Caller information arguments should not be provided explicitly", Justification = "This is deliberate.")]
+        [SuppressMessage("Minor Code Smell", "S3236:Caller information arguments should not be provided explicitly", Justification = "This is deliberate.")]
         public static byte[] SerializeToBytes<T>(T obj)
         {
             ArgumentNullException.ThrowIfNull(obj);
@@ -48,7 +51,6 @@ namespace PSADT.ClientServer
         /// <typeparam name="T">The type of the object to serialize.</typeparam>
         /// <param name="obj">The object to serialize. Cannot be <see langword="null"/>.</param>
         /// <returns>A Base64-encoded string containing the XML representation of the specified object.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static string SerializeToString<T>(T obj)
         {
             return Convert.ToBase64String(SerializeToBytes(obj));
@@ -62,7 +64,6 @@ namespace PSADT.ClientServer
         /// <returns>An instance of type T deserialized from the specified bytes.</returns>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="bytes"/> is null or empty.</exception>
         /// <exception cref="SerializationException">Thrown if deserialization fails or results in a null object.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static T DeserializeFromBytes<T>(byte[] bytes)
         {
             return DeserializeFromBytes<T>(bytes, 0);
@@ -74,7 +75,6 @@ namespace PSADT.ClientServer
         /// <param name="bytes">The byte array containing the serialized data to deserialize. Cannot be null.</param>
         /// <param name="type">The type of the object to deserialize from the byte array. Cannot be null.</param>
         /// <returns>An object instance of the specified type reconstructed from the provided byte array.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static object DeserializeFromBytes(byte[] bytes, Type type)
         {
             return DeserializeFromBytes(bytes, 0, type);
@@ -88,7 +88,6 @@ namespace PSADT.ClientServer
         /// <returns>An object of type <typeparamref name="T"/> deserialized from the provided string.</returns>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="base64Xml"/> is null or empty.</exception>
         /// <exception cref="SerializationException">Thrown if the deserialization process results in a null object.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static T DeserializeFromString<T>(string base64Xml)
         {
             return DeserializeFromBytes<T>(Convert.FromBase64String(base64Xml));
@@ -102,7 +101,6 @@ namespace PSADT.ClientServer
         /// <returns>An object representing the deserialized data.</returns>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="base64Xml"/> is null or empty.</exception>
         /// <exception cref="SerializationException">Thrown if the deserialization process results in a null object.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static object DeserializeFromString(string base64Xml, Type type)
         {
             return DeserializeFromBytes(Convert.FromBase64String(base64Xml), 0, type);
@@ -117,7 +115,6 @@ namespace PSADT.ClientServer
         /// <returns>An instance of type T deserialized from the specified bytes.</returns>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="bytes"/> is null or empty.</exception>
         /// <exception cref="SerializationException">Thrown if deserialization fails or results in a null object.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static T DeserializeFromBytes<T>(byte[] bytes, int offset)
         {
             return (T)DeserializeFromBytes(bytes, offset, typeof(T));
@@ -133,16 +130,17 @@ namespace PSADT.ClientServer
         /// <exception cref="ArgumentOutOfRangeException">Thrown if offset is less than 0.</exception>
         /// <exception cref="ArgumentNullException">Thrown if bytes is null or if the length of bytes is less than or equal to offset.</exception>
         /// <exception cref="SerializationException">Thrown if deserialization returns a null result.</exception>
+        [SuppressMessage("Minor Code Smell", "S3236:Caller information arguments should not be provided explicitly", Justification = "This is intentional as we're testing a parameter member.")]
         private static object DeserializeFromBytes(byte[] bytes, int offset, Type type)
         {
             ArgumentNullException.ThrowIfNull(bytes);
-            ArgumentOutOfRangeException.ThrowIfZero(bytes.Length);
+            ArgumentOutOfRangeException.ThrowIfZero(bytes.Length, nameof(bytes));
             if (((uint)offset > (uint)bytes.Length) || (offset == bytes.Length))
             {
                 throw new ArgumentOutOfRangeException(nameof(offset), offset, "Offset points past the end of the buffer.");
             }
             bool deserializingException = typeof(Exception).IsAssignableFrom(type);
-            using MemoryStream ms = new(bytes, offset, bytes.Length - offset, false);
+            using MemoryStream ms = new(bytes, offset, bytes.Length - offset, writable: false);
             using XmlDictionaryReader reader = XmlDictionaryReader.CreateBinaryReader(ms, XmlDictionaryReaderQuotas.Max);
             return GetSerializer(type).ReadObject(reader, verifyObjectName: !deserializingException) is not object result
                 ? throw new SerializationException("Deserialization returned a null result.")
@@ -156,7 +154,6 @@ namespace PSADT.ClientServer
         /// </summary>
         /// <param name="type">The type to create a serializer for.</param>
         /// <returns>A DataContractSerializer configured with all known types.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static DataContractSerializer GetSerializer(Type type)
         {
             return new(type, DataContractSerializerSettings);
@@ -175,7 +172,7 @@ namespace PSADT.ClientServer
             DataContractResolver = new DictionaryDataContractResolver(),
             PreserveObjectReferences = false,
             SerializeReadOnlyTypes = true,
-            KnownTypes =
+            KnownTypes = FrozenSet.ToFrozenSet(
             [
                 // Exception types - System namespace (core)
                 typeof(Exception),
@@ -237,7 +234,6 @@ namespace PSADT.ClientServer
                 typeof(System.ComponentModel.LicenseException),
                 typeof(System.ComponentModel.WarningException),
                 typeof(System.ComponentModel.Win32Exception),
-                typeof(System.Configuration.ConfigurationException),
                 typeof(System.Data.ConstraintException),
                 typeof(System.Data.DataException),
                 typeof(System.Data.DBConcurrencyException),
@@ -303,7 +299,6 @@ namespace PSADT.ClientServer
                 typeof(System.Security.Authentication.InvalidCredentialException),
                 typeof(System.Security.Cryptography.CryptographicException),
                 typeof(System.Security.Cryptography.CryptographicUnexpectedOperationException),
-                typeof(System.Security.Policy.PolicyException),
                 typeof(System.Text.DecoderFallbackException),
                 typeof(System.Text.EncoderFallbackException),
                 typeof(System.Text.RegularExpressions.RegexMatchTimeoutException),
@@ -358,6 +353,7 @@ namespace PSADT.ClientServer
                 typeof(UserInterface.DialogOptions.InputDialogOptions),
                 typeof(UserInterface.DialogOptions.ListSelectionDialogOptions),
                 typeof(UserInterface.DialogOptions.ListSelectionDialogOptions.ListSelectionDialogStrings),
+                typeof(UserInterface.DialogOptions.NotifyIconOptions),
                 typeof(UserInterface.DialogOptions.ProgressDialogOptions),
                 typeof(UserInterface.DialogOptions.RestartDialogOptions),
                 typeof(UserInterface.DialogOptions.RestartDialogOptions.RestartDialogStrings),
@@ -386,21 +382,21 @@ namespace PSADT.ClientServer
                 // * ProcessManagement.ProcessResult
                 // * WindowManagement.WindowInfoOptions
                 // * UserInterface.DialogOptions.ListSelectionDialogOptions
-                typeof(System.Collections.ObjectModel.ReadOnlyCollection<string>),
+                typeof(ReadOnlyCollection<string>),
 
                 // Used within WindowManagement.WindowInfoOptions class.
-                typeof(System.Collections.ObjectModel.ReadOnlyCollection<ulong>),
-                typeof(System.Collections.ObjectModel.ReadOnlyCollection<long>),
-                typeof(System.Collections.ObjectModel.ReadOnlyCollection<uint>),
-                typeof(System.Collections.ObjectModel.ReadOnlyCollection<int>),
+                typeof(ReadOnlyCollection<ulong>),
+                typeof(ReadOnlyCollection<long>),
+                typeof(ReadOnlyCollection<uint>),
+                typeof(ReadOnlyCollection<int>),
 
                 // Used within Payloads.InitCloseAppsDialogPayload class.
-                typeof(System.Collections.ObjectModel.ReadOnlyCollection<ProcessManagement.ProcessDefinition>),
+                typeof(ReadOnlyCollection<ProcessManagement.ProcessDefinition>),
 
                 // Used within UserInterface.DialogOptions.HelpConsoleOptions class.
-                typeof(System.Collections.ObjectModel.ReadOnlyDictionary<string, System.Collections.Generic.IReadOnlyDictionary<string, string>>),
-                typeof(System.Collections.ObjectModel.ReadOnlyDictionary<string, string>),
-            ]
+                typeof(ReadOnlyDictionary<string, System.Collections.Generic.IReadOnlyDictionary<string, string>>),
+                typeof(ReadOnlyDictionary<string, string>),
+            ]),
         };
 
         /// <summary>
@@ -419,7 +415,13 @@ namespace PSADT.ClientServer
             /// <summary>
             /// Maps a type to its data contract name during serialization.
             /// </summary>
-            public override bool TryResolveType(Type type, Type? declaredType, DataContractResolver knownTypeResolver, out XmlDictionaryString? typeName, out XmlDictionaryString? typeNamespace)
+            /// <param name="type">The type to be resolved.</param>
+            /// <param name="declaredType">The declared type of the object.</param>
+            /// <param name="knownTypeResolver">The known type resolver to use for fallback resolution.</param>
+            /// <param name="typeName">The resulting data contract name.</param>
+            /// <param name="typeNamespace">The resulting data contract namespace.</param>
+            /// <returns><see langword="true"/> if the type was successfully resolved; otherwise, <see langword="false"/>.</returns>
+            public override bool TryResolveType(Type type, Type? declaredType, DataContractResolver knownTypeResolver, out XmlDictionaryString? typeName, [NotNullWhen(true)] out XmlDictionaryString? typeNamespace)
             {
                 // Handle ListDictionaryInternal and Hashtable - they both map to the same contract.
                 if (type == ListDictionaryInternalType || type == typeof(System.Collections.Hashtable))
@@ -437,16 +439,17 @@ namespace PSADT.ClientServer
             /// <summary>
             /// Maps a data contract name back to a type during deserialization.
             /// </summary>
+            /// <param name="typeName">The data contract name to be resolved.</param>
+            /// <param name="typeNamespace">The data contract namespace to be resolved.</param>
+            /// <param name="declaredType">The declared type of the object.</param>
+            /// <param name="knownTypeResolver">The known type resolver to use for fallback resolution.</param>
+            /// <returns>The resolved type, or <see langword="null"/> if the type cannot be resolved.</returns>
             public override Type? ResolveName(string typeName, string? typeNamespace, Type? declaredType, DataContractResolver knownTypeResolver)
             {
                 // When deserializing the dictionary contract, return Hashtable (more general and public).
-                if (typeName == DictionaryTypeName && typeNamespace == ArraysNamespace)
-                {
-                    return typeof(System.Collections.Hashtable);
-                }
-
-                // For other types, defer to the known type resolver.
-                return knownTypeResolver.ResolveName(typeName, typeNamespace, declaredType, NullContractResolver);
+                return !DictionaryTypeName.Equals(typeName, StringComparison.Ordinal) || !ArraysNamespace.Equals(typeNamespace, StringComparison.Ordinal)
+                    ? knownTypeResolver.ResolveName(typeName, typeNamespace, declaredType, NullContractResolver)
+                    : typeof(System.Collections.Hashtable);
             }
 
             /// <summary>
@@ -456,7 +459,7 @@ namespace PSADT.ClientServer
             /// <remarks>This field is initialized using reflection to avoid a direct dependency on
             /// the internal ListDictionary type. The value will be null if the type cannot be found in the current
             /// runtime environment.</remarks>
-            private static readonly Type? ListDictionaryInternalType = Type.GetType("System.Collections.ListDictionaryInternal");
+            private static readonly Type ListDictionaryInternalType = Type.GetType("System.Collections.ListDictionaryInternal") ?? throw new InvalidOperationException("Failed to initialize ListDictionaryInternalType.");
 
             /// <summary>
             /// Represents a null instance of the DataContractResolver used as a default value.

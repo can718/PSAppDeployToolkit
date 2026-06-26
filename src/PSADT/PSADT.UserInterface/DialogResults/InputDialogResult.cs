@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using PSADT.Utilities;
 
@@ -14,7 +13,7 @@ namespace PSADT.UserInterface.DialogResults
         /// <summary>
         /// Represents the default dialog result used when a dialog times out.
         /// </summary>
-        public static new readonly InputDialogResult DefaultResult = new("Timeout", null);
+        public static new readonly InputDialogResult DefaultResult = new("Timeout", text: null);
 
         /// <summary>
         /// Initializes a new instance of the InputDialogResult class with the specified result and optional text.
@@ -31,7 +30,6 @@ namespace PSADT.UserInterface.DialogResults
         /// <summary>
         /// Gets the text entered by the user.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string? Text;
 
@@ -41,17 +39,15 @@ namespace PSADT.UserInterface.DialogResults
         /// <remarks>Compares both the Result and Text properties. String equality is not supported for derived types.</remarks>
         /// <param name="obj">The object to compare with the current instance.</param>
         /// <returns>true if the specified object is an InputDialogResult with equal Result and Text values; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool Equals(object? obj)
         {
-            return obj is InputDialogResult other && Result == other.Result && Text == other.Text;
+            return obj is InputDialogResult other && Result.Equals(other.Result, StringComparison.Ordinal) && Text?.Equals(other.Text, StringComparison.Ordinal) == true;
         }
 
         /// <summary>
         /// Returns a hash code for the current instance based on all properties.
         /// </summary>
         /// <returns>A hash code combining Result and Text.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
         {
             return CryptographicUtilities.GenerateHashCode(Result, Text);

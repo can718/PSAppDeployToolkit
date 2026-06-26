@@ -46,6 +46,9 @@ function Set-ADTShortcut
     .PARAMETER Hotkey
         Sets the hotkey to launch the shortcut, e.g. "CTRL+SHIFT+F".
 
+    .PARAMETER Clear
+        Clears one or more shortcut properties. Only clears if the corresponding parameter isn't specified.
+
     .PARAMETER Force
         Forces creation of the shortcut if one doesn't already exist at the `-LiteralPath` provided.
 
@@ -140,6 +143,10 @@ function Set-ADTShortcut
         [Parameter(Mandatory = $false)]
         [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
         [System.String]$Hotkey,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('Arguments', 'IconLocation', 'IconIndex', 'Description', 'WorkingDirectory', 'WindowStyle', 'RunAsAdmin', 'Hotkey')]
+        [System.String[]]$Clear,
 
         [Parameter(Mandatory = $false, ParameterSetName = 'LiteralPath')]
         [System.Management.Automation.SwitchParameter]$Force,
@@ -240,10 +247,17 @@ function Set-ADTShortcut
                     # Process all valid parameters.
                     try
                     {
+                        # TargetPath.
                         if ($PSBoundParameters.ContainsKey('TargetPath') -and $exists)
                         {
                             $shortcut.Url = $TargetPath
                         }
+                        elseif ($Clear -contains 'TargetPath')
+                        {
+                            $shortcut.Url = [System.Management.Automation.Language.NullString]::Value
+                        }
+
+                        # IconLocation.
                         if ($PSBoundParameters.ContainsKey('IconLocation'))
                         {
                             $shortcut.IconFile = $IconLocation
@@ -252,26 +266,63 @@ function Set-ADTShortcut
                                 $shortcut.IconIndex = 0
                             }
                         }
+                        elseif ($Clear -contains 'IconLocation')
+                        {
+                            $shortcut.IconFile = [System.Management.Automation.Language.NullString]::Value
+                            $shortcut.IconIndex = $null
+                        }
+
+                        # IconIndex.
                         if ($PSBoundParameters.ContainsKey('IconIndex'))
                         {
                             $shortcut.IconIndex = $IconIndex
                         }
+                        elseif ($Clear -contains 'IconIndex')
+                        {
+                            $shortcut.IconIndex = $null
+                        }
+
+                        # Description.
                         if ($PSBoundParameters.ContainsKey('Description'))
                         {
                             $shortcut.Description = $Description
                         }
+                        elseif ($Clear -contains 'Description')
+                        {
+                            $shortcut.Description = [System.Management.Automation.Language.NullString]::Value
+                        }
+
+                        # WorkingDirectory.
                         if ($PSBoundParameters.ContainsKey('WorkingDirectory'))
                         {
                             $shortcut.WorkingDirectory = $WorkingDirectory
                         }
+                        elseif ($Clear -contains 'WorkingDirectory')
+                        {
+                            $shortcut.WorkingDirectory = [System.Management.Automation.Language.NullString]::Value
+                        }
+
+                        # WindowStyle.
                         if ($PSBoundParameters.ContainsKey('WindowStyle'))
                         {
                             $shortcut.ShowCommand = $WindowStyle
                         }
+                        elseif ($Clear -contains 'WindowStyle')
+                        {
+                            $shortcut.ShowCommand = $null
+                        }
+
+                        # Hotkey.
                         if ($PSBoundParameters.ContainsKey('Hotkey'))
                         {
                             $shortcut.Hotkey = $Hotkey
                         }
+                        elseif ($Clear -contains 'Hotkey')
+                        {
+                            $shortcut.Hotkey = $null
+                        }
+
+                        # Finalise shortcut.
                         if (!$exists)
                         {
                             $shortcut.Save($LiteralPath)
@@ -311,14 +362,27 @@ function Set-ADTShortcut
                     # Process all valid parameters.
                     try
                     {
+                        # TargetPath.
                         if ($PSBoundParameters.ContainsKey('TargetPath') -and $exists)
                         {
                             $shortcut.TargetPath = $TargetPath
                         }
+                        elseif ($Clear -contains 'TargetPath')
+                        {
+                            $shortcut.TargetPath = [System.Management.Automation.Language.NullString]::Value
+                        }
+
+                        # Arguments.
                         if ($PSBoundParameters.ContainsKey('Arguments'))
                         {
                             $shortcut.Arguments = $Arguments
                         }
+                        elseif ($Clear -contains 'Arguments')
+                        {
+                            $shortcut.Arguments = [System.Management.Automation.Language.NullString]::Value
+                        }
+
+                        # IconLocation.
                         if ($PSBoundParameters.ContainsKey('IconLocation'))
                         {
                             $shortcut.IconLocation = $IconLocation
@@ -327,30 +391,73 @@ function Set-ADTShortcut
                                 $shortcut.IconIndex = 0
                             }
                         }
+                        elseif ($Clear -contains 'IconLocation')
+                        {
+                            $shortcut.IconLocation = $null
+                            $shortcut.IconIndex = $null
+                        }
+
+                        # IconIndex.
                         if ($PSBoundParameters.ContainsKey('IconIndex'))
                         {
                             $shortcut.IconIndex = $IconIndex
                         }
+                        elseif ($Clear -contains 'IconIndex')
+                        {
+                            $shortcut.IconIndex = $null
+                        }
+
+                        # Description.
                         if ($PSBoundParameters.ContainsKey('Description'))
                         {
                             $shortcut.Description = $Description
                         }
+                        elseif ($Clear -contains 'Description')
+                        {
+                            $shortcut.Description = [System.Management.Automation.Language.NullString]::Value
+                        }
+
+                        # WorkingDirectory.
                         if ($PSBoundParameters.ContainsKey('WorkingDirectory'))
                         {
                             $shortcut.WorkingDirectory = $WorkingDirectory
                         }
+                        elseif ($Clear -contains 'WorkingDirectory')
+                        {
+                            $shortcut.WorkingDirectory = [System.Management.Automation.Language.NullString]::Value
+                        }
+
+                        # WindowStyle.
                         if ($PSBoundParameters.ContainsKey('WindowStyle'))
                         {
                             $shortcut.WindowStyle = $WindowStyle
                         }
+                        elseif ($Clear -contains 'WindowStyle')
+                        {
+                            $shortcut.WindowStyle = [PSADT.ShortcutManagement.ShortcutWindowStyle]::Normal
+                        }
+
+                        # RunAsAdmin.
                         if ($PSBoundParameters.ContainsKey('RunAsAdmin'))
                         {
                             $shortcut.RunAsAdmin = $RunAsAdmin
                         }
+                        elseif ($Clear -contains 'RunAsAdmin')
+                        {
+                            $shortcut.RunAsAdmin = $false
+                        }
+
+                        # Hotkey.
                         if ($PSBoundParameters.ContainsKey('Hotkey'))
                         {
                             $shortcut.Hotkey = $Hotkey
                         }
+                        elseif ($Clear -contains 'Hotkey')
+                        {
+                            $shortcut.Hotkey = $null
+                        }
+
+                        # Finalise shortcut.
                         if (!$exists)
                         {
                             $shortcut.Save($LiteralPath)

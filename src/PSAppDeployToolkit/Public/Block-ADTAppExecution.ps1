@@ -90,13 +90,13 @@ function Block-ADTAppExecution
         # Initialise the string table.
         $sessionState = if ($adtSession)
         {
-            $adtSession.SessionState
+            $adtSession.DeployAppScriptSessionState
         }
         if ($null -eq $sessionState)
         {
             $sessionState = $PSCmdlet.SessionState
         }
-        $adtStrings = Get-ADTStringTable -SessionState $SessionState
+        $adtStrings = Get-ADTStringTable -SessionState $sessionState
     }
 
     process
@@ -126,7 +126,7 @@ function Block-ADTAppExecution
                     if (!($runAsActiveUser = Get-ADTClientServerUser))
                     {
                         Write-ADTLogEntry -Message "There is no active logged on user. Verifying client/server access permissions using [BUILTIN\Users]."
-                        $usersSid = [PSADT.AccountManagement.AccountUtilities]::GetWellKnownSid([System.Security.Principal.WellKnownSidType]::BuiltinUsersSid)
+                        $usersSid = [System.Security.Principal.SecurityIdentifier]::new([System.Security.Principal.WellKnownSidType]::BuiltinUsersSid, $null)
                         $usersNtAccount = $usersSid.Translate([System.Security.Principal.NTAccount]); $usersSessionId = [System.UInt32]::MaxValue
                         Set-ADTClientServerProcessPermissions -User ([PSADT.Foundation.RunAsActiveUser]::new($usersNtAccount, $usersSid, $usersSessionId, $false))
                     }
@@ -152,13 +152,21 @@ function Block-ADTAppExecution
                     ButtonRightText = [PSADT.UserInterface.BlockExecution]::ButtonText
                     Icon = [PSADT.UserInterface.DialogSystemIcon]::Warning
                 }
-                if ($PSBoundParameters.ContainsKey('WindowLocation'))
+                if (!$PSBoundParameters.ContainsKey('WindowLocation'))
+                {
+                    $dialogOptions.Add('DialogPosition', ([PSADT.UserInterface.DialogPosition]::BottomRight, [PSADT.UserInterface.DialogPosition]::Center)[$adtConfig.UI.DialogStyle -eq 'Fluent'])
+                }
+                else
                 {
                     $dialogOptions.Add('DialogPosition', $WindowLocation)
                 }
                 if ($null -ne $adtConfig.UI.FluentAccentColor)
                 {
                     $dialogOptions.Add('FluentAccentColor', $adtConfig.UI.FluentAccentColor)
+                }
+                if ($null -ne $adtConfig.UI.FluentAccentColorDark)
+                {
+                    $dialogOptions.Add('FluentAccentColorDark', $adtConfig.UI.FluentAccentColorDark)
                 }
                 $dialogOptions = New-ADTDialogOptionsObject -Type ([PSADT.UserInterface.DialogOptions.CustomDialogOptions]) -Data $dialogOptions
 
@@ -171,10 +179,10 @@ function Block-ADTAppExecution
 
                 # Store the BlockExection command in the registry due to IFEO length issues when > 255 chars.
                 $blockExecRegPath = "Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SOFTWARE\$($adtEnv.appDeployToolkitName)"; $blockExecRegName = [PSADT.UserInterface.BlockExecution]::RegistryKeyName
-                $blockExecDbgPath = "`"$([PSADT.Foundation.ClientServerUtilities]::ClientLauncherPath)`" /smd -ArgV $($blockExecRegPath.Split('::', [System.StringSplitOptions]::RemoveEmptyEntries)[1])\$blockExecRegName"
+                $blockExecDbgPath = "`"$([PSADT.Foundation.ClientServerUtilities]::ClientLauncherCompatiblePath)`" /smd -ArgV $($blockExecRegPath.Split('::', [System.StringSplitOptions]::RemoveEmptyEntries)[1])\$blockExecRegName"
 
                 # If the IFEO path is > 255 characters, warn about it and bomb out.
-                if ($blockExecDbgPath -gt 255)
+                if ($blockExecDbgPath.Length -gt 255)
                 {
                     Write-ADTLogEntry -Message "The generated block execution command of [$blockExecDbgPath] exceeds the maximum allowable length of 255 characters; unable to block execution." -Severity Warning
                     return

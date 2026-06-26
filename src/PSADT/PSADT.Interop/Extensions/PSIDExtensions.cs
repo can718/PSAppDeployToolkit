@@ -1,5 +1,4 @@
-﻿using System.Runtime.CompilerServices;
-using System.Security.Principal;
+﻿using System.Security.Principal;
 using Windows.Win32.Security;
 
 namespace PSADT.Interop.Extensions
@@ -10,6 +9,7 @@ namespace PSADT.Interop.Extensions
     /// <remarks>This class contains methods to facilitate the conversion of <see cref="PSID"/> objects to
     /// other types, such as <see cref="SecurityIdentifier"/>. These methods are designed to simplify common operations
     /// involving <see cref="PSID"/> instances.</remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0182: Avoid unused internal types.", Justification = "This is used across InternalsVisibleTo boundaries.")]
     internal static class PSIDExtensions
     {
         /// <summary>
@@ -17,7 +17,6 @@ namespace PSADT.Interop.Extensions
         /// </summary>
         /// <param name="pSid">The <see cref="PSID"/> instance to convert. Must not be null.</param>
         /// <returns>A <see cref="SecurityIdentifier"/> representing the specified <see cref="PSID"/>.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static SecurityIdentifier ToSecurityIdentifier(this PSID pSid)
         {
             return new((nint)pSid);

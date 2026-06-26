@@ -54,7 +54,7 @@ function Close-ADTInstallationProgress
         # Initialise the string table.
         $sessionState = if ($adtSession)
         {
-            $adtSession.SessionState
+            $adtSession.DeployAppScriptSessionState
         }
         if ($null -eq $sessionState)
         {
@@ -65,70 +65,24 @@ function Close-ADTInstallationProgress
 
     process
     {
+        # Perform pre-requisite checks before closing the dialog.
+        if (!($runAsActiveUser = Get-ADTClientServerUser -AllowSystemFallback))
+        {
+            Write-ADTLogEntry -Message "Bypassing $($MyInvocation.MyCommand.Name) as there is no active user logged onto the system."
+            return
+        }
+        if (!(Test-ADTInstallationProgressOpen -RunAsActiveUser $runAsActiveUser))
+        {
+            Write-ADTLogEntry -Message "Bypassing $($MyInvocation.MyCommand.Name) as there is no progress dialog open."
+            return
+        }
         try
         {
             try
             {
-                try
-                {
-                    # Return early if we're silent, a window wouldn't have ever opened.
-                    if ($adtSession -and $adtSession.IsSilent())
-                    {
-                        Write-ADTLogEntry -Message "Bypassing $($MyInvocation.MyCommand.Name) [Mode: $($adtSession.DeployMode)]"
-                        return
-                    }
-
-                    # Bypass if no one's logged on to answer the dialog.
-                    if (!($runAsActiveUser = Get-ADTClientServerUser -AllowSystemFallback))
-                    {
-                        Write-ADTLogEntry -Message "Bypassing $($MyInvocation.MyCommand.Name) as there is no active user logged onto the system."
-                        return
-                    }
-
-                    # Return early if there's no progress dialog open at all.
-                    if (!(Invoke-ADTClientServerOperation -ProgressDialogOpen -User $runAsActiveUser))
-                    {
-                        Write-ADTLogEntry -Message "Bypassing $($MyInvocation.MyCommand.Name) as there is no progress dialog open."
-                        return
-                    }
-
-                    # Call the underlying function to close the progress window.
-                    Write-ADTLogEntry -Message 'Closing the installation progress dialog.'
-                    Invoke-ADTClientServerOperation -CloseProgressDialog -User $runAsActiveUser
-                }
-                finally
-                {
-                    # Remove any callback that might be lingering in the backing buffer.
-                    Remove-ADTModuleCallback -Hookpoint OnFinish -Callback $Script:CommandTable.($MyInvocation.MyCommand.Name)
-                }
-
-                # We only send balloon tips when a session is active.
-                if (!$adtSession)
-                {
-                    # Close the client/server process when we're running sessionless.
-                    Close-ADTClientServerProcess
-                    return
-                }
-
-                # Send out the final toast notification.
-                switch ($adtSession.GetDeploymentStatus())
-                {
-                    ([PSAppDeployToolkit.Foundation.DeploymentStatus]::FastRetry)
-                    {
-                        Show-ADTBalloonTip -BalloonTipIcon Warning -BalloonTipText $adtStrings.BalloonTip.($_.ToString()).($adtSession.DeploymentType.ToString()) -NoWait
-                        break
-                    }
-                    ([PSAppDeployToolkit.Foundation.DeploymentStatus]::Error)
-                    {
-                        Show-ADTBalloonTip -BalloonTipIcon Error -BalloonTipText $adtStrings.BalloonTip.($_.ToString()).($adtSession.DeploymentType.ToString()) -NoWait
-                        break
-                    }
-                    default
-                    {
-                        Show-ADTBalloonTip -BalloonTipIcon Info -BalloonTipText $adtStrings.BalloonTip.($_.ToString()).($adtSession.DeploymentType.ToString()) -NoWait
-                        break
-                    }
-                }
+                # Call the underlying function to close the progress window.
+                Write-ADTLogEntry -Message 'Closing the installation progress dialog.'
+                Invoke-ADTClientServerOperation -CloseProgressDialog -User $runAsActiveUser
             }
             catch
             {
@@ -138,6 +92,55 @@ function Close-ADTInstallationProgress
         catch
         {
             Invoke-ADTFunctionErrorHandler -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState -ErrorRecord $_
+        }
+        finally
+        {
+            # Remove any callback that might be lingering in the backing buffer.
+            Remove-ADTModuleCallback -Hookpoint OnFinish -Callback $Script:CommandTable.($MyInvocation.MyCommand.Name)
+        }
+
+        # Close the client/server process when we're running sessionless.
+        if (!$adtSession -and !(Test-ADTNotifyIconOpen -RunAsActiveUser $runAsActiveUser))
+        {
+            Close-ADTClientServerProcess
+            return
+        }
+
+        # Send out the final toast notification.
+        if ((Get-ADTConfig).UI.DialogStyle -eq 'Classic')
+        {
+            try
+            {
+                try
+                {
+                    switch ($adtSession.GetDeploymentStatus())
+                    {
+                        ([PSAppDeployToolkit.Foundation.DeploymentStatus]::FastRetry)
+                        {
+                            Show-ADTBalloonTip -Icon Warning -Text $adtStrings.BalloonTip.($_.ToString()).($adtSession.DeploymentType.ToString())
+                            break
+                        }
+                        ([PSAppDeployToolkit.Foundation.DeploymentStatus]::Error)
+                        {
+                            Show-ADTBalloonTip -Icon Error -Text $adtStrings.BalloonTip.($_.ToString()).($adtSession.DeploymentType.ToString())
+                            break
+                        }
+                        default
+                        {
+                            Show-ADTBalloonTip -Icon Info -Text $adtStrings.BalloonTip.($_.ToString()).($adtSession.DeploymentType.ToString())
+                            break
+                        }
+                    }
+                }
+                catch
+                {
+                    Write-Error -ErrorRecord $_
+                }
+            }
+            catch
+            {
+                Invoke-ADTFunctionErrorHandler -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState -ErrorRecord $_ -Silent
+            }
         }
     }
 

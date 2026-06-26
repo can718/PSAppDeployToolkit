@@ -20,7 +20,6 @@
 
 using System;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using PSADT.Interop;
@@ -52,7 +51,6 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <param name="targetPath">The target path for the shortcut.</param>
         /// <returns>A new <see cref="ShellLinkFile"/> instance with the target path set.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ShellLinkFile Create(string targetPath)
         {
             return new() { TargetPath = targetPath };
@@ -68,7 +66,6 @@ namespace PSADT.ShortcutManagement
         /// <exception cref="ArgumentException">Thrown when <paramref name="filePath"/> is empty or whitespace.</exception>
         /// <exception cref="FileNotFoundException">Thrown when the specified file does not exist.</exception>
         /// <exception cref="COMException">Thrown when the COM operation fails.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ShellLinkFile Load(string filePath, Interop.STGM storageMode = Interop.STGM.STGM_READ)
         {
             return new(filePath, storageMode);
@@ -115,15 +112,6 @@ namespace PSADT.ShortcutManagement
         }
 
         /// <summary>
-        /// Finalizes an instance of the <see cref="ShellLinkFile"/> class.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        ~ShellLinkFile()
-        {
-            Dispose(false);
-        }
-
-        /// <summary>
         /// Gets shortcut info for the current <see cref="ShellLinkFile"/>.
         /// </summary>
         /// <returns>
@@ -166,11 +154,11 @@ namespace PSADT.ShortcutManagement
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-            if (IsReadOnly && string.Equals(Path.GetFullPath(filePath), FilePath?.FullName, StringComparison.OrdinalIgnoreCase))
+            if (IsReadOnly && Path.GetFullPath(filePath).Equals(FilePath?.FullName, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException("Cannot overwrite a shortcut file that was loaded with read-only access. Use Load(filePath, STGM.STGM_READWRITE) to enable modifications.");
             }
-            ((IPersistFile)_shellLink).Save(filePath, true);
+            ((IPersistFile)_shellLink).Save(filePath, fRemember: true);
         }
 
         /// <summary>
@@ -197,7 +185,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <value>The path to the target file or folder that the shortcut points to.</value>
         /// <exception cref="COMException">Thrown when the COM operation fails.</exception>
-        public string? TargetPath
+        public string TargetPath
         {
             get
             {
@@ -219,7 +207,7 @@ namespace PSADT.ShortcutManagement
                 buffer.Clear(); _shellLink.GetPath(buffer, (uint)SLGP_FLAGS.SLGP_RAWPATH);
                 return buffer.ToStringUni() is string rawTargetPath
                     ? rawTargetPath
-                    : null;
+                    : null!;
             }
             set
             {
@@ -332,7 +320,7 @@ namespace PSADT.ShortcutManagement
         /// // Set hotkey using WScript.Shell-compatible string format
         /// shortcut.Hotkey = "ALT+CTRL+F";
         /// shortcut.Hotkey = "Ctrl+Shift+Q";
-        /// 
+        ///
         /// // Read and display hotkey
         /// Console.WriteLine(shortcut.Hotkey); // Output: "Ctrl+Shift+Q"
         /// </code>
@@ -432,10 +420,7 @@ namespace PSADT.ShortcutManagement
         /// </value>
         public string? AppUserModelId
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetStringProperty(in PInvoke.PKEY_AppUserModel_ID);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetStringProperty(in PInvoke.PKEY_AppUserModel_ID, value);
         }
 
@@ -444,10 +429,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool? AppUserModelExcludeFromShowInNewInstall
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetBoolProperty(in PInvoke.PKEY_AppUserModel_ExcludeFromShowInNewInstall);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetBoolProperty(in PInvoke.PKEY_AppUserModel_ExcludeFromShowInNewInstall, value);
         }
 
@@ -456,10 +438,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool? AppUserModelIsDestListSeparator
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetBoolProperty(in PInvoke.PKEY_AppUserModel_IsDestListSeparator);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetBoolProperty(in PInvoke.PKEY_AppUserModel_IsDestListSeparator, value);
         }
 
@@ -468,10 +447,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool? AppUserModelIsDualMode
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetBoolProperty(in PInvoke.PKEY_AppUserModel_IsDualMode);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetBoolProperty(in PInvoke.PKEY_AppUserModel_IsDualMode, value);
         }
 
@@ -480,10 +456,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool? AppUserModelPreventPinning
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetBoolProperty(in PInvoke.PKEY_AppUserModel_PreventPinning);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetBoolProperty(in PInvoke.PKEY_AppUserModel_PreventPinning, value);
         }
 
@@ -492,10 +465,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public string? AppUserModelRelaunchCommand
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetStringProperty(in PInvoke.PKEY_AppUserModel_RelaunchCommand);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetStringProperty(in PInvoke.PKEY_AppUserModel_RelaunchCommand, value);
         }
 
@@ -504,10 +474,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public string? AppUserModelRelaunchDisplayNameResource
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetStringProperty(in PInvoke.PKEY_AppUserModel_RelaunchDisplayNameResource);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetStringProperty(in PInvoke.PKEY_AppUserModel_RelaunchDisplayNameResource, value);
         }
 
@@ -516,10 +483,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public string? AppUserModelRelaunchIconResource
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetStringProperty(in PInvoke.PKEY_AppUserModel_RelaunchIconResource);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetStringProperty(in PInvoke.PKEY_AppUserModel_RelaunchIconResource, value);
         }
 
@@ -528,10 +492,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public uint? AppUserModelStartPinOption
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetUInt32Property(in PInvoke.PKEY_AppUserModel_StartPinOption);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetUInt32Property(in PInvoke.PKEY_AppUserModel_StartPinOption, value);
         }
 
@@ -540,10 +501,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public Guid? AppUserModelToastActivatorClsid
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetGuidProperty(in PInvoke.PKEY_AppUserModel_ToastActivatorCLSID);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetGuidProperty(in PInvoke.PKEY_AppUserModel_ToastActivatorCLSID, value);
         }
 
@@ -600,10 +558,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool ForceNoLinkInfo
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_FORCE_NO_LINKINFO);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_FORCE_NO_LINKINFO, value);
         }
 
@@ -618,10 +573,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool RunInSeparate
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_RUN_IN_SEPARATE);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_RUN_IN_SEPARATE, value);
         }
 
@@ -636,10 +588,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool RunAsAdmin
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_RUNAS_USER);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_RUNAS_USER, value);
         }
 
@@ -654,10 +603,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool NoPidlAlias
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_NO_PIDL_ALIAS);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_NO_PIDL_ALIAS, value);
         }
 
@@ -666,10 +612,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool ForceUncName
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_FORCE_UNCNAME);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_FORCE_UNCNAME, value);
         }
 
@@ -678,10 +621,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool RunWithShimLayer
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_RUN_WITH_SHIMLAYER);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_RUN_WITH_SHIMLAYER, value);
         }
 
@@ -690,10 +630,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool ForceNoLinkTrack
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_FORCE_NO_LINKTRACK);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_FORCE_NO_LINKTRACK, value);
         }
 
@@ -702,10 +639,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool EnableTargetMetadata
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_ENABLE_TARGET_METADATA);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_ENABLE_TARGET_METADATA, value);
         }
 
@@ -714,10 +648,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool DisableLinkPathTracking
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_DISABLE_LINK_PATH_TRACKING);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_DISABLE_LINK_PATH_TRACKING, value);
         }
 
@@ -726,10 +657,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool DisableKnownFolderRelativeTracking
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_DISABLE_KNOWNFOLDER_RELATIVE_TRACKING);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_DISABLE_KNOWNFOLDER_RELATIVE_TRACKING, value);
         }
 
@@ -738,10 +666,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool NoKnownFolderAlias
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_NO_KF_ALIAS);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_NO_KF_ALIAS, value);
         }
 
@@ -750,10 +675,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool AllowLinkToLink
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_ALLOW_LINK_TO_LINK);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_ALLOW_LINK_TO_LINK, value);
         }
 
@@ -762,10 +684,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool UnaliasOnSave
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_UNALIAS_ON_SAVE);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_UNALIAS_ON_SAVE, value);
         }
 
@@ -774,10 +693,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool PreferEnvironmentPath
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_PREFER_ENVIRONMENT_PATH);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_PREFER_ENVIRONMENT_PATH, value);
         }
 
@@ -786,10 +702,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public bool KeepLocalIdListForUncTarget
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetFlag(SHELL_LINK_DATA_FLAGS.SLDF_KEEP_LOCAL_IDLIST_FOR_UNC_TARGET);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => SetFlag(SHELL_LINK_DATA_FLAGS.SLDF_KEEP_LOCAL_IDLIST_FOR_UNC_TARGET, value);
         }
 
@@ -1113,10 +1026,9 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <param name="flag">The flag to get or set.</param>
         /// <returns><see langword="true"/> if the flag is set; otherwise, <see langword="false"/>.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool GetFlag(SHELL_LINK_DATA_FLAGS flag)
         {
-            return (GetFlags() & flag) != 0;
+            return (GetFlags() & flag) != SHELL_LINK_DATA_FLAGS.SLDF_DEFAULT;
         }
 
         /// <summary>
@@ -1143,7 +1055,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public void Dispose()
         {
-            Dispose(true); GC.SuppressFinalize(this);
+            Dispose(disposing: true);
         }
 
         /// <summary>
@@ -1175,7 +1087,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <remarks>Use this property to determine if modifications to the storage are allowed. When <see
         /// langword="true"/>, attempts to write or update the storage will not be permitted.</remarks>
-        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) == 0;
+        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) == Interop.STGM.STGM_DIRECT;
 
         /// <summary>
         /// Indicates whether the object has been disposed.

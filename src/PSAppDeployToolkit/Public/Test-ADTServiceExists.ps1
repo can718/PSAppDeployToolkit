@@ -11,18 +11,21 @@ function Test-ADTServiceExists
         Check to see if a service exists.
 
     .DESCRIPTION
-        The `Test-ADTServiceExists` function checks to see if a service exists. The `-UseCIM` switch can be used in conjunction with `-PassThru` to return WMI objects for PSADT v3.x compatibility, however, this method fails in Windows Sandbox.
+        The `Test-ADTServiceExists` function checks to see if a service exists.
 
     .PARAMETER Name
-        Specify the name of the service.
+        Specify the name of the service. When `-UseCIM` is not specified, this parameter supports wildcards.
 
         Note: Service name can be found by executing `Get-Service | Format-Table -AutoSize -Wrap` or by using the properties screen of a service in services.msc.
 
+    .PARAMETER DisplayName
+        Specifies the display name of the service to test the existence of. This parameter supports wildcards. This parameter is not compatible with `-UseCIM`.
+
     .PARAMETER UseCIM
-        Use CIM/WMI to check for the service. This is useful for compatibility with PSADT v3.x.
+        Use CIM/WMI to check for the service. This parameter is deprecated and will be removed in PSAppDeployToolkit 4.3.0.
 
     .PARAMETER PassThru
-        Return the WMI service object. To see all the properties use: `Test-ADTServiceExists -Name 'spooler' -PassThru | Get-Member`
+        Returns the service object, if one exists. By default, the service object returned is a `ServiceController`. When the `-UseCIM` parameter is provided, a Win32_Service or Win32_BaseService `CimInstance` is returned.
 
     .INPUTS
         None
@@ -37,12 +40,12 @@ function Test-ADTServiceExists
     .OUTPUTS
         System.ServiceProcess.ServiceController
 
-        When the `-PassThru` parameter is provided and the service specified exists, a ServiceController object representing the service is returned, otherwise `$null`.
+        When the `-PassThru` parameter is provided and the service specified exists, a `ServiceController` object representing the service is returned, otherwise `$null`.
 
     .OUTPUTS
         Microsoft.Management.Infrastructure.CimInstance
 
-        When the `-PassThru` and `-UseCIM` parameters are provided and the service specified exists, a Win32_Service or Win32_BaseService CimInstance object representing the service is returned, otherwise `$null`.
+        When the `-PassThru` and `-UseCIM` parameters are provided and the service specified exists, a Win32_Service or Win32_BaseService `CimInstance` object representing the service is returned, otherwise `$null`.
 
     .EXAMPLE
         Test-ADTServiceExists -Name 'wuauserv'
@@ -50,9 +53,24 @@ function Test-ADTServiceExists
         Checks if the service 'wuauserv' exists.
 
     .EXAMPLE
+        Test-ADTServiceExists -DisplayName 'Windows Update'
+
+        Checks if the Windows Update service exists.
+
+    .EXAMPLE
         Test-ADTServiceExists -Name testservice -UseCIM -PassThru | Invoke-CimMethod -MethodName Delete
 
         Checks if a service exists and then deletes it by using the `-PassThru` parameter.
+
+    .EXAMPLE
+        ```PowerShell
+        if ((($service = Test-ADTServiceExists -Name 'ScreenConnect*' -PassThru) | Get-ADTServiceStartMode) -ne 'Automatic')
+        {
+            Set-ADTServiceStartMode -InputObject $service -StartMode 'Automatic'
+        }
+        ```
+
+        Sets the ScreenConnect service start mode to automatic, if it exists and its start mode is not automatic.
 
     .NOTES
         An active ADT session is NOT required to use this function.
@@ -72,11 +90,20 @@ function Test-ADTServiceExists
     [OutputType([Microsoft.Management.Infrastructure.CimInstance])]
     param
     (
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Name')]
         [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
+        [PSAppDeployToolkit.Attributes.ValidateUnique()]
+        [SupportsWildcards()]
         [System.String]$Name,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true, ParameterSetName = 'DisplayName')]
+        [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
+        [PSAppDeployToolkit.Attributes.ValidateUnique()]
+        [SupportsWildcards()]
+        [System.String]$DisplayName,
+
+        [Parameter(Mandatory = $false, ParameterSetName = 'Name')]
+        [System.Obsolete('This parameter will be removed in PSAppDeployToolkit 4.3.0.')]
         [Alias('UseWMI')]
         [System.Management.Automation.SwitchParameter]$UseCIM,
 
@@ -86,7 +113,19 @@ function Test-ADTServiceExists
 
     begin
     {
+        # Initialise the function and confirm no wildcards have been provided for the UseCIM pathway.
         Initialize-ADTFunction -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
+        if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($Name))
+        {
+            $naerParams = @{
+                Exception = [System.InvalidOperationException]::new("The [-UseCIM] parameter does not support wildcard patterns in [-Name]. Use an exact service name, or omit [-UseCIM] to allow wildcard matching.")
+                Category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+                ErrorId = 'UseCimModeNoWildcardSupport'
+                TargetObject = $Name
+                RecommendedAction = "Validate your input and try again."
+            }
+            $PSCmdlet.ThrowTerminatingError((New-ADTErrorRecord @naerParams))
+        }
     }
 
     process
@@ -99,6 +138,7 @@ function Test-ADTServiceExists
                 if ($UseCIM)
                 {
                     # If nothing is returned from Win32_Service, check Win32_BaseService.
+                    Write-ADTLogEntry -Message 'The parameter [-UseCIM] is deprecated and will be removed in PSAppDeployToolkit 4.3.0.' -Severity Warning
                     if (!($ServiceObject = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$Name'"))
                     {
                         $ServiceObject = Get-CimInstance -ClassName Win32_BaseService -Filter "Name = '$Name'"
@@ -107,16 +147,17 @@ function Test-ADTServiceExists
                 else
                 {
                     # If the result is empty, it means the provided service is invalid.
-                    $ServiceObject = Get-Service -Name $Name -ErrorAction Ignore
+                    $gsParams = @{ $PSCmdlet.ParameterSetName = $PSBoundParameters[$PSCmdlet.ParameterSetName] }
+                    $ServiceObject = Get-Service @gsParams -ErrorAction Ignore
                 }
 
                 # Return early if null.
                 if (!$ServiceObject)
                 {
-                    Write-ADTLogEntry -Message "Service [$Name] does not exist."
+                    Write-ADTLogEntry -Message "Service [$(if ($Name) { $Name } else { $DisplayName })] does not exist."
                     return $false
                 }
-                Write-ADTLogEntry -Message "Service [$Name] exists."
+                Write-ADTLogEntry -Message "Service [$($ServiceObject.Name -join ', ')] with display name [$($ServiceObject.DisplayName -join ', ')] exists."
 
                 # Return the CIM object if passing through.
                 if ($PassThru)
@@ -132,7 +173,7 @@ function Test-ADTServiceExists
         }
         catch
         {
-            Invoke-ADTFunctionErrorHandler -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState -ErrorRecord $_ -LogMessage "Failed check to see if service [$Name] exists."
+            Invoke-ADTFunctionErrorHandler -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState -ErrorRecord $_ -LogMessage "Failed check to see if service [$(if ($Name) { $Name } else { $DisplayName })] exists."
         }
     }
 

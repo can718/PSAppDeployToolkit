@@ -1,8 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using PSADT.Interop;
 using PSADT.Interop.SafeHandles;
 using PSADT.ProcessManagement;
@@ -45,7 +46,7 @@ namespace PSADT.DeviceManagement
                 try
                 {
                     Guid iid = typeof(IAudioSessionManager2).GUID;
-                    microphoneDevice.Activate(in iid, CLSCTX.CLSCTX_INPROC_SERVER, null, out object sessionManager);
+                    microphoneDevice.Activate(in iid, CLSCTX.CLSCTX_INPROC_SERVER, pActivationParams: null, out object sessionManager);
                     try
                     {
                         IAudioSessionEnumerator sessionEnumerator = ((IAudioSessionManager2)sessionManager).GetSessionEnumerator();
@@ -107,12 +108,20 @@ namespace PSADT.DeviceManagement
         /// <summary>
         /// Reboots the computer and terminates this process.
         /// </summary>
-        [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "This synchronous stop operation must wait for the polling task to complete before releasing resources.")]
+        /// <param name="shutdownReasonText">An optional string that specifies the reason for the shutdown, which will be logged in the system event log. If <see langword="null"/> or empty, no reason will be logged.</param>
+        /// <exception cref="InvalidOperationException">Thrown if the attempt to restart the computer fails or if shutdown.exe returns a non-zero exit code.</exception>
+        /// <exception cref="InvalidProgramException">Thrown if the 'Environment.Exit()' method does not terminate the process as expected.</exception>
         [SuppressMessage("Blocker Code Smell", "S1147:Exit methods should not be called", Justification = "This code deliberately short circuits to exit.")]
         [DoesNotReturn]
-        internal static void RestartComputer()
+        internal static async ValueTask RestartComputer(string? shutdownReasonText)
         {
-            using (ProcessResult result = ProcessManager.LaunchAsync(new(Path.Join(Environment.SystemDirectory, "shutdown.exe"), ["/r /f /t 0"], Environment.SystemDirectory, denyUserTermination: true, createNoWindow: true))?.Task.GetAwaiter().GetResult() ?? throw new InvalidOperationException("Failed to launch shutdown.exe to restart the computer."))
+            List<string> argumentList = ["/r", "/f", "/t", "0"];
+            if (shutdownReasonText is not null)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(shutdownReasonText);
+                argumentList.AddRange(["/c", $"\"{shutdownReasonText}\""]);
+            }
+            using (ProcessResult result = await (ProcessManager.LaunchAsync(new(Path.Join(Environment.SystemDirectory, "shutdown.exe"), argumentList, Environment.SystemDirectory, denyUserTermination: true, createNoWindow: true)) ?? throw new InvalidOperationException("Failed to launch shutdown.exe to restart the computer.")).ConfigureAwait(false))
             {
                 if (result.ExitCode != 0)
                 {
@@ -130,7 +139,6 @@ namespace PSADT.DeviceManagement
         /// system was started.</remarks>
         /// <returns>A <see cref="TimeSpan"/> representing the duration for which the system has been running since the last
         /// restart.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TimeSpan GetSystemUptime()
         {
             return TimeSpan.FromMilliseconds(PInvoke.GetTickCount64());
@@ -140,7 +148,6 @@ namespace PSADT.DeviceManagement
         /// Retrieves the system boot time by calculating the difference between the current time and the system uptime.
         /// </summary>
         /// <returns>A <see cref="DateTime"/> representing the date and time when the system was last booted.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DateTime GetSystemBootTime()
         {
             return DateTime.Now - GetSystemUptime();

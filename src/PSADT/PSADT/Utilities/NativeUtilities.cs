@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 
 namespace PSADT.Utilities
 {
@@ -19,7 +18,6 @@ namespace PSADT.Utilities
         /// <param name="imm16">The 16-bit immediate value to encode into the instruction.</param>
         /// <param name="shift">The left shift amount for the immediate value, in multiples of 16 bits. Must be between 0 and 3.</param>
         /// <returns>A 32-bit unsigned integer representing the encoded MOVZ instruction.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint EncodeMovZ(int reg, ushort imm16, int shift)
         {
             return 0xD2800000 | ((uint)reg & 0x1F) | (((uint)shift & 3) << 21) | (((uint)imm16 & 0xFFFF) << 5);
@@ -36,7 +34,6 @@ namespace PSADT.Utilities
         /// <param name="imm16">The 16-bit immediate value to be encoded into the instruction.</param>
         /// <param name="shift">The shift amount, in 16-bit units, used to position the immediate value. Must be in the range 0 to 3.</param>
         /// <returns>A 32-bit unsigned integer representing the encoded MOVK instruction.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint EncodeMovK(int reg, ushort imm16, int shift)
         {
             return 0xF2800000 | ((uint)reg & 0x1F) | (((uint)shift & 3) << 21) | (((uint)imm16 & 0xFFFF) << 5);
@@ -51,7 +48,6 @@ namespace PSADT.Utilities
         /// <param name="reg">The register value to encode. Must be in the range 0 to 31.</param>
         /// <returns>A 32-bit unsigned integer representing the encoded register value, with the upper bits set to a fixed
         /// pattern.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint EncodeBr(int reg)
         {
             return (uint)(0xD61F0000 | ((reg & 0x1F) << 5));
@@ -65,7 +61,6 @@ namespace PSADT.Utilities
         /// <param name="reg">The register value to encode. Must be in the range 0 to 31; only the lower 5 bits are used.</param>
         /// <returns>A 32-bit unsigned integer representing the encoded register value, with the upper bits set to a fixed
         /// pattern.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint EncodeBlr(int reg)
         {
             return (uint)(0xD63F0000 | ((reg & 0x1F) << 5));
@@ -82,12 +77,14 @@ namespace PSADT.Utilities
         /// <param name="value">The 64-bit unsigned integer value to encode and load into the register.</param>
         /// <returns>An enumerable collection of 32-bit unsigned integers representing the encoded instructions required to load
         /// the specified value into the target register.</returns>
-        internal static IEnumerable<uint> Load64(int reg, ulong value)
+        internal static IReadOnlyList<uint> Load64(int reg, ulong value)
         {
-            yield return EncodeMovZ(reg, (ushort)(value >> 0), 0);
-            yield return EncodeMovK(reg, (ushort)(value >> 16), 1);
-            yield return EncodeMovK(reg, (ushort)(value >> 32), 2);
-            yield return EncodeMovK(reg, (ushort)(value >> 48), 3);
+            return [
+                EncodeMovZ(reg, (ushort)(value >> 0), 0),
+                EncodeMovK(reg, (ushort)(value >> 16), 1),
+                EncodeMovK(reg, (ushort)(value >> 32), 2),
+                EncodeMovK(reg, (ushort)(value >> 48), 3),
+            ];
         }
     }
 }

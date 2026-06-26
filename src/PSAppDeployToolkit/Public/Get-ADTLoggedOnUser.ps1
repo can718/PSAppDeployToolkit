@@ -100,7 +100,7 @@ function Get-ADTLoggedOnUser
         {
             try
             {
-                if (($sessionInfo = [PSADT.TerminalServices.SessionInfo]::Get()))
+                if (($sessionInfo = [PSADT.TerminalServices.SessionInfo]::GetAsync().AsTask().ConfigureAwait($false).GetAwaiter().GetResult()))
                 {
                     return $sessionInfo
                 }

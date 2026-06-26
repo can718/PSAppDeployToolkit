@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Management.Automation;
-using System.Management.Automation.Internal;
-using System.Management.Automation.Language;
+using PSAppDeployToolkit.Utilities;
 
 namespace PSAppDeployToolkit.Attributes
 {
@@ -19,15 +19,14 @@ namespace PSAppDeployToolkit.Attributes
         /// <exception cref="ArgumentException">
         /// Thrown when one of the extensions provided in <paramref name="extensionNames"/> is not a valid extension.
         /// </exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S3236:Caller information arguments should not be provided explicitly", Justification = "This is intentional as we're testing a parameter member.")]
         public ValidateExtensionAttribute(params string[] extensionNames)
         {
             ArgumentNullException.ThrowIfNull(extensionNames);
-            foreach (string extension in extensionNames)
+            ArgumentOutOfRangeException.ThrowIfZero(extensionNames.Length, nameof(extensionNames));
+            if (extensionNames.FirstOrDefault(static e => !e.StartsWith('.') || e.Length <= 1) is string extension)
             {
-                if (!extension.StartsWith(".") || extension.Length <= 1)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(extensionNames), extension, $"The provided argument '{extension}' is not a valid extension. Valid extensions must start with a period and be followed by one or more valid filename characters.");
-                }
+                throw new ArgumentOutOfRangeException(nameof(extensionNames), extension, $"The provided argument '{extension}' is not a valid extension. Valid extensions must start with a period and be followed by one or more valid filename characters.");
             }
             ExtensionNames = [.. extensionNames];
         }
@@ -36,36 +35,31 @@ namespace PSAppDeployToolkit.Attributes
         /// Validates that an element in the argument has one of the extensions specified in the constructor.
         /// </summary>
         /// <param name="element">The argument value to validate.</param>
-        /// <exception cref="ValidationMetadataException">
-        /// Thrown when <paramref name="element"/> fails validation based on the configured rules.
-        /// </exception>
-        protected override void ValidateElement(object element)
+        /// <exception cref="ArgumentNullException">Thrown when the argument is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the argument is not a string or does not have a valid extension.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0015:Specify the parameter name in ArgumentException", Justification = "We don't want a paramter name on these exceptions.")]
+        protected override void ValidateElement(object? element)
         {
-            if (element is null || element == AutomationNull.Value || element == NullString.Value)
+            if (!PowerShellUtilities.TryGetBaseObject(element, out element))
             {
-                throw new ArgumentNullException(null, "The argument is null. Provide a valid value for the argument, and then try running the command again.");
+                throw new ArgumentNullException(paramName: null, "The argument is null. Provide a valid value for the argument, and then try running the command again.");
             }
-
             if (element is not string str)
             {
                 throw new ArgumentException("The argument is not a string. Provide an argument that is a string and then try running the command again.");
             }
-
             if (string.IsNullOrWhiteSpace(str))
             {
                 throw new ArgumentException("The argument is null, empty, or white space. Provide an argument that is not null, empty, or white space, and then try running the command again.");
             }
-
-            string fileExtension = Path.GetExtension(str);
-            foreach (string extension in ExtensionNames)
+            if (Path.GetExtension(str) is not string fileExtension || string.IsNullOrWhiteSpace(fileExtension))
             {
-                if (extension.Equals(fileExtension, StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
+                throw new ArgumentException($"The path argument '{str}' does not have a valid extension. Provide a path argument with a valid extension.");
             }
-
-            throw new ArgumentException($"The path argument '{str}' with extension '{fileExtension}' does not belong to the set of approved extensions: {string.Join(", ", ExtensionNames)}. Provide a path argument with an approved extension.");
+            if (ExtensionNames.FirstOrDefault(e => e.Equals(fileExtension, StringComparison.OrdinalIgnoreCase)) is null)
+            {
+                throw new ArgumentException($"The path argument '{str}' with extension '{fileExtension}' does not belong to the set of approved extensions: {string.Join(", ", ExtensionNames)}. Provide a path argument with an approved extension.");
+            }
         }
 
         /// <summary>

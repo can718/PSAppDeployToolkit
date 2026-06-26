@@ -8,6 +8,7 @@ namespace PSAppDeployToolkit.Foundation
     [Flags]
     internal enum DeploymentSettings : uint
     {
+        None = 0,
         Disposed = 1 << 0,
         CompatibilityMode = 1 << 1,
         SuppressRebootPassThru = 1 << 2,
@@ -24,7 +25,8 @@ namespace PSAppDeployToolkit.Foundation
         NoSessionDetection = 1 << 13,
         NoOobeDetection = 1 << 14,
         NoProcessDetection = 1 << 15,
-        ExitWithMsiCodes = 1 << 16,
-        AllowWowProcess = 1 << 17,
+        ProcessInteractivityDetection = 1 << 16,
+        ExitWithMsiCodes = 1 << 17,
+        AllowWowProcess = 1 << 18,
     }
 }

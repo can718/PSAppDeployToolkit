@@ -31,8 +31,17 @@ function Show-ADTInstallationRestartPrompt
     .PARAMETER WindowLocation
         The location of the dialog on the screen.
 
-    .PARAMETER CustomText
+    .PARAMETER ShutdownReasonText
+        Specifies the shutdown comment to provide to the underlying `shutdown.exe` call when triggering the restart.
+
+    .PARAMETER PersistPrompt
+        Specify whether to make the prompt persist, reappearing in the specified `-WindowLocation` at the interval specified in the `config.psd1` file. The user will have no option but to respond to the prompt. This only takes effect if deferral is not allowed or has expired.
+
+    .PARAMETER CustomMessage
         Specify whether to display a custom message specified in the `strings.psd1` file. Custom message must be populated for each language section in the `strings.psd1` file.
+
+    .PARAMETER CustomMessageText
+        Specifies a literal custom message to display, ignoring the custom message specified in the `strings.psd1` file.
 
     .PARAMETER NotTopMost
         Specifies whether the prompt shouldn't be topmost, above all other windows.
@@ -119,13 +128,38 @@ function Show-ADTInstallationRestartPrompt
             })]
         [System.UInt32]$SilentCountdownSeconds = 5,
 
+        [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
+        [ValidateScript({
+                if ([System.String]::IsNullOrWhiteSpace($_))
+                {
+                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName ShutdownReasonText -ProvidedValue $_ -ExceptionMessage 'The specified ShutdownReasonText cannot be null or whitespace.'))
+                }
+                if ($_ -gt 511)
+                {
+                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName ShutdownReasonText -ProvidedValue $_ -ExceptionMessage 'The specified ShutdownReasonText cannot exceed 512 characters in length.'))
+                }
+                return !!$_
+            })]
+        [System.String]$ShutdownReasonText,
+
         [Parameter(Mandatory = $false)]
         [ValidateNotNullOrEmpty()]
         [PSADT.UserInterface.DialogPosition]$WindowLocation,
 
         [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
         [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
-        [System.Management.Automation.SwitchParameter]$CustomText,
+        [System.Management.Automation.SwitchParameter]$PersistPrompt,
+
+        [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
+        [Alias('CustomText')]
+        [System.Management.Automation.SwitchParameter]$CustomMessage,
+
+        [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
+        [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
+        [System.String]$CustomMessageText,
 
         [Parameter(Mandatory = $false)]
         [System.Management.Automation.SwitchParameter]$NotTopMost,
@@ -142,7 +176,7 @@ function Show-ADTInstallationRestartPrompt
         # Initialise the string table.
         $sessionState = if ($adtSession)
         {
-            $adtSession.SessionState
+            $adtSession.DeployAppScriptSessionState
         }
         if ($null -eq $sessionState)
         {
@@ -208,47 +242,56 @@ function Show-ADTInstallationRestartPrompt
 
     process
     {
+        # Check if we are already displaying a restart prompt.
+        if (Get-Process | & { process { if ($_.MainWindowTitle -match $adtStrings.RestartPrompt.Title) { return $_ } } } | Select-Object -First 1)
+        {
+            Write-ADTLogEntry -Message "$($MyInvocation.MyCommand.Name) was invoked, but an existing restart prompt was detected. Cancelling restart prompt." -Severity Warning
+            return
+        }
+
+        # If in non-interactive mode.
+        if ($adtSession -and $adtSession.IsSilent())
+        {
+            if ($SilentRestart)
+            {
+                Write-ADTLogEntry -Message "Triggering restart silently because the deploy mode is set to [$($adtSession.DeployMode)] and [-SilentRestart] has been specified. Timeout is set to [$SilentCountdownSeconds] seconds."
+                $Script:ADT.RestartOnExitCountdown = $SilentCountdownSeconds
+                if ($PSBoundParameters.ContainsKey('ShutdownReasonText'))
+                {
+                    $Script:ADT.ShutdownReasonText = $ShutdownReasonText
+                }
+            }
+            else
+            {
+                Write-ADTLogEntry -Message "Skipping restart because the deploy mode is set to [$($adtSession.DeployMode)] and [-SilentRestart] was not specified."
+            }
+            return
+        }
+
+        # Just restart the computer if no one's logged on to answer the dialog.
+        if (!($runAsActiveUser = Get-ADTClientServerUser -AllowSystemFallback))
+        {
+            Write-ADTLogEntry -Message "Triggering restart silently because there is no active user logged onto the system."
+            if ($adtSession)
+            {
+                $Script:ADT.RestartOnExitCountdown = $SilentCountdownSeconds
+                if ($PSBoundParameters.ContainsKey('ShutdownReasonText'))
+                {
+                    $Script:ADT.ShutdownReasonText = $ShutdownReasonText
+                }
+            }
+            else
+            {
+                Invoke-ADTClientServerOperation -User ([PSADT.AccountManagement.AccountUtilities]::CallerRunAsActiveUser) -SilentRestart -Delay $SilentCountdownSeconds -NoWait
+            }
+            return
+        }
+
+        # Build out and present the restart dialog.
         try
         {
             try
             {
-                # Check if we are already displaying a restart prompt.
-                if (Get-Process | & { process { if ($_.MainWindowTitle -match $adtStrings.RestartPrompt.Title) { return $_ } } } | Select-Object -First 1)
-                {
-                    Write-ADTLogEntry -Message "$($MyInvocation.MyCommand.Name) was invoked, but an existing restart prompt was detected. Cancelling restart prompt." -Severity Warning
-                    return
-                }
-
-                # If in non-interactive mode.
-                if ($adtSession -and $adtSession.IsSilent())
-                {
-                    if ($SilentRestart)
-                    {
-                        Write-ADTLogEntry -Message "Triggering restart silently because the deploy mode is set to [$($adtSession.DeployMode)] and [-SilentRestart] has been specified. Timeout is set to [$SilentCountdownSeconds] seconds."
-                        $Script:ADT.RestartOnExitCountdown = $SilentCountdownSeconds
-                    }
-                    else
-                    {
-                        Write-ADTLogEntry -Message "Skipping restart because the deploy mode is set to [$($adtSession.DeployMode)] and [-SilentRestart] was not specified."
-                    }
-                    return
-                }
-
-                # Just restart the computer if no one's logged on to answer the dialog.
-                if (!($runAsActiveUser = Get-ADTClientServerUser -AllowSystemFallback))
-                {
-                    Write-ADTLogEntry -Message "Triggering restart silently because there is no active user logged onto the system."
-                    if ($adtSession)
-                    {
-                        $Script:ADT.RestartOnExitCountdown = $SilentCountdownSeconds
-                    }
-                    else
-                    {
-                        Invoke-ADTClientServerOperation -User ([PSADT.AccountManagement.AccountUtilities]::CallerRunAsActiveUser) -SilentRestart -Delay $SilentCountdownSeconds -NoWait
-                    }
-                    return
-                }
-
                 # Build out hashtable of parameters needed to construct the dialog.
                 $dialogOptions = @{
                     AppTitle = $PSBoundParameters.Title
@@ -266,6 +309,10 @@ function Show-ADTInstallationRestartPrompt
                     $dialogOptions.Add('CountdownDuration', [System.TimeSpan]::FromSeconds($CountdownSeconds))
                     $dialogOptions.Add('CountdownNoMinimizeDuration', [System.TimeSpan]::FromSeconds($CountdownNoHideSeconds))
                 }
+                if ($PSBoundParameters.ContainsKey('ShutdownReasonText'))
+                {
+                    $dialogOptions.Add('ShutdownReasonText', $ShutdownReasonText)
+                }
                 if ($PSBoundParameters.ContainsKey('WindowLocation'))
                 {
                     $dialogOptions.Add('DialogPosition', $WindowLocation)
@@ -274,13 +321,28 @@ function Show-ADTInstallationRestartPrompt
                 {
                     $dialogOptions.Add('DialogAllowMove', !!$AllowMove)
                 }
-                if ($CustomText)
+                if ($PersistPrompt)
                 {
-                    $dialogOptions.Add('CustomMessageText', $adtStrings.RestartPrompt.CustomMessage)
+                    $dialogOptions.Add('DialogPersistInterval', [System.TimeSpan]::FromSeconds($adtConfig.UI.DefaultPromptPersistInterval))
+                }
+                if ($CustomMessage)
+                {
+                    if (!$PSBoundParameters.ContainsKey('CustomMessageText'))
+                    {
+                        $dialogOptions.Add('CustomMessageText', $adtStrings.RestartPrompt.CustomMessage)
+                    }
+                    else
+                    {
+                        $dialogOptions.Add('CustomMessageText', $CustomMessageText)
+                    }
                 }
                 if ($null -ne $adtConfig.UI.FluentAccentColor)
                 {
                     $dialogOptions.Add('FluentAccentColor', $adtConfig.UI.FluentAccentColor)
+                }
+                if ($null -ne $adtConfig.UI.FluentAccentColorDark)
+                {
+                    $dialogOptions.Add('FluentAccentColorDark', $adtConfig.UI.FluentAccentColorDark)
                 }
                 $dialogOptions = New-ADTDialogOptionsObject -Type ([PSADT.UserInterface.DialogOptions.RestartDialogOptions]) -Data $dialogOptions -DeploymentType $DeploymentType
 

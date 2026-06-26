@@ -230,13 +230,20 @@ function Copy-ADTFileToUserProfiles
         # Copy all paths to the specified destination.
         foreach ($UserProfile in $(if (!$UserProfiles) { Get-ADTUserProfiles @GetUserProfileSplat } else { $UserProfiles }))
         {
-            if ([System.String]::IsNullOrWhiteSpace($UserProfile."$BasePath`Path"))
+            if (!$UserProfile."$($BasePath)Path")
             {
-                Write-ADTLogEntry -Message "Skipping user profile [$($UserProfile.NTAccount)] as path [$BasePath`Path] is not available."
+                Write-ADTLogEntry -Message "Skipping user profile [$($UserProfile.NTAccount)] as path [$($BasePath)Path] is not available."
                 continue
             }
-            $dest = (Join-Path -Path $UserProfile."$BasePath`Path" -ChildPath $Destination).Trim()
-            Write-ADTLogEntry -Message "Copying path [$sourcePaths] to $($dest):"
+            $dest = if ($PSBoundParameters.ContainsKey('Destination'))
+            {
+                (Join-Path -Path $UserProfile."$($BasePath)Path".FullName -ChildPath $Destination).Trim()
+            }
+            else
+            {
+                $UserProfile."$($BasePath)Path".FullName
+            }
+            Write-ADTLogEntry -Message "Copying path [$sourcePaths] to $dest."
             if ($PSCmdlet.ShouldProcess($dest, "Copy files from [$sourcePaths] to user profile [$($UserProfile.NTAccount)]"))
             {
                 Copy-ADTFile -Path $sourcePaths -Destination $dest @CopyFileSplat

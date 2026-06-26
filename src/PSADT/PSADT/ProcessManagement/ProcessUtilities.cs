@@ -36,7 +36,6 @@ namespace PSADT.ProcessManagement
         /// must ensure that the provided process is valid and accessible.</remarks>
         /// <param name="process">The process for which to retrieve the parent process. Must not be null.</param>
         /// <returns>A <see cref="Process"/> object representing the parent process of the specified process.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Process GetParentProcess(Process process)
         {
             return Process.GetProcessById(GetParentProcessId(process));
@@ -46,9 +45,8 @@ namespace PSADT.ProcessManagement
         /// Retrieves the parent process of the specified process by its process identifier.
         /// </summary>
         /// <param name="processId">The identifier of the process whose parent process is to be retrieved. Must correspond to a running process.</param>
-        /// <returns>A <see cref="Process"/> object representing the parent process of the specified process. Returns <c>null</c>
+        /// <returns>A <see cref="Process"/> object representing the parent process of the specified process. Returns <see langword="null"/>
         /// if the parent process cannot be determined.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Process GetParentProcess(int processId)
         {
             return Process.GetProcessById(GetParentProcessId(processId));
@@ -60,7 +58,6 @@ namespace PSADT.ProcessManagement
         /// <remarks>The returned <see cref="Process"/> object should be disposed of by the caller when it
         /// is no longer needed.</remarks>
         /// <returns>A <see cref="Process"/> object representing the parent process of the current process.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Process GetParentProcess()
         {
             return Process.GetProcessById(GetParentProcessId());
@@ -133,7 +130,7 @@ namespace PSADT.ProcessManagement
         public static int GetParentProcessId(int processId)
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
-            using SafeFileHandle hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+            using SafeFileHandle hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, bInheritHandle: false, (uint)processId);
             return (int)GetParentProcessId(hProcess);
         }
 
@@ -196,7 +193,7 @@ namespace PSADT.ProcessManagement
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
             try
             {
-                using SafeFileHandle hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+                using SafeFileHandle hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, bInheritHandle: false, (uint)processId);
                 return NativeMethods.GetExitCodeProcess(hProcess, out uint exitCode) && exitCode != NTSTATUS.STATUS_PENDING;
             }
             catch
@@ -232,7 +229,7 @@ namespace PSADT.ProcessManagement
         public static SecurityIdentifier GetProcessSid(int processId)
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
-            using SafeFileHandle hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+            using SafeFileHandle hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, bInheritHandle: false, (uint)processId);
             _ = NativeMethods.OpenProcessToken(hProcess, TOKEN_ACCESS_MASK.TOKEN_QUERY, out SafeFileHandle hToken);
             using (hToken)
             {
@@ -266,7 +263,7 @@ namespace PSADT.ProcessManagement
         public static string GetProcessCommandLine(int processId)
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
-            using SafeFileHandle hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+            using SafeFileHandle hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, bInheritHandle: false, (uint)processId);
             return GetProcessCommandLine(hProcess);
         }
 
@@ -282,7 +279,7 @@ namespace PSADT.ProcessManagement
         internal static string GetProcessCommandLine(SafeHandle hProcess)
         {
             // Get the required length we need for the buffer.
-            _ = NativeMethods.NtQueryInformationProcess(hProcess, PROCESSINFOCLASS.ProcessCommandLineInformation, null, out uint requiredLength);
+            _ = NativeMethods.NtQueryInformationProcess(hProcess, PROCESSINFOCLASS.ProcessCommandLineInformation, ProcessInformation: null, out uint requiredLength);
 
             // Allocate the buffer, then retrieve the actual command line string.
             Span<byte> buffer = stackalloc byte[(int)requiredLength];
@@ -371,7 +368,7 @@ namespace PSADT.ProcessManagement
                 SafeFileHandle hProcess;
                 try
                 {
-                    hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+                    hProcess = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, bInheritHandle: false, processId);
                 }
                 catch (Exception ex2) when (ex2.Message is not null)
                 {
@@ -435,6 +432,7 @@ namespace PSADT.ProcessManagement
         /// <returns>The Win32-formatted image file path of the specified process.</returns>
         /// <exception cref="NotSupportedException">Thrown if the method is called from a 32-bit process on a 64-bit operating system, if the image name query
         /// returns a null or empty result, or if the retrieved image name is not a valid NT path.</exception>
+        /// <exception cref="FormatException">Thrown if the retrieved image name does not start with "\Device\", indicating an invalid NT path.</exception>"
         private static FileInfo QuerySystemProcessIdInformationImageName(uint processId, ReadOnlyDictionary<string, string> ntPathLookupTable)
         {
             // Throw if we're a 32-bit process on a 64-bit system as we cannot query the image name in that case.
@@ -484,7 +482,7 @@ namespace PSADT.ProcessManagement
         {
             Span<char> buffer = stackalloc char[1024]; buffer.Clear();
             _ = NativeMethods.QueryFullProcessImageName(hProcess, PROCESS_NAME_FORMAT.PROCESS_NAME_WIN32, buffer, out uint requiredLength);
-            string result = buffer.Slice(0, (int)requiredLength).ToString();
+            string result = buffer[..(int)requiredLength].ToString();
             return string.IsNullOrWhiteSpace(result)
                 ? throw new InvalidProgramException("The QueryFullProcessImageName() call returned a null or empty result.")
                 : new(result);
@@ -505,7 +503,7 @@ namespace PSADT.ProcessManagement
         private static FileInfo GetProcessImageFileName(SafeHandle hProcess, ReadOnlyDictionary<string, string> ntPathLookupTable)
         {
             Span<char> buffer = stackalloc char[1024]; buffer.Clear();
-            string result = buffer.Slice(0, (int)NativeMethods.GetProcessImageFileName(hProcess, buffer)).ToString();
+            string result = buffer[..(int)NativeMethods.GetProcessImageFileName(hProcess, buffer)].ToString();
             return string.IsNullOrWhiteSpace(result)
                 ? throw new InvalidProgramException("The GetProcessImageFileName() call returned a null or empty result.")
                 : new(TranslateNtPathToWin32Path(result, ntPathLookupTable));
@@ -518,7 +516,6 @@ namespace PSADT.ProcessManagement
         /// rights to query information about the process.</param>
         /// <returns>A string containing the Win32 path of the process's executable image, or null if the path cannot be
         /// determined.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static FileInfo QueryProcessImageFileNameWin32(SafeHandle hProcess)
         {
             return new(QueryProcessImageFileNameCommon(hProcess, PROCESSINFOCLASS.ProcessImageFileNameWin32));
@@ -535,7 +532,6 @@ namespace PSADT.ProcessManagement
         /// <param name="ntPathLookupTable">A read-only dictionary used to map NT device paths to Win32 file system paths. This table is applied to
         /// translate the native path format returned by the system.</param>
         /// <returns>A string containing the full Win32 path to the executable image of the specified process.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static FileInfo QueryProcessImageFileName(SafeHandle hProcess, ReadOnlyDictionary<string, string> ntPathLookupTable)
         {
             return new(TranslateNtPathToWin32Path(QueryProcessImageFileNameCommon(hProcess, PROCESSINFOCLASS.ProcessImageFileName), ntPathLookupTable));
@@ -551,7 +547,7 @@ namespace PSADT.ProcessManagement
         private static string QueryProcessImageFileNameCommon(SafeHandle hProcess, PROCESSINFOCLASS processInfoClass)
         {
             // Determine required buffer size.
-            _ = NativeMethods.NtQueryInformationProcess(hProcess, processInfoClass, null, out uint requiredLength);
+            _ = NativeMethods.NtQueryInformationProcess(hProcess, processInfoClass, ProcessInformation: null, out uint requiredLength);
             Span<byte> buffer = stackalloc byte[(int)requiredLength];
 
             // Perform the query.
@@ -574,10 +570,10 @@ namespace PSADT.ProcessManagement
         /// <exception cref="FormatException">Thrown if the NT device name derived from the specified path does not exist in the lookup table.</exception>
         private static string TranslateNtPathToWin32Path(string ntPath, ReadOnlyDictionary<string, string> ntPathLookupTable)
         {
-            string ntDeviceName = $@"\{string.Join(@"\", ntPath.Split(['\\'], StringSplitOptions.RemoveEmptyEntries).Take(2))}";
+            string ntDeviceName = $@"\{string.Join('\\', ntPath.Split(['\\'], StringSplitOptions.RemoveEmptyEntries).Take(2))}";
             return !ntPathLookupTable.TryGetValue(ntDeviceName, out string? driveLetter)
                 ? throw new FormatException($"Unable to find drive letter for NT device [{ntDeviceName}], derived from NT path [{ntPath}].")
-                : ntPath.Replace(ntDeviceName, driveLetter);
+                : ntPath.Replace(ntDeviceName, driveLetter, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -602,6 +598,7 @@ namespace PSADT.ProcessManagement
         /// process ID for active services.</remarks>
         /// <param name="service">The <see cref="ServiceController"/> representing the service for which to obtain the process ID.</param>
         /// <returns>The process ID of the specified service.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if the service is not running or does not have a valid process ID.</exception>"
         internal static uint GetServiceProcessId(ServiceController service)
         {
             using CloseServiceHandleSafeHandle scm = NativeMethods.OpenSCManager(SC_MANAGER_ACCESS.SC_MANAGER_CONNECT);

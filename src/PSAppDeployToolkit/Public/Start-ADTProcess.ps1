@@ -553,6 +553,63 @@ function Start-ADTProcess
 
     begin
     {
+        # Internal worker function to set the session exit code.
+        function Set-ADTSessionExitCode
+        {
+            [CmdletBinding()]
+            param
+            (
+                [Parameter(Mandatory = $true)]
+                [ValidateNotNullOrEmpty()]
+                [System.Nullable[System.Int32]]$ExitCode
+            )
+
+            # Throw if there's no active session; the caller didn't do their homework.
+            if (!$adtSession)
+            {
+                $naerParams = @{
+                    Exception = [System.InvalidProgramException]::new("The function [Start-ADTProcess] attempted to set a session exit code, but no deployment session is active.")
+                    Category = [System.Management.Automation.ErrorCategory]::ObjectNotFound
+                    ErrorId = 'NoActiveAdtDeploymentSession'
+                    TargetObject = $ExitCode
+                    RecommendedAction = "Please report this to the PSAppDeployToolkit team for further review."
+                }
+                $PSCmdlet.ThrowTerminatingError((New-ADTErrorRecord @naerParams))
+            }
+            if (!$canSetExitCode)
+            {
+                $naerParams = @{
+                    Exception = [System.InvalidProgramException]::new("The function [Start-ADTProcess] is attempting to set a session exit code when it shouldn't.")
+                    Category = [System.Management.Automation.ErrorCategory]::ObjectNotFound
+                    ErrorId = 'SetAdtDeploymentSessionExitCodeError'
+                    TargetObject = $ExitCode
+                    RecommendedAction = "Please report this to the PSAppDeployToolkit team for further review."
+                }
+                $PSCmdlet.ThrowTerminatingError((New-ADTErrorRecord @naerParams))
+            }
+
+            # Start working out whether we can set the exit code or not.
+            $adtSessionStatus = $adtSession.GetDeploymentStatus()
+            $isSuccessCode = $SuccessExitCodes.Contains($ExitCode)
+            $isRestartCode = $RebootExitCodes.Contains($ExitCode)
+            $isFailureCode = !$isSuccessCode -and !$isRestartCode
+            if ($isFailureCode -and ($adtSessionStatus -le [PSAppDeployToolkit.Foundation.DeploymentStatus]::Error))
+            {
+                $adtSession.SetExitCode($ExitCode)
+                return
+            }
+            if ($isRestartCode -and ($adtSessionStatus -le [PSAppDeployToolkit.Foundation.DeploymentStatus]::RestartRequired))
+            {
+                $adtSession.SetExitCode($ExitCode)
+                return
+            }
+            if ($isSuccessCode -and ($adtSessionStatus -le [PSAppDeployToolkit.Foundation.DeploymentStatus]::Complete))
+            {
+                $adtSession.SetExitCode($ExitCode)
+                return
+            }
+        }
+
         # Initalize function and get required objects.
         $adtSession = if (Test-ADTSessionActive)
         {
@@ -622,84 +679,6 @@ function Start-ADTProcess
         {
             $cancellationTokenSource.Token
         }
-
-        # Set up the elevation type to use for the new process.
-        $elevatedTokenType = if ($RunAsActiveUser)
-        {
-            if ($UseLinkedAdminToken)
-            {
-                [PSADT.Security.ElevatedTokenType]::HighestMandatory
-            }
-            elseif ($UseHighestAvailableToken)
-            {
-                [PSADT.Security.ElevatedTokenType]::HighestAvailable
-            }
-            elseif ($RunAsActiveUser -eq [PSADT.AccountManagement.AccountUtilities]::CallerRunAsActiveUser)
-            {
-                [PSADT.Security.ElevatedTokenType]::None
-            }
-        }
-        elseif ($UseUnelevatedToken)
-        {
-            [PSADT.Security.ElevatedTokenType]::None
-        }
-
-        # Internal worker function to set the session exit code.
-        function Set-ADTSessionExitCode
-        {
-            [CmdletBinding()]
-            param
-            (
-                [Parameter(Mandatory = $true)]
-                [ValidateNotNullOrEmpty()]
-                [System.Nullable[System.Int32]]$ExitCode
-            )
-
-            # Throw if there's no active session; the caller didn't do their homework.
-            if (!$adtSession)
-            {
-                $naerParams = @{
-                    Exception = [System.InvalidProgramException]::new("The function [Start-ADTProcess] attempted to set a session exit code, but no deployment session is active.")
-                    Category = [System.Management.Automation.ErrorCategory]::ObjectNotFound
-                    ErrorId = 'NoActiveAdtDeploymentSession'
-                    TargetObject = $ExitCode
-                    RecommendedAction = "Please report this to the PSAppDeployToolkit team for further review."
-                }
-                $PSCmdlet.ThrowTerminatingError((New-ADTErrorRecord @naerParams))
-            }
-            if (!$canSetExitCode)
-            {
-                $naerParams = @{
-                    Exception = [System.InvalidProgramException]::new("The function [Start-ADTProcess] is attempting to set a session exit code when it shouldn't.")
-                    Category = [System.Management.Automation.ErrorCategory]::ObjectNotFound
-                    ErrorId = 'SetAdtDeploymentSessionExitCodeError'
-                    TargetObject = $ExitCode
-                    RecommendedAction = "Please report this to the PSAppDeployToolkit team for further review."
-                }
-                $PSCmdlet.ThrowTerminatingError((New-ADTErrorRecord @naerParams))
-            }
-
-            # Start working out whether we can set the exit code or not.
-            $adtSessionStatus = $adtSession.GetDeploymentStatus()
-            $isSuccessCode = $SuccessExitCodes.Contains($ExitCode)
-            $isRestartCode = $RebootExitCodes.Contains($ExitCode)
-            $isFailureCode = !$isSuccessCode -and !$isRestartCode
-            if ($isFailureCode -and ($adtSessionStatus -le [PSAppDeployToolkit.Foundation.DeploymentStatus]::Error))
-            {
-                $adtSession.SetExitCode($ExitCode)
-                return
-            }
-            if ($isRestartCode -and ($adtSessionStatus -le [PSAppDeployToolkit.Foundation.DeploymentStatus]::RestartRequired))
-            {
-                $adtSession.SetExitCode($ExitCode)
-                return
-            }
-            if ($isSuccessCode -and ($adtSessionStatus -le [PSAppDeployToolkit.Foundation.DeploymentStatus]::Complete))
-            {
-                $adtSession.SetExitCode($ExitCode)
-                return
-            }
-        }
     }
 
     process
@@ -768,18 +747,45 @@ function Start-ADTProcess
                     }
                 }
 
-                # Set the working directory when running in a session if the caller hasn't specified one.
-                # For non-msiexec situations, use the process's path for backwards compat, otherwise use $adtSession.DirFiles if defined.
-                # We don't do this when a session isn't running so `Start-ADTProcess` works the way one should expect (i.e. like `Start-Process`).
-                if ($adtSession -and !$PSBoundParameters.ContainsKey('WorkingDirectory'))
+                # Provide some extra management for the caller when a session is active.
+                if ($adtSession)
                 {
-                    if ([System.IO.Path]::HasExtension($FilePath) -and [PSADT.FileSystem.FileSystemUtilities]::IsPathFullyQualified($FilePath) -and ($FilePath -notmatch 'msiexec'))
+                    # Set the working directory when running in a session if the caller hasn't specified one.
+                    # For non-msiexec situations, use the process's path for backwards compat, otherwise use $adtSession.DirFiles if defined.
+                    # We don't do this when a session isn't running so `Start-ADTProcess` works the way one should expect (i.e. like `Start-Process`).
+                    if (!$PSBoundParameters.ContainsKey('WorkingDirectory'))
                     {
-                        $PSBoundParameters.WorkingDirectory = [System.IO.Path]::GetDirectoryName($FilePath)
+                        if ([System.IO.Path]::HasExtension($FilePath) -and [PSADT.FileSystem.FileSystemUtilities]::IsPathFullyQualified($FilePath) -and ($FilePath -notmatch 'msiexec'))
+                        {
+                            $PSBoundParameters.WorkingDirectory = [System.IO.Path]::GetDirectoryName($FilePath)
+                        }
+                        elseif ($null -ne $adtSession.DirFiles)
+                        {
+                            $PSBoundParameters.WorkingDirectory = $adtSession.DirFiles.FullName
+                        }
                     }
-                    elseif (![System.String]::IsNullOrWhiteSpace($adtSession.DirFiles))
+
+                    # Grant RunAsActiveUser permissions to DirFiles/DirSupportFiles if required.
+                    if ($RunAsActiveUser)
                     {
-                        $PSBoundParameters.WorkingDirectory = $adtSession.DirFiles
+                        $adtSession.DirFiles, $adtSession.DirSupportFiles | & {
+                            process
+                            {
+                                if ($null -eq $_)
+                                {
+                                    return
+                                }
+                                if (!($PSBoundParameters['WorkingDirectory'] -eq $_.FullName) -and !$FilePath.StartsWith($_.FullName, 'OrdinalIgnoreCase') -and !($ArgumentList -match [regex]::Escape($_.FullName)))
+                                {
+                                    return
+                                }
+                                if ([PSADT.FileSystem.FileSystemUtilities]::TestEffectiveAccess($_, $RunAsActiveUser.SID, [System.Security.AccessControl.FileSystemRights]::ReadAndExecute))
+                                {
+                                    return
+                                }
+                                Set-ADTItemPermission -LiteralPath $_.FullName -Permission ReadAndExecute -PermissionType Allow -Inheritance ObjectInherit, ContainerInherit -Method AddAccessRule -User "*$($RunAsActiveUser.SID)"
+                            }
+                        }
                     }
                 }
 
@@ -796,6 +802,26 @@ function Start-ADTProcess
                 # Set up the process start flags.
                 $launchData = if (!($RunAsActiveUser -and $UseShellExecute))
                 {
+                    # Set up the elevation type to use for the new process.
+                    $elevatedTokenType = if ($RunAsActiveUser)
+                    {
+                        if ($UseLinkedAdminToken)
+                        {
+                            [PSADT.Security.ElevatedTokenType]::HighestMandatory
+                        }
+                        elseif ($UseHighestAvailableToken)
+                        {
+                            [PSADT.Security.ElevatedTokenType]::HighestAvailable
+                        }
+                        elseif ($RunAsActiveUser -eq [PSADT.AccountManagement.AccountUtilities]::CallerRunAsActiveUser)
+                        {
+                            [PSADT.Security.ElevatedTokenType]::None
+                        }
+                    }
+                    elseif ($UseUnelevatedToken)
+                    {
+                        [PSADT.Security.ElevatedTokenType]::None
+                    }
                     [PSADT.ProcessManagement.ProcessLaunchInfo]::new(
                         $FilePath,
                         $ArgumentList,
@@ -908,7 +934,7 @@ function Start-ADTProcess
                 }
                 $result = if ($execution -is [PSADT.ProcessManagement.ProcessHandle])
                 {
-                    $execution.Task.GetAwaiter().GetResult()
+                    $execution.ConfigureAwait($false).GetAwaiter().GetResult()
                 }
                 else
                 {

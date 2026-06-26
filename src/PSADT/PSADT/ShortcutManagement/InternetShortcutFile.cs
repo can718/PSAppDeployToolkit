@@ -19,8 +19,8 @@
  */
 
 using System;
+using System.Globalization;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using PSADT.Interop;
@@ -66,7 +66,6 @@ namespace PSADT.ShortcutManagement
         /// <exception cref="ArgumentException">Thrown when <paramref name="filePath"/> is empty or whitespace.</exception>
         /// <exception cref="FileNotFoundException">Thrown when the specified file does not exist.</exception>
         /// <exception cref="COMException">Thrown when the COM operation fails.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static InternetShortcutFile Load(string filePath, Interop.STGM storageMode = Interop.STGM.STGM_READ)
         {
             return new(filePath, storageMode);
@@ -113,15 +112,6 @@ namespace PSADT.ShortcutManagement
         }
 
         /// <summary>
-        /// Finalizes an instance of the <see cref="InternetShortcutFile"/> class.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        ~InternetShortcutFile()
-        {
-            Dispose(false);
-        }
-
-        /// <summary>
         /// Gets shortcut info for the current <see cref="InternetShortcutFile"/>.
         /// </summary>
         /// <returns>
@@ -164,11 +154,11 @@ namespace PSADT.ShortcutManagement
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-            if (IsReadOnly && string.Equals(Path.GetFullPath(filePath), FilePath?.FullName, StringComparison.OrdinalIgnoreCase))
+            if (IsReadOnly && Path.GetFullPath(filePath).Equals(FilePath?.FullName, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException("Cannot overwrite a shortcut file that was loaded with read-only access. Use Load(filePath, STGM.STGM_READWRITE) to enable modifications.");
             }
-            ((IPersistFile)_internetShortcut).Save(filePath, true);
+            ((IPersistFile)_internetShortcut).Save(filePath, fRemember: true);
         }
 
         /// <summary>
@@ -307,6 +297,7 @@ namespace PSADT.ShortcutManagement
         /// <summary>
         /// Gets or sets the icon index for the Internet shortcut.
         /// </summary>
+        /// <exception cref="InvalidOperationException">Thrown if attempting to set the IconIndex to null when IconFile is set.</exception>
         public int? IconIndex
         {
             get
@@ -414,10 +405,9 @@ namespace PSADT.ShortcutManagement
         /// Opens the URL using the default handler.
         /// </summary>
         /// <exception cref="COMException">Thrown when the COM operation fails.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Invoke()
         {
-            Invoke(null, default, Interop.IURL_INVOKECOMMAND_FLAGS.IURL_INVOKECOMMAND_FL_USE_DEFAULT_VERB);
+            Invoke(verb: null, default, Interop.IURL_INVOKECOMMAND_FLAGS.IURL_INVOKECOMMAND_FL_USE_DEFAULT_VERB);
         }
 
         /// <summary>
@@ -425,7 +415,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <param name="verb">The verb to invoke (e.g., "open"). Pass <see langword="null"/> for the default verb.</param>
         /// <exception cref="COMException">Thrown when the COM operation fails.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0099:Use Explicit enum value instead of 0", Justification = "There is no zero value for the enums in question.")]
         public void Invoke(string? verb)
         {
             Invoke(verb, default, verb is null ? Interop.IURL_INVOKECOMMAND_FLAGS.IURL_INVOKECOMMAND_FL_USE_DEFAULT_VERB : 0);
@@ -450,7 +440,7 @@ namespace PSADT.ShortcutManagement
                         dwcbSize = (uint)sizeof(URLINVOKECOMMANDINFOW),
                         dwFlags = (uint)flags,
                         hwndParent = (HWND)hwndParent,
-                        pcszVerb = pVerb
+                        pcszVerb = pVerb,
                     };
                     _internetShortcut.InvokeCommand(ref commandInfo);
                 }
@@ -462,6 +452,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <param name="propertyId">The property ID.</param>
         /// <returns>The property value, or <see langword="null"/> if not set.</returns>
+        /// <exception cref="FileFormatException">Thrown if the property has an unexpected type.</exception>
         private bool? GetBooleanProperty(PID_IS propertyId)
         {
             IPropertyStorage propertyStorage = OpenInternetShortcutPropertyStorage((uint)Interop.STGM.STGM_READ);
@@ -473,7 +464,7 @@ namespace PSADT.ShortcutManagement
                     PROPSPEC propertySpec = new()
                     {
                         ulKind = PROPSPEC_KIND.PRSPEC_PROPID,
-                        Anonymous = new() { propid = (uint)propertyId }
+                        Anonymous = new() { propid = (uint)propertyId },
                     };
                     propertyStorage.ReadMultiple([propertySpec], propertyValues);
                     VARENUM vt = propertyValues[0].Anonymous.Anonymous.vt;
@@ -523,7 +514,7 @@ namespace PSADT.ShortcutManagement
                     PROPSPEC propertySpec = new()
                     {
                         ulKind = PROPSPEC_KIND.PRSPEC_PROPID,
-                        Anonymous = new() { propid = (uint)propertyId }
+                        Anonymous = new() { propid = (uint)propertyId },
                     };
                     propertyStorage.WriteMultiple([propertySpec], propertyValues, 2);
                     propertyStorage.Commit(0);
@@ -544,6 +535,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <param name="propertyId">The property ID.</param>
         /// <returns>The property value, or <see langword="null"/> if not set.</returns>
+        /// <exception cref="FileFormatException">Thrown if the property has an unexpected type.</exception>
         private string? GetStringProperty(PID_IS propertyId)
         {
             IPropertyStorage propertyStorage = OpenInternetShortcutPropertyStorage((uint)Interop.STGM.STGM_READ);
@@ -555,7 +547,7 @@ namespace PSADT.ShortcutManagement
                     PROPSPEC propertySpec = new()
                     {
                         ulKind = PROPSPEC_KIND.PRSPEC_PROPID,
-                        Anonymous = new() { propid = (uint)propertyId }
+                        Anonymous = new() { propid = (uint)propertyId },
                     };
                     propertyStorage.ReadMultiple([propertySpec], propertyValues);
                     VARENUM vt = propertyValues[0].Anonymous.Anonymous.vt;
@@ -628,7 +620,7 @@ namespace PSADT.ShortcutManagement
                     PROPSPEC propertySpec = new()
                     {
                         ulKind = PROPSPEC_KIND.PRSPEC_PROPID,
-                        Anonymous = new() { propid = (uint)propertyId }
+                        Anonymous = new() { propid = (uint)propertyId },
                     };
                     propertyStorage.WriteMultiple([propertySpec], propertyValues, 2);
                     propertyStorage.Commit(0);
@@ -649,6 +641,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <param name="propertyId">The property ID.</param>
         /// <returns>The property value, or 0 if not set.</returns>
+        /// <exception cref="FileFormatException">Thrown if the property has an unexpected type.</exception>
         private int? GetInt32Property(PID_IS propertyId)
         {
             IPropertyStorage propertyStorage = OpenInternetShortcutPropertyStorage((uint)Interop.STGM.STGM_READ);
@@ -660,7 +653,7 @@ namespace PSADT.ShortcutManagement
                     PROPSPEC propertySpec = new()
                     {
                         ulKind = PROPSPEC_KIND.PRSPEC_PROPID,
-                        Anonymous = new() { propid = (uint)propertyId }
+                        Anonymous = new() { propid = (uint)propertyId },
                     };
                     propertyStorage.ReadMultiple([propertySpec], propertyValues);
                     VARENUM vt = propertyValues[0].Anonymous.Anonymous.vt;
@@ -688,6 +681,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <param name="propertyId">The property ID.</param>
         /// <returns>The property value, or <see langword="null"/> if not set.</returns>
+        /// <exception cref="FileFormatException">Thrown if the property has an unexpected type.</exception>"
         private ushort? GetUInt16Property(PID_IS propertyId)
         {
             IPropertyStorage propertyStorage = OpenInternetShortcutPropertyStorage((uint)Interop.STGM.STGM_READ);
@@ -699,7 +693,7 @@ namespace PSADT.ShortcutManagement
                     PROPSPEC propertySpec = new()
                     {
                         ulKind = PROPSPEC_KIND.PRSPEC_PROPID,
-                        Anonymous = new() { propid = (uint)propertyId }
+                        Anonymous = new() { propid = (uint)propertyId },
                     };
                     propertyStorage.ReadMultiple([propertySpec], propertyValues);
                     VARENUM vt = propertyValues[0].Anonymous.Anonymous.vt;
@@ -721,7 +715,7 @@ namespace PSADT.ShortcutManagement
                         int value = propertyValues[0].Anonymous.Anonymous.Anonymous.lVal;
                         return value is >= ushort.MinValue and <= ushort.MaxValue
                             ? (ushort)value
-                            : throw new FileFormatException($"Property value {value} is outside the UInt16 range.");
+                            : throw new FileFormatException($"Property value {value.ToString(CultureInfo.InvariantCulture)} is outside the UInt16 range.");
                     }
                     if (vt == VARENUM.VT_UI4)
                     {
@@ -768,7 +762,7 @@ namespace PSADT.ShortcutManagement
                     PROPSPEC propertySpec = new()
                     {
                         ulKind = PROPSPEC_KIND.PRSPEC_PROPID,
-                        Anonymous = new() { propid = (uint)propertyId }
+                        Anonymous = new() { propid = (uint)propertyId },
                     };
                     propertyStorage.WriteMultiple([propertySpec], propertyValues, 2);
                     propertyStorage.Commit(0);
@@ -809,7 +803,7 @@ namespace PSADT.ShortcutManagement
                     PROPSPEC propertySpec = new()
                     {
                         ulKind = PROPSPEC_KIND.PRSPEC_PROPID,
-                        Anonymous = new() { propid = (uint)propertyId }
+                        Anonymous = new() { propid = (uint)propertyId },
                     };
                     propertyStorage.WriteMultiple([propertySpec], propertyValues, 2);
                     propertyStorage.Commit(0);
@@ -837,25 +831,15 @@ namespace PSADT.ShortcutManagement
         }
 
         /// <summary>
-        /// Releases all resources used by the <see cref="InternetShortcutFile"/>.
-        /// </summary>
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        /// <summary>
         /// Releases the unmanaged resources used by the <see cref="InternetShortcutFile"/> and optionally releases the managed resources.
         /// </summary>
-        /// <param name="disposing"><see langword="true"/> to release both managed and unmanaged resources; <see langword="false"/> to release only unmanaged resources.</param>
-        private void Dispose(bool disposing)
+        public void Dispose()
         {
             if (_disposed)
             {
                 return;
             }
-            if (disposing && _internetShortcut is not null)
+            if (_internetShortcut is not null)
             {
                 _ = Marshal.FinalReleaseComObject(_internetShortcut);
             }
@@ -872,7 +856,7 @@ namespace PSADT.ShortcutManagement
         /// <summary>
         /// Gets a value indicating whether the current storage mode is read-only, preventing any write operations.
         /// </summary>
-        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) == 0;
+        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) == Interop.STGM.STGM_DIRECT;
 
         /// <summary>
         /// Indicates whether the object has been disposed.

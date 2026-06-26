@@ -37,6 +37,9 @@ function Show-ADTInstallationPrompt
     .PARAMETER ButtonMiddleText
         Show a button in the middle of the prompt with the specified text.
 
+    .PARAMETER DefaultButton
+        Specifies the default button to accent within the user interface.
+
     .PARAMETER Icon
         Show a system icon in the prompt.
 
@@ -160,6 +163,10 @@ function Show-ADTInstallationPrompt
         [System.String]$ButtonMiddleText,
 
         [Parameter(Mandatory = $false)]
+        [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
+        [PSADT.UserInterface.DialogDefaultButton]$DefaultButton,
+
+        [Parameter(Mandatory = $false)]
         [ValidateNotNullOrEmpty()]
         [PSADT.UserInterface.DialogSystemIcon]$Icon,
 
@@ -254,6 +261,19 @@ function Show-ADTInstallationPrompt
             $PSCmdlet.ThrowTerminatingError((New-ADTErrorRecord @naerParams))
         }
 
+        # Throw a terminating error if a default button is specified without the corresponding text.
+        if ($PSBoundParameters.ContainsKey('DefaultButton') -and ($DefaultButton -gt 0) -and !($PSBoundParameters.Keys -match "^Button$($DefaultButton)Text$"))
+        {
+            $naerParams = @{
+                Exception = [System.ArgumentException]::new("Cannot specify [$DefaultButton] as default button without specifying [-Button$($DefaultButton)Text] also.")
+                Category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+                ErrorId = 'DefaultButtonTextMissing'
+                TargetObject = $PSBoundParameters
+                RecommendedAction = "Please review the supplied parameters used against $($MyInvocation.MyCommand.Name) and try again."
+            }
+            $PSCmdlet.ThrowTerminatingError((New-ADTErrorRecord @naerParams))
+        }
+
         # Throw a terminating error if we're trying to retrieve a password without an active session.
         if ($SecureInput -and !$adtSession)
         {
@@ -286,7 +306,7 @@ function Show-ADTInstallationPrompt
         # Initialise the string table.
         $sessionState = if ($adtSession)
         {
-            $adtSession.SessionState
+            $adtSession.DeployAppScriptSessionState
         }
         if ($null -eq $sessionState)
         {
@@ -393,6 +413,10 @@ function Show-ADTInstallationPrompt
                 {
                     $dialogOptions.Add('ButtonMiddleText', $ButtonMiddleText)
                 }
+                if ($DefaultButton)
+                {
+                    $dialogOptions.Add('DefaultButton', $DefaultButton)
+                }
                 if ($PSBoundParameters.ContainsKey('WindowLocation'))
                 {
                     $dialogOptions.Add('DialogPosition', $WindowLocation)
@@ -408,6 +432,10 @@ function Show-ADTInstallationPrompt
                 if ($null -ne $adtConfig.UI.FluentAccentColor)
                 {
                     $dialogOptions.Add('FluentAccentColor', $adtConfig.UI.FluentAccentColor)
+                }
+                if ($null -ne $adtConfig.UI.FluentAccentColorDark)
+                {
+                    $dialogOptions.Add('FluentAccentColorDark', $adtConfig.UI.FluentAccentColorDark)
                 }
                 if ($ListItems)
                 {

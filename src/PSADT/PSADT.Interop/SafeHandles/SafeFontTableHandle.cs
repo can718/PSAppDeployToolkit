@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using Microsoft.Win32.SafeHandles;
 using PSADT.Interop.Extensions;
 using Windows.Win32.Graphics.DirectWrite;
@@ -46,7 +45,6 @@ namespace PSADT.Interop.SafeHandles
         /// call.</remarks>
         /// <returns>A read-only span containing the font table data. The length of the span is determined by the current state
         /// of the object.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ReadOnlySpan<byte> GetFontTableData()
         {
             return Data.AsReadOnlySpan<byte>(Length);
@@ -55,7 +53,7 @@ namespace PSADT.Interop.SafeHandles
         /// <summary>
         /// Releases the handle.
         /// </summary>
-        /// <returns></returns>
+        /// <returns>true if the handle was released successfully; otherwise, false.</returns>
         protected override bool ReleaseHandle()
         {
             if (handle == default || IntPtr.Zero == handle)

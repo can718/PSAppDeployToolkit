@@ -1,4 +1,5 @@
 ﻿<#
+
 .SYNOPSIS
 This script invokes a PSAppDeployToolkit deployment.
 
@@ -11,31 +12,27 @@ The type of deployment to perform, Install, Uninstall, or Repair. Default is Ins
 .PARAMETER DeployMode
 Specifies whether the installation should be run in Interactive (shows dialogs), Silent (no dialogs), NonInteractive (dialogs without prompts) mode, or Auto (shows dialogs if a user is logged on, device is not in the OOBE, and there's no running apps to close).
 
-Silent mode is automatically set if it is detected that the process is not user interactive, no users are logged on, the device is in Autopilot mode, or there's specified processes to close that are currently running.
+Silent mode is automatically set if no users are logged on, the device is in Autopilot mode, or there's specified processes to close that are currently running.
 
 .PARAMETER SuppressRebootPassThru
 Prevents the toolkit from exiting with a defined reboot exit code (e.g. 3010), returning 0 instead.
 
-.PARAMETER TerminalServerMode
-Changes to "user install mode" and back to "user execute mode" for installing/uninstalling applications for Remote Desktop Session Hosts/Citrix servers.
-
-.PARAMETER DisableLogging
-Disables logging to file for the script.
+.NOTES
+For more details on all available properties you can add to `$adtSession`, please visit https://psappdeploytoolkit.com/docs/reference/adtsession-object.
 
 .EXAMPLE
-Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent
+& .\Invoke-AppDeployToolkit.ps1 -DeploymentType Install -DeployMode Silent
+
+Invokes this script directly within PowerShell.
+
+.EXAMPLE
+& .\Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent
+
+Invokes this script via our supplied executable.
+
 #>
 
 [CmdletBinding()]
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'PreInstall', Justification = 'This variable is accessed dynamically via Get-Variable and therefore cannot be seen by PSScriptAnalyzer.')]
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'Install', Justification = 'This variable is accessed dynamically via Get-Variable and therefore cannot be seen by PSScriptAnalyzer.')]
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'PostInstall', Justification = 'This variable is accessed dynamically via Get-Variable and therefore cannot be seen by PSScriptAnalyzer.')]
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'PreUninstall', Justification = 'This variable is accessed dynamically via Get-Variable and therefore cannot be seen by PSScriptAnalyzer.')]
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'Uninstall', Justification = 'This variable is accessed dynamically via Get-Variable and therefore cannot be seen by PSScriptAnalyzer.')]
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'PostUninstall', Justification = 'This variable is accessed dynamically via Get-Variable and therefore cannot be seen by PSScriptAnalyzer.')]
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'PreRepair', Justification = 'This variable is accessed dynamically via Get-Variable and therefore cannot be seen by PSScriptAnalyzer.')]
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'Repair', Justification = 'This variable is accessed dynamically via Get-Variable and therefore cannot be seen by PSScriptAnalyzer.')]
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'PostRepair', Justification = 'This variable is accessed dynamically via Get-Variable and therefore cannot be seen by PSScriptAnalyzer.')]
 param
 (
     # Default is 'Install'.
@@ -49,13 +46,7 @@ param
     [System.String]$DeployMode,
 
     [Parameter(Mandatory = $false)]
-    [System.Management.Automation.SwitchParameter]$SuppressRebootPassThru,
-
-    [Parameter(Mandatory = $false)]
-    [System.Management.Automation.SwitchParameter]$TerminalServerMode,
-
-    [Parameter(Mandatory = $false)]
-    [System.Management.Automation.SwitchParameter]$DisableLogging
+    [System.Management.Automation.SwitchParameter]$SuppressRebootPassThru
 )
 
 ## MARK: Variables
@@ -68,16 +59,11 @@ $adtSession = @{
     AppRevision = '01'
     AppSuccessExitCodes = @(0)
     AppRebootExitCodes = @(1641, 3010)
-    AppProcessesToClose = @() # Example: @('excel', @{ Name = 'winword'; Description = 'Microsoft Word' })
-    RequireAdmin = $true
+    AppProcessesToClose = @()  # Example: @('excel', @{ Name = 'winword'; Description = 'Microsoft Word' })
 
     AppScriptVersion = '1.0.0'
     AppScriptDate = '2000-12-31'
     AppScriptAuthor = '<author name>'
-
-    # Install Titles (Only set here to override defaults set by the toolkit).
-    InstallName = ''
-    InstallTitle = ''
 
     DeployAppScriptFriendlyName = $MyInvocation.MyCommand.Name
     DeployAppScriptParameters = $PSBoundParameters
@@ -85,7 +71,7 @@ $adtSession = @{
 }
 
 ## MARK: Pre-Install
-$PreInstall = {
+New-Variable -Name Pre-Install -Value {
     $saiwParams = @{
         AllowDefer = $true
         DeferTimes = 3
@@ -101,16 +87,16 @@ $PreInstall = {
 }
 
 ## MARK: Install
-$Install = {
+New-Variable -Name Install -Value {
 }
 
 ## MARK: Post-Install
-$PostInstall = {
+New-Variable -Name Post-Install -Value {
     Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
 ## MARK: Pre-Uninstall
-$PreUninstall = {
+New-Variable -Name Pre-Uninstall -Value {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
         Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
@@ -119,15 +105,15 @@ $PreUninstall = {
 }
 
 ## MARK: Uninstall
-$Uninstall = {
+New-Variable -Name Uninstall -Value {
 }
 
 ## MARK: Post-Uninstall
-$PostUninstall = {
+New-Variable -Name Post-Uninstall -Value {
 }
 
 ## MARK: Pre-Repair
-$PreRepair = {
+New-Variable -Name Pre-Repair -Value {
     if ($adtSession.AppProcessesToClose.Count -gt 0)
     {
         Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
@@ -136,11 +122,11 @@ $PreRepair = {
 }
 
 ## MARK: Repair
-$Repair = {
+New-Variable -Name Repair -Value {
 }
 
 ## MARK: Post-Repair
-$PostRepair = {
+New-Variable -Name Post-Repair -Value {
     Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait
 }
 
@@ -162,6 +148,7 @@ try
     $iadtParams = Get-ADTBoundParametersAndDefaultValues -Invocation $MyInvocation
     $adtSession = Remove-ADTHashtableNullOrEmptyValues -Hashtable $adtSession
     $adtSession = Open-ADTSession @adtSession @iadtParams -PassThru
+    Remove-Variable -Name iadtParams -Force -Confirm:$false
 }
 catch
 {
@@ -183,28 +170,21 @@ try
             }
         }
     }
-    foreach ($prefix in 'Pre-', '', 'Post-')
-    {
-        $installPhase = "$prefix$($adtSession.DeploymentType)"
-        $scriptBlock = Get-Variable -Name $installPhase.Replace('-', $null) -ValueOnly -ErrorAction Ignore
-        if (![System.String]::IsNullOrWhiteSpace($scriptBlock))
+    Get-Variable -Name "Pre-$($adtSession.DeploymentType)", $adtSession.DeploymentType, "Post-$($adtSession.DeploymentType)" -ErrorAction Ignore | . {
+        process
         {
-            $adtSession.InstallPhase = $installPhase
-            . $scriptBlock
+            if (![System.String]::IsNullOrWhiteSpace($_.Value))
+            {
+                $adtSession.InstallPhase = $_.Name
+                . $_.Value
+            }
         }
     }
     Close-ADTSession
 }
 catch
 {
-    $mainErrorMessage = "An unhandled error within [$($MyInvocation.MyCommand.Name)] has occurred.`n$(Resolve-ADTErrorRecord -ErrorRecord $_)"
-    Write-ADTLogEntry -Message $mainErrorMessage -Severity Error
-
-    ## Error details hidden from the user by default. Show a simple dialog with full stack trace:
-    # Show-ADTDialogBox -Text $mainErrorMessage -Icon Stop -NoWait
-
-    ## Or, a themed dialog with basic error message:
+    Write-ADTLogEntry -Message "An unhandled error within [$($MyInvocation.MyCommand.Name)] has occurred.`n$(Resolve-ADTErrorRecord -ErrorRecord $_)" -Severity Error
     # Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) failed at line $($_.InvocationInfo.ScriptLineNumber), char $($_.InvocationInfo.OffsetInLine):`n$($_.InvocationInfo.Line.Trim())`n`nMessage:`n$($_.Exception.Message)" -ButtonRightText OK -NoWait
-
     Close-ADTSession -ExitCode 60001
 }

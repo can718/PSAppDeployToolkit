@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using PSADT.ProcessManagement;
 
@@ -11,8 +10,9 @@ namespace PSADT.ClientServer
     /// <remarks>This exception is typically thrown to indicate an error condition specific to server-side
     /// operations. It extends <see cref="InvalidOperationException"/> to provide additional context for server-related
     /// errors.</remarks>
-    [Serializable]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1032:Implement standard exception constructors", Justification = "The constructors we have are fine for our internal usage.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1194:Implement exception constructors", Justification = "The constructors we have are fine for our internal usage.")]
+    [Serializable]
     internal sealed class ServerException : InvalidOperationException
     {
         /// <summary>
@@ -69,7 +69,6 @@ namespace PSADT.ClientServer
 #if NET8_0_OR_GREATER
         [Obsolete("Formatter-based exception serialization is obsolete and should not be used.", DiagnosticId = "SYSLIB0051")]
 #endif
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private ServerException(SerializationInfo info, StreamingContext context) : base(info, context)
         {
         }
@@ -87,7 +86,6 @@ namespace PSADT.ClientServer
 #if NET8_0_OR_GREATER
         [Obsolete("Formatter-based exception serialization is obsolete and should not be used.", DiagnosticId = "SYSLIB0051")]
 #endif
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             base.GetObjectData(info, context);

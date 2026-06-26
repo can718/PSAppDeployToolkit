@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using Microsoft.Win32.SafeHandles;
 
 namespace PSADT.Interop.SafeHandles
@@ -21,7 +20,7 @@ namespace PSADT.Interop.SafeHandles
         /// the SafeNoReleaseHandle is disposed or finalized. Use this when the handle's lifetime is managed
         /// elsewhere.</remarks>
         /// <param name="handle">The native handle to be encapsulated by the SafeNoReleaseHandle instance.</param>
-        internal SafeNoReleaseHandle(nint handle) : base(false)
+        internal SafeNoReleaseHandle(nint handle) : base(ownsHandle: false)
         {
             ArgumentOutOfRangeException.ThrowIfZeroOrInvalid(handle);
             SetHandle(handle);
@@ -31,7 +30,6 @@ namespace PSADT.Interop.SafeHandles
         /// Releases the handle associated with the current instance.
         /// </summary>
         /// <returns><see langword="true"/> if the handle was successfully released; otherwise, <see langword="false"/>.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected override bool ReleaseHandle()
         {
             return true;

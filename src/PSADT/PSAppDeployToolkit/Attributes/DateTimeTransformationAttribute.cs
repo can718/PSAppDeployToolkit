@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Globalization;
 using System.Management.Automation;
-using System.Runtime.CompilerServices;
+using PSAppDeployToolkit.Utilities;
 
 namespace PSAppDeployToolkit.Attributes
 {
@@ -20,16 +20,14 @@ namespace PSAppDeployToolkit.Attributes
         /// <param name="engineIntrinsics">The PowerShell engine intrinsics.</param>
         /// <param name="inputData">The input value to transform.</param>
         /// <returns>A <see cref="DateTime"/> value derived from the input.</returns>
-        /// <exception cref="ArgumentTransformationMetadataException">Thrown when the input cannot be transformed into a <see cref="DateTime"/>.</exception>
-        public override object Transform(EngineIntrinsics engineIntrinsics, object inputData)
+        /// <exception cref="ArgumentNullException">Thrown when the input value is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the input value cannot be transformed into a DateTime.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0015:Specify the parameter name in ArgumentException", Justification = "We don't want a paramter name on these exceptions.")]
+        public override object Transform(EngineIntrinsics engineIntrinsics, object? inputData)
         {
-            while (inputData is PSObject psObject)
+            if (!PowerShellUtilities.TryGetBaseObject(inputData, out inputData))
             {
-                inputData = psObject.BaseObject;
-            }
-            if (inputData is null)
-            {
-                throw new ArgumentNullException(null, "Cannot transform null to DateTime.");
+                throw new ArgumentNullException(paramName: null, "Cannot transform null to DateTime.");
             }
             if (inputData is DateTime dateTime)
             {
@@ -47,12 +45,12 @@ namespace PSAppDeployToolkit.Attributes
                 }
                 if (TryParseNumericalDays(valueAsString, out double parsedDays))
                 {
-                    return DateTimeFromDays(parsedDays);
+                    return DateTime.MinValue.AddDays(parsedDays);
                 }
             }
             return !TryGetNumericalDays(inputData, out double days)
                 ? throw new ArgumentException($"Cannot transform value of type '{inputData.GetType().FullName}' to DateTime.")
-                : DateTimeFromDays(days);
+                : DateTime.MinValue.AddDays(days);
         }
 
         /// <summary>
@@ -63,7 +61,6 @@ namespace PSAppDeployToolkit.Attributes
         /// <param name="days">When this method returns, contains the parsed number of days if the conversion succeeded, or zero if it
         /// failed.</param>
         /// <returns>true if the string was successfully parsed as a number of days; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool TryParseNumericalDays(string value, out double days)
         {
             return double.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out days) || double.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out days);
@@ -125,24 +122,6 @@ namespace PSAppDeployToolkit.Attributes
                 default:
                     days = default;
                     return false;
-            }
-        }
-
-        /// <summary>
-        /// Converts a specified number of days to a <see cref="DateTime"/> instance.
-        /// </summary>
-        /// <param name="days">The number of days to convert. May be fractional.</param>
-        /// <returns>A <see cref="DateTime"/> that represents the specified number of days from <see cref="DateTime.MinValue"/>.</returns>
-        /// <exception cref="ArgumentTransformationMetadataException">Thrown when <paramref name="days"/> is outside the valid range for <see cref="DateTime"/>.</exception>
-        private static DateTime DateTimeFromDays(double days)
-        {
-            try
-            {
-                return DateTime.MinValue.AddDays(days);
-            }
-            catch (Exception ex) when (ex is ArgumentException or OverflowException)
-            {
-                throw new ArgumentOutOfRangeException($"The value '{days}' cannot be represented as a DateTime in days.", ex);
             }
         }
     }

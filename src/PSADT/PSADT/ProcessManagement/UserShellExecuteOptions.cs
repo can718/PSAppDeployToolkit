@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 
 namespace PSADT.ProcessManagement
@@ -43,7 +42,7 @@ namespace PSADT.ProcessManagement
             }
 
             // Initially set ArgumentList and FilePath, and test that the caller hasn't done something weird by quoting the path.
-            ArgumentList = new ReadOnlyCollection<string>([.. argumentList ?? []]);
+            ArgumentList = new ReadOnlyCollection<string>(argumentList is not null ? [.. argumentList] : []);
             FilePath = filePath.TrimStart('"').TrimEnd('"');
 
             // Create an arguments string out of our ArgumentList (ShellExecute needs this).
@@ -76,77 +75,66 @@ namespace PSADT.ProcessManagement
         /// <summary>
         /// Gets the file path of the process to launch.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string FilePath;
 
         /// <summary>
         /// Gets the arguments to pass to the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string? Arguments;
 
         /// <summary>
         /// Gets the arguments to pass to the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly IReadOnlyList<string> ArgumentList;
 
         /// <summary>
         /// Gets the working directory of the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly DirectoryInfo? WorkingDirectory;
 
         /// <summary>
         /// Indicates whether environment variables in the input should be expanded.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool ExpandEnvironmentVariables;
 
         /// <summary>
         /// Gets the verb to use when starting the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string? Verb;
 
         /// <summary>
         /// Gets a value indicating whether to create a new window for the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool CreateNoWindow;
 
         /// <summary>
         /// Gets a value indicating whether the process should wait for child processes to exit before completing.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool WaitForChildProcesses;
 
         /// <summary>
         /// Gets a value indicating whether any child processes spawned with the parent should terminate when the parent closes.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool KillChildProcessesWithParent;
 
         /// <summary>
         /// Gets the window style of the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly ProcessWindowStyle? WindowStyle;
 
         /// <summary>
         /// Gets the priority class of the process.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly ProcessPriorityClass? PriorityClass;
 
@@ -156,10 +144,9 @@ namespace PSADT.ProcessManagement
         /// <remarks>This method uses default options when generating the command-line. To customize the
         /// output, use the overload that accepts parameters.</remarks>
         /// <returns>A string containing the command-line arguments constructed from the current settings.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public string MakeCommandLine()
         {
-            return MakeCommandLine(false);
+            return MakeCommandLine(nullTerminated: false);
         }
 
         /// <summary>
@@ -170,7 +157,6 @@ namespace PSADT.ProcessManagement
         /// <returns>A string containing the command-line representation of the process, including the file path and any
         /// arguments. If <paramref name="nullTerminated"/> is <see langword="true"/>, the string will end with a null
         /// character.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal string MakeCommandLine(bool nullTerminated)
         {
             return $"\"{FilePath}\"{(!string.IsNullOrWhiteSpace(Arguments) ? $" {Arguments}" : null)}{(nullTerminated ? '\0' : null)}";
@@ -184,7 +170,6 @@ namespace PSADT.ProcessManagement
         /// when preparing to start a process with the configured options.</remarks>
         /// <returns>A <see cref="ProcessLaunchInfo"/> object containing the parameters required to launch a process with the
         /// specified settings.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ProcessLaunchInfo ToLaunchInfo()
         {
             return new(

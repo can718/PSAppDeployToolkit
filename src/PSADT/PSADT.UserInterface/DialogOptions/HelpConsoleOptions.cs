@@ -20,7 +20,7 @@ namespace PSADT.UserInterface.DialogOptions
         /// <param name="options">A dictionary containing configuration options for the help console. Must not be null and must include a key
         /// named 'ModuleHelpMap' that maps to a read-only dictionary of module help information.</param>
         /// <exception cref="ArgumentNullException">Thrown if the options parameter is null.</exception>
-        public HelpConsoleOptions(IDictionary options) : this((options ?? throw new ArgumentNullException(nameof(options)))["ModuleHelpMap"] as IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> ?? null!)
+        public HelpConsoleOptions(IDictionary options) : this((IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>?)(options ?? throw new ArgumentNullException(nameof(options)))["ModuleHelpMap"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'ModuleHelpMap' is missing."))
         {
         }
 
@@ -43,7 +43,6 @@ namespace PSADT.UserInterface.DialogOptions
         /// the dictionary represents a module, with its value being another dictionary that maps help topic names to
         /// their corresponding descriptions. This structure enables efficient access to context-sensitive help content
         /// for different modules within the application.</remarks>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> ModuleHelpMap;
     }

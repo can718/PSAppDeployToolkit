@@ -25,29 +25,32 @@ namespace PSADT.UserInterface.DialogOptions
         /// keys may result in default values being used.</param>
         /// <exception cref="ArgumentNullException">Thrown if the options dictionary is null.</exception>
         public ListSelectionDialogOptions(IDictionary options) : this(
-            (options ?? throw new ArgumentNullException(nameof(options)))["AppTitle"] as string ?? null!,
-            options["Subtitle"] as string ?? null!,
-            options["AppIconImage"] as string ?? null!,
-            options["AppIconDarkImage"] as string,
-            options["AppBannerImage"] as string ?? null!,
-            options["AppTaskbarIconImage"] as string,
-            options["DialogTopMost"] as bool? ?? false,
-            options["Language"] as CultureInfo ?? null!,
-            options["FluentAccentColor"] as int?,
-            options["DialogPosition"] as DialogPosition?,
-            options["DialogAllowMove"] as bool?,
-            options["DialogExpiryDuration"] as TimeSpan?,
-            options["DialogPersistInterval"] as TimeSpan?,
-            options["MessageText"] as string ?? null!,
-            options["MessageAlignment"] as DialogMessageAlignment?,
-            options["ButtonLeftText"] as string,
-            options["ButtonMiddleText"] as string,
-            options["ButtonRightText"] as string,
-            options["Icon"] as DialogSystemIcon?,
-            options["MinimizeWindows"] as bool? ?? false,
-            options["ListItems"] as IReadOnlyList<string> ?? null!,
-            options["SelectedIndex"] as int?,
-            options["Strings"] as IDictionary is { Count: > 0 } strings ? new(strings) : null!)
+            (string?)(options ?? throw new ArgumentNullException(nameof(options)))["AppTitle"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppTitle' is missing."),
+            (string?)options["Subtitle"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'Subtitle' is missing."),
+            (string?)options["AppIconImage"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppIconImage' is missing."),
+            (string?)options["AppIconDarkImage"],
+            (string?)options["AppBannerImage"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppBannerImage' is missing."),
+            (string?)options["AppTaskbarIconImage"],
+            (bool?)options["DialogTopMost"] ?? false,
+            (CultureInfo?)options["Language"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'Language' is missing."),
+            (int?)options["FluentAccentColor"],
+            (int?)options["FluentAccentColorDark"],
+            (DialogPosition?)options["DialogPosition"],
+            (bool?)options["DialogAllowMove"],
+            (bool?)options["DialogAllowMinimize"],
+            (TimeSpan?)options["DialogExpiryDuration"],
+            (TimeSpan?)options["DialogPersistInterval"],
+            (string?)options["MessageText"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'MessageText' is missing."),
+            (DialogMessageAlignment?)options["MessageAlignment"],
+            (string?)options["ButtonLeftText"],
+            (string?)options["ButtonMiddleText"],
+            (string?)options["ButtonRightText"],
+            (DialogDefaultButton?)options["DefaultButton"],
+            (DialogSystemIcon?)options["Icon"],
+            (bool?)options["MinimizeWindows"] ?? false,
+            (IReadOnlyList<string>?)options["ListItems"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'ListItems' is missing."),
+            (int?)options["SelectedIndex"],
+            new((IDictionary?)options["Strings"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'Strings' is missing.")))
         {
         }
 
@@ -66,9 +69,12 @@ namespace PSADT.UserInterface.DialogOptions
         /// <param name="language">The culture information used for localizing the dialog.</param>
         /// <param name="fluentAccentColor">The accent color used for Fluent design elements in the dialog. If <see langword="null"/>, the default
         /// accent color is used.</param>
+        /// <param name="fluentAccentColorDark">The accent color used for Fluent design elements in the dialog when in dark mode. If <see langword="null"/>, the default dark accent color is used.</param>
         /// <param name="dialogPosition">The position of the dialog on the screen. If <see langword="null"/>, the default position is used.</param>
         /// <param name="dialogAllowMove">Indicates whether the dialog can be moved by the user. If <see langword="null"/>, the default behavior is
         /// used.</param>
+        /// <param name="dialogAllowMinimize">Indicates whether the dialog exposes a minimize button in its caption area. If <see langword="null"/> or
+        /// <see langword="false"/>, the minimize button remains hidden.</param>
         /// <param name="dialogExpiryDuration">The duration after which the dialog expires and closes automatically. If <see langword="null"/>, the dialog
         /// does not expire.</param>
         /// <param name="dialogPersistInterval">The interval at which the dialog persists its state. If <see langword="null"/>, persistence is disabled.</param>
@@ -80,16 +86,18 @@ namespace PSADT.UserInterface.DialogOptions
         /// displayed.</param>
         /// <param name="buttonRightText">The text displayed on the right button in the dialog. If <see langword="null"/>, the button is not
         /// displayed.</param>
+        /// <param name="defaultButton">Indicates which button is the default button in the dialog. If <see langword="null"/>, no default button is set.</param>
         /// <param name="icon">The system icon displayed in the dialog. If <see langword="null"/>, no icon is displayed.</param>
         /// <param name="minimizeWindows">A value indicating whether all other windows should be minimized when the dialog is displayed.</param>
         /// <param name="listItems">The list of items to display for user selection. Cannot be <see langword="null"/>.</param>
         /// <param name="selectedIndex">The index for the default item to be displayed for user selection.</param>
         /// <param name="strings">The localized strings for the dialog. If <see langword="null"/>, the dialog falls back to XAML defaults.</param>
-        private ListSelectionDialogOptions(string appTitle, string subtitle, string appIconImage, string? appIconDarkImage, string appBannerImage, string? appTaskbarIconImage, bool dialogTopMost, CultureInfo language, int? fluentAccentColor, DialogPosition? dialogPosition, bool? dialogAllowMove, TimeSpan? dialogExpiryDuration, TimeSpan? dialogPersistInterval, string messageText, DialogMessageAlignment? messageAlignment, string? buttonLeftText, string? buttonMiddleText, string? buttonRightText, DialogSystemIcon? icon, bool minimizeWindows, IReadOnlyList<string> listItems, int? selectedIndex, ListSelectionDialogStrings strings) : base(appTitle, subtitle, appIconImage, appIconDarkImage, appBannerImage, appTaskbarIconImage, dialogTopMost, language, fluentAccentColor, dialogPosition, dialogAllowMove, dialogExpiryDuration, dialogPersistInterval, messageText, messageAlignment, buttonLeftText, buttonMiddleText, buttonRightText, icon, minimizeWindows)
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S3236:Caller information arguments should not be provided explicitly", Justification = "This is intentional as we're testing a parameter member.")]
+        private ListSelectionDialogOptions(string appTitle, string subtitle, string appIconImage, string? appIconDarkImage, string appBannerImage, string? appTaskbarIconImage, bool dialogTopMost, CultureInfo language, int? fluentAccentColor, int? fluentAccentColorDark, DialogPosition? dialogPosition, bool? dialogAllowMove, bool? dialogAllowMinimize, TimeSpan? dialogExpiryDuration, TimeSpan? dialogPersistInterval, string messageText, DialogMessageAlignment? messageAlignment, string? buttonLeftText, string? buttonMiddleText, string? buttonRightText, DialogDefaultButton? defaultButton, DialogSystemIcon? icon, bool minimizeWindows, IReadOnlyList<string> listItems, int? selectedIndex, ListSelectionDialogStrings strings) : base(appTitle, subtitle, appIconImage, appIconDarkImage, appBannerImage, appTaskbarIconImage, dialogTopMost, language, fluentAccentColor, fluentAccentColorDark, dialogPosition, dialogAllowMove, dialogAllowMinimize, dialogExpiryDuration, dialogPersistInterval, messageText, messageAlignment, buttonLeftText, buttonMiddleText, buttonRightText, defaultButton, icon, minimizeWindows)
         {
             ArgumentNullException.ThrowIfNull(strings);
             ArgumentNullException.ThrowIfNull(listItems);
-            ArgumentOutOfRangeException.ThrowIfZero(listItems.Count);
+            ArgumentOutOfRangeException.ThrowIfZero(listItems.Count, nameof(listItems));
             if (selectedIndex.HasValue && (selectedIndex.Value < 0 || selectedIndex.Value >= listItems.Count))
             {
                 throw new ArgumentOutOfRangeException(nameof(selectedIndex), selectedIndex, "SelectedIndex must be a valid index within ListItems.");
@@ -102,21 +110,18 @@ namespace PSADT.UserInterface.DialogOptions
         /// <summary>
         /// The list of items to display for user selection.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly IReadOnlyList<string> ListItems;
 
         /// <summary>
         /// The item that should be selected by default.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly int? SelectedIndex;
 
         /// <summary>
         /// The localized strings for the ListSelectionDialog.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly ListSelectionDialogStrings Strings;
 
@@ -135,7 +140,7 @@ namespace PSADT.UserInterface.DialogOptions
             /// message will be set to null.</remarks>
             /// <param name="strings">An IDictionary containing string resources. The entry with the key 'ListSelectionMessage' is used to
             /// provide the message for the dialog.</param>
-            internal ListSelectionDialogStrings(IDictionary strings) : this(strings["ListSelectionMessage"] as string ?? null!)
+            internal ListSelectionDialogStrings(IDictionary strings) : this((string?)(strings ?? throw new ArgumentNullException(nameof(strings)))["ListSelectionMessage"] ?? throw new ArgumentNullException(nameof(strings), "The specified key 'ListSelectionMessage' is missing."))
             {
             }
 
@@ -152,7 +157,6 @@ namespace PSADT.UserInterface.DialogOptions
             /// <summary>
             /// The heading text displayed next to the list selection dropdown.
             /// </summary>
-            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
             [DataMember]
             public readonly string ListSelectionMessage;
         }

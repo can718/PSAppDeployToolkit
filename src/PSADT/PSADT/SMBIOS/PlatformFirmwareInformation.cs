@@ -21,7 +21,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 
 namespace PSADT.SMBIOS
 {
@@ -33,8 +32,8 @@ namespace PSADT.SMBIOS
         /// <summary>
         /// Reads the SMBIOS BIOS Information (Type 0) structure.
         /// </summary>
+        /// <param name="buffer">The buffer containing the SMBIOS data.</param>
         /// <returns>The BIOS information or null if not found.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static PlatformFirmwareInformation Get(ReadOnlySpan<byte> buffer = default)
         {
             return SmbiosParsing.GetStructure(SmbiosType.PlatformFirmwareInformation, Parse, buffer);
@@ -43,6 +42,11 @@ namespace PSADT.SMBIOS
         /// <summary>
         /// Parses a BIOS Information (Type 0) structure.
         /// </summary>
+        /// <param name="buffer">The buffer containing the SMBIOS data.</param>
+        /// <param name="structureOffset">The offset of the structure within the buffer.</param>
+        /// <param name="structureLength">The length of the structure in bytes.</param>
+        /// <returns>The parsed BIOS information.</returns>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0099:Use Explicit enum value instead of 0", Justification = "There is no zero value for the enums in question.")]
         private static PlatformFirmwareInformation Parse(ReadOnlySpan<byte> buffer, int structureOffset, byte structureLength)
         {
             // Calculate ROM and extended ROM size (if available and ROM size byte is 0xFF).
@@ -168,6 +172,21 @@ namespace PSADT.SMBIOS
         /// <summary>
         /// Initializes a new instance of the <see cref="PlatformFirmwareInformation"/> class.
         /// </summary>
+        /// <param name="structureLength">The length of the structure in bytes.</param>
+        /// <param name="handle">The handle of the structure.</param>
+        /// <param name="vendor">The BIOS vendor name.</param>
+        /// <param name="version">The BIOS version.</param>
+        /// <param name="startingAddressSegment">The BIOS starting address segment (null when not applicable on UEFI-based systems).</param>
+        /// <param name="releaseDate">The BIOS release date, if supplied by the SMBIOS string table and successfully parsed.</param>
+        /// <param name="romSizeBytes">The BIOS ROM size in bytes.</param>
+        /// <param name="characteristics">The BIOS characteristics.</param>
+        /// <param name="characteristicsExt1">The BIOS characteristics extension byte 1.</param>
+        /// <param name="characteristicsExt2">The BIOS characteristics extension byte 2.</param>
+        /// <param name="systemBiosMajorRelease">The system BIOS major release.</param>
+        /// <param name="systemBiosMinorRelease">The system BIOS minor release.</param>
+        /// <param name="embeddedControllerMajorRelease">The embedded controller firmware major release.</param>
+        /// <param name="embeddedControllerMinorRelease">The embedded controller firmware minor release.</param>
+        /// <param name="extendedRomSize">The raw decoded Extended ROM Size field (present only when legacy size byte is 0xFF and length >= 26).</param>
         private PlatformFirmwareInformation(
             byte structureLength,
             ushort handle,
@@ -190,7 +209,7 @@ namespace PSADT.SMBIOS
             Vendor = !string.IsNullOrWhiteSpace(vendor) ? vendor : null;
             Version = !string.IsNullOrWhiteSpace(version) ? version : null;
             StartingAddressSegment = startingAddressSegment;
-            ReleaseDate = DateTime.TryParseExact(releaseDate?.TrimEnd('Z') + 'Z', ["MM/dd/yyyyZ", "M/d/yyyyZ", "MM/dd/yyZ", "M/d/yyZ"], CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDate) ? parsedDate.ToUniversalTime() : throw new ArgumentOutOfRangeException($"The system's release date of [{releaseDate}] was unable to be parsed.", (Exception?)null);
+            ReleaseDate = DateTime.TryParseExact(releaseDate?.TrimEnd('Z') + 'Z', ["MM/dd/yyyyZ", "M/d/yyyyZ", "MM/dd/yyZ", "M/d/yyZ"], CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDate) ? parsedDate.ToUniversalTime() : throw new ArgumentOutOfRangeException(nameof(releaseDate), $"The system's release date of [{releaseDate}] was unable to be parsed.");
             RomSizeBytes = romSizeBytes;
             Characteristics = characteristics;
             CharacteristicsExt1 = characteristicsExt1;
@@ -206,7 +225,6 @@ namespace PSADT.SMBIOS
         /// Determines whether this system supports UEFI.
         /// </summary>
         /// <returns>True if UEFI is supported; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsUefiSupported()
         {
             return CharacteristicsExt2.HasFlag(FirmwareCharacteristicsExtensionByte2.UefiSupported);
@@ -216,7 +234,6 @@ namespace PSADT.SMBIOS
         /// Determines whether this BIOS is upgradeable.
         /// </summary>
         /// <returns>True if the BIOS is upgradeable; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsUpgradeable()
         {
             return Characteristics.HasFlag(FirmwareCharacteristics.BiosUpgradeable);
@@ -226,7 +243,6 @@ namespace PSADT.SMBIOS
         /// Determines whether this system is running in a virtual machine.
         /// </summary>
         /// <returns>True if running in a virtual machine; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsVirtualMachine()
         {
             return CharacteristicsExt2.HasFlag(FirmwareCharacteristicsExtensionByte2.VirtualMachine);
@@ -236,7 +252,6 @@ namespace PSADT.SMBIOS
         /// Determines whether this system supports manufacturing mode.
         /// </summary>
         /// <returns>True if manufacturing mode is supported; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsManufacturingModeSupported()
         {
             return CharacteristicsExt2.HasFlag(FirmwareCharacteristicsExtensionByte2.ManufacturingModeSupported);
@@ -246,7 +261,6 @@ namespace PSADT.SMBIOS
         /// Determines whether this system is currently in manufacturing mode.
         /// </summary>
         /// <returns>True if manufacturing mode is enabled; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsManufacturingModeEnabled()
         {
             return CharacteristicsExt2.HasFlag(FirmwareCharacteristicsExtensionByte2.ManufacturingModeEnabled);
@@ -258,7 +272,6 @@ namespace PSADT.SMBIOS
         /// <returns>The age in days; returns <see cref="double.NaN"/> if the release date is not available.</returns>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "A property would insinuate that it's part of the SMBIOS specification.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S6561:Avoid using \"DateTime.Now\" for benchmarking or timing operations", Justification = "This is not benchmarking code.")]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double GetBiosAgeInDays()
         {
             return (DateTime.Now - ReleaseDate).TotalDays;
@@ -269,7 +282,6 @@ namespace PSADT.SMBIOS
         /// </summary>
         /// <param name="compareDate">The date to compare against.</param>
         /// <returns>True if BIOS was released after the specified date; otherwise, false.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsReleasedAfter(DateTime compareDate)
         {
             return ReleaseDate > compareDate;
@@ -280,7 +292,6 @@ namespace PSADT.SMBIOS
         /// </summary>
         /// <param name="value">The byte value to normalize.</param>
         /// <returns>The original byte value if it is not 255; otherwise, <see langword="null"/>.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static byte? NormalizeByte255(byte value)
         {
             return value != 0xFF ? value : null;
@@ -290,7 +301,6 @@ namespace PSADT.SMBIOS
         /// Returns the System BIOS version as a System.Version if both major and minor values are present; otherwise null.
         /// </summary>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "A property would insinuate that it's part of the SMBIOS specification.")]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Version? GetSystemBiosVersion()
         {
             return SystemBiosMajorRelease.HasValue && SystemBiosMinorRelease.HasValue ? new(SystemBiosMajorRelease.Value, SystemBiosMinorRelease.Value) : null;
@@ -300,7 +310,6 @@ namespace PSADT.SMBIOS
         /// Returns the Embedded Controller firmware version as a System.Version if both major and minor values are present; otherwise null.
         /// </summary>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "A property would insinuate that it's part of the SMBIOS specification.")]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Version? GetEmbeddedControllerVersion()
         {
             return EmbeddedControllerMajorRelease.HasValue && EmbeddedControllerMinorRelease.HasValue ? new(EmbeddedControllerMajorRelease.Value, EmbeddedControllerMinorRelease.Value) : null;
@@ -316,7 +325,7 @@ namespace PSADT.SMBIOS
             string version = Version ?? string.Empty;
             string date = $" ({ReleaseDate:yyyy-MM-dd})";
             string spaceIfBoth = string.IsNullOrWhiteSpace(vendor) || string.IsNullOrWhiteSpace(version) ? string.Empty : " ";
-            return $"{vendor}{spaceIfBoth}{version}{date}";
+            return vendor + spaceIfBoth + version + date;
         }
     }
 }

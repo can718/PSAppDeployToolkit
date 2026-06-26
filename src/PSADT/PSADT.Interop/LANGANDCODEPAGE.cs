@@ -1,5 +1,4 @@
-﻿using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 namespace PSADT.Interop
 {
@@ -9,6 +8,7 @@ namespace PSADT.Interop
     /// <remarks>This structure is used to specify a language and code page pair, typically in
     /// scenarios involving localization or encoding. The language identifier corresponds to a specific language or
     /// locale, while the code page identifier specifies the character encoding.</remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0182: Avoid unused internal types.", Justification = "This is used across InternalsVisibleTo boundaries.")]
     [StructLayout(LayoutKind.Sequential)]
     internal readonly struct LANGANDCODEPAGE
     {
@@ -33,7 +33,6 @@ namespace PSADT.Interop
         /// </summary>
         /// <returns>A string containing the hexadecimal representation of the language and code page identifiers, formatted
         /// as "LLLLCCCC", where "LLLL" is the language identifier and "CCCC" is the code page identifier.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override readonly string ToString()
         {
             return $"{wLanguage:X4}{wCodePage:X4}";

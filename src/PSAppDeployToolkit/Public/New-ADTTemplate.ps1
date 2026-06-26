@@ -560,8 +560,8 @@ function New-ADTTemplate
                 $null = New-Item -Path "$templatePath\Assets" -ItemType Directory -Force
                 $defaultAssets = $Script:ADT.ModuleDefaults.Config.([System.String]::Empty).Ast.EndBlock.Statements.PipelineElements.Expression.KeyValuePairs.Where({ $_.Item1.Value.Equals('Assets') }).Item2.PipelineElements.Expression.KeyValuePairs
                 [System.IO.File]::WriteAllBytes("$templatePath\Assets\Banner.Classic.png", [System.Convert]::FromBase64String(($banner = $defaultAssets.Where({ $_.Item1.Value.Equals('Banner') }).Item2.PipelineElements.Expression.Value)))
-                [System.IO.File]::WriteAllBytes("$templatePath\Assets\AppIcon.ico", [System.Convert]::FromBase64String(($logo = $defaultAssets.Where({ $_.Item1.Value.Equals('Logo') }).Item2.PipelineElements.Expression.Value)))
-                $configText = $Script:ADT.ModuleDefaults.Config.([System.String]::Empty).ToString().Replace($banner, '..\Assets\Banner.Classic.png').Replace($logo, '..\Assets\AppIcon.ico')
+                [System.IO.File]::WriteAllBytes("$templatePath\Assets\AppIcon.png", [System.Convert]::FromBase64String(($logo = $defaultAssets.Where({ $_.Item1.Value.Equals('Logo') }).Item2.PipelineElements.Expression.Value)))
+                $configText = $Script:ADT.ModuleDefaults.Config.([System.String]::Empty).ToString().Replace($banner, '..\Assets\Banner.Classic.png').Replace($logo, '..\Assets\AppIcon.png')
 
                 # Override config values if specified.
                 if ($PSBoundParameters.ContainsKey('Config'))
@@ -630,7 +630,7 @@ function New-ADTTemplate
                     # then apply them in a single pass from end to start to preserve earlier offsets.
                     $scriptReplacements = [System.Collections.Generic.List[PSCustomObject]]::new()
                     $hasSessionProperties = $PSBoundParameters.ContainsKey('SessionProperties') -and $SessionProperties.Count -gt 0
-                    $sectionsToProcess = @('PostRepair', 'Repair', 'PreRepair', 'PostUninstall', 'Uninstall', 'PreUninstall', 'PostInstall', 'Install', 'PreInstall' ).Where({ $PSBoundParameters.ContainsKey($_ + 'ScriptBlock') })
+                    $sectionsToProcess = @('Post-Repair', 'Repair', 'Pre-Repair', 'Post-Uninstall', 'Uninstall', 'Pre-Uninstall', 'Post-Install', 'Install', 'Pre-Install' ).Where({ $PSBoundParameters.ContainsKey($_.Replace('-', [System.Management.Automation.Language.NullString]::Value) + 'ScriptBlock') })
                     $scriptAst = [System.Management.Automation.Language.Parser]::ParseInput($scriptContent, [ref]$null, [ref]$null)
 
                     # Strip all SuppressMessageAttribute decorations from the generated script.
@@ -652,28 +652,19 @@ function New-ADTTemplate
                     {
                         foreach ($section in $sectionsToProcess)
                         {
-                            $sbParamName = $section + 'ScriptBlock'
-
                             # Find the variable assignment in the AST (e.g. $PreInstall = { ... }).
-                            $sbAssignment = $scriptAst.Find({
+                            $sbAst = $scriptAst.Find({
                                     param ($ast)
-                                    $ast -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-                                    ($ast.Left | Get-Member -Name VariablePath) -and
-                                    $ast.Left.VariablePath.UserPath -eq $section
+                                    $ast -is [System.Management.Automation.Language.ScriptBlockExpressionAst] -and
+                                    $ast.Parent -is [System.Management.Automation.Language.CommandAst] -and
+                                    $ast.Parent.CommandElements[0] -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                                    $ast.Parent.CommandElements[0].Value.Equals('New-Variable') -and
+                                    ((($nameParam = $ast.Parent.CommandElements | & { process { if (($_ -is [System.Management.Automation.Language.CommandParameterAst]) -and ($_.ParameterName.Equals('Name'))) { return $_ } } }) | Measure-Object).Count -eq 1) -and
+                                    $ast.Parent.CommandElements[$ast.Parent.CommandElements.IndexOf($nameParam) + 1].Value.Equals($section)
                                 }, $true)
-                            if (!$sbAssignment)
-                            {
-                                $naerParams = @{
-                                    Exception = [System.InvalidOperationException]::new("Variable '`$$section' not found in template script.")
-                                    Category = [System.Management.Automation.ErrorCategory]::InvalidOperation
-                                    ErrorId = 'TemplateVariableNotFound'
-                                    TargetObject = $sbParamName
-                                }
-                                throw (New-ADTErrorRecord @naerParams)
-                            }
 
                             # Get the scriptblock expression on the right-hand side.
-                            $sbAst = $sbAssignment.Right.Expression
+                            $sbParamName = $section.Replace('-', [System.Management.Automation.Language.NullString]::Value) + 'ScriptBlock'
                             if ($sbAst -isnot [System.Management.Automation.Language.ScriptBlockExpressionAst])
                             {
                                 $naerParams = @{
@@ -685,13 +676,11 @@ function New-ADTTemplate
                                 throw (New-ADTErrorRecord @naerParams)
                             }
 
-                            $scriptText = '{' + [System.Environment]::NewLine + (ConvertTo-ADTScriptBody -ScriptBlock $PSBoundParameters[$sbParamName]) + [System.Environment]::NewLine + '}'
-
                             # Replace the entire scriptblock expression (including braces) with the user's content.
                             $scriptReplacements.Add([PSCustomObject]@{
                                     Start = $sbAst.Extent.StartOffset
                                     End = $sbAst.Extent.EndOffset
-                                    Value = $scriptText
+                                    Value = '{' + [System.Environment]::NewLine + (ConvertTo-ADTScriptBody -ScriptBlock $PSBoundParameters[$sbParamName]) + [System.Environment]::NewLine + '}'
                                 })
                         }
                     }

@@ -2,7 +2,6 @@
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using PSADT.AccountManagement;
 
@@ -40,15 +39,15 @@ namespace PSAppDeployToolkit.Logging
             ArgumentException.ThrowIfNullOrWhiteSpace(callerFileName);
             ArgumentException.ThrowIfNullOrWhiteSpace(callerSource);
             Timestamp = timeStamp;
-            Message = message.Replace("\0", null).TrimEnd();
+            Message = message.Replace("\0", newValue: null, StringComparison.Ordinal).TrimEnd();
             Severity = severity;
             Source = source;
             ScriptSection = scriptSection;
             DebugMessage = debugMessage;
-            CallerFileName = !callerFileName.StartsWith("<") ? new(callerFileName) : null;
+            CallerFileName = !callerFileName.StartsWith('<') ? new(callerFileName) : null;
             CallerSource = callerSource;
             LegacyLogLine = $"[{timeStamp:O}]{(scriptSection is not null ? $" [{scriptSection}]" : null)} [{source}] [{severity}] :: {Message}";
-            CMTraceLogLine = $"<![LOG[{(scriptSection is not null && Message != LogUtilities.LogDivider ? $"[{scriptSection}] :: " : null)}{(Message.Contains('\n') ? (string.Join(Environment.NewLine, Message.Split(["\r\n", "\n"], StringSplitOptions.None).Select(static m => string.IsNullOrWhiteSpace(m) ? LeadingSpaceString : CMTraceFirstChar.Match(m).Index is int start && start > 0 ? string.Concat(new(LeadingSpaceChar, start), m.Substring(start)) : m)) + Environment.NewLine) : Message)}]LOG]!><time=\"{timeStamp.ToString(@"HH\:mm\:ss.fff", CultureInfo.InvariantCulture)}{(TimeZoneInfo.Local.BaseUtcOffset.TotalMinutes >= 0 ? $"+{TimeZoneInfo.Local.BaseUtcOffset.TotalMinutes}" : TimeZoneInfo.Local.BaseUtcOffset.TotalMinutes.ToString(CultureInfo.InvariantCulture))}\" date=\"{timeStamp.ToString("M-dd-yyyy", CultureInfo.InvariantCulture)}\" component=\"{source}\" context=\"{AccountUtilities.CallerUsername}\" type=\"{(uint)severity}\" thread=\"{AccountUtilities.CallerProcessId}\" file=\"{callerFileName}\">";
+            CMTraceLogLine = $"<![LOG[{(scriptSection is not null && !Message.Equals(LogUtilities.LogDivider, StringComparison.Ordinal) ? $"[{scriptSection}] :: " : null)}{(Message.Contains('\n', StringComparison.Ordinal) ? (string.Join(Environment.NewLine, Message.Split(["\r\n", "\n"], StringSplitOptions.None).Select(static m => string.IsNullOrWhiteSpace(m) ? LeadingSpaceString : CMTraceFirstChar.Match(m).Index is int start && start > 0 ? string.Concat(new(LeadingSpaceChar, start), m[start..]) : m)) + Environment.NewLine) : Message)}]LOG]!><time=\"{timeStamp.ToString(@"HH\:mm\:ss.fff", CultureInfo.InvariantCulture)}{(TimeZoneInfo.Local.BaseUtcOffset.TotalMinutes >= 0 ? $"+{TimeZoneInfo.Local.BaseUtcOffset.TotalMinutes.ToString(CultureInfo.InvariantCulture)}" : TimeZoneInfo.Local.BaseUtcOffset.TotalMinutes.ToString(CultureInfo.InvariantCulture))}\" date=\"{timeStamp.ToString("M-dd-yyyy", CultureInfo.InvariantCulture)}\" component=\"{source}\" context=\"{AccountUtilities.CallerUsername}\" type=\"{(uint)severity}\" thread=\"{AccountUtilities.CallerProcessId}\" file=\"{callerFileName}\">";
         }
 
         /// <summary>
@@ -105,7 +104,6 @@ namespace PSAppDeployToolkit.Logging
         /// Returns a string that represents the current <see cref="LogEntry"/> object.
         /// </summary>
         /// <returns>A formatted string containing the exit code, standard output, and standard error.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override string ToString()
         {
             return LegacyLogLine;

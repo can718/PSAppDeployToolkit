@@ -28,7 +28,6 @@ namespace System
             /// <param name="argument">The span of characters to validate. Must not be empty or contain only whitespace.</param>
             /// <param name="paramName">The name of the parameter being validated. Used in the exception message if validation fails.</param>
             /// <exception cref="ArgumentException">Thrown if <paramref name="argument"/> is empty or contains only whitespace characters.</exception>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             [StackTraceHidden]
             public static void ThrowIfEmptyOrWhiteSpace(ReadOnlySpan<char> argument, [CallerArgumentExpression(nameof(argument))] string paramName = null!)
             {
@@ -47,7 +46,6 @@ namespace System
             /// <param name="name">The name of the parameter. Used in exception messages to identify the source of the error.</param>
             /// <exception cref="ArgumentNullException">Thrown if <paramref name="handle"/> is null.</exception>
             /// <exception cref="ObjectDisposedException">Thrown if <paramref name="handle"/> is closed.</exception>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             [StackTraceHidden]
             public static void ThrowIfNullOrClosed(SafeHandle handle, [CallerArgumentExpression(nameof(handle))] string name = null!)
             {
@@ -65,12 +63,11 @@ namespace System
             /// Validates that the specified SafeHandle is neither null, closed, nor invalid, and throws an exception if the
             /// handle is not usable.
             /// </summary>
-            /// <remarks>This method is intended to simplify SafeHandle validation. It ensures that the handle 
+            /// <remarks>This method is intended to simplify SafeHandle validation. It ensures that the handle
             /// is ready for use and provides clear exception information if validation fails.</remarks>
             /// <param name="handle">The SafeHandle instance to validate. Must not be null, closed, or invalid.</param>
             /// <param name="name">The name of the parameter. Used in exception messages to identify the source of the error.</param>
-            /// <exception cref="ArgumentException">Thrown if the SafeHandle is invalid, indicating that the handle cannot be used.</exception>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            /// <exception cref="ArgumentOutOfRangeException">Thrown if the SafeHandle is invalid, indicating that the handle cannot be used.</exception>
             [StackTraceHidden]
             public static void ThrowIfNullOrInvalid(SafeHandle handle, [CallerArgumentExpression(nameof(handle))] string name = null!)
             {
@@ -92,7 +89,6 @@ namespace System
             /// <param name="name">The name of the parameter being validated. Used in exception messages to identify the invalid argument.</param>
             /// <exception cref="ArgumentNullException">Thrown if the buffer of the specified UNICODE_STRING is null.</exception>
             /// <exception cref="ArgumentException">Thrown if the length of the specified UNICODE_STRING is zero.</exception>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             [StackTraceHidden]
             public static void ThrowIfNullOrInvalid(UNICODE_STRING value, [CallerArgumentExpression(nameof(value))] string name = null!)
             {

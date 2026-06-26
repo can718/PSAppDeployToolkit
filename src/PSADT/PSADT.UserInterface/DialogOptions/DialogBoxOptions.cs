@@ -21,13 +21,13 @@ namespace PSADT.UserInterface.DialogOptions
         /// message text, button configuration, default button, icon, topmost behavior, and expiry duration.</param>
         /// <exception cref="ArgumentNullException">Thrown if the options dictionary is null.</exception>
         public DialogBoxOptions(IDictionary options) : this(
-            (options ?? throw new ArgumentNullException(nameof(options)))["AppTitle"] as string ?? null!,
-            options["MessageText"] as string ?? null!,
-            options["DialogButtons"] as DialogBoxButtons? ?? (DialogBoxButtons)uint.MaxValue,
-            options["DialogDefaultButton"] as DialogBoxDefaultButton? ?? (DialogBoxDefaultButton)uint.MaxValue,
-            options["DialogIcon"] as DialogBoxIcon?,
-            options["DialogTopMost"] as bool? ?? false,
-            options["DialogExpiryDuration"] as uint? ?? uint.MaxValue)
+            (string?)(options ?? throw new ArgumentNullException(nameof(options)))["AppTitle"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppTitle' is missing."),
+            (string?)options["MessageText"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'MessageText' is missing."),
+            (DialogBoxButtons?)options["DialogButtons"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'DialogButtons' is missing."),
+            (DialogBoxDefaultButton?)options["DialogDefaultButton"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'DialogDefaultButton' is missing."),
+            (DialogBoxIcon?)options["DialogIcon"],
+            (bool?)options["DialogTopMost"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'DialogTopMost' is missing."),
+            (uint?)options["DialogExpiryDuration"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'DialogExpiryDuration' is missing."))
         {
         }
 
@@ -47,18 +47,6 @@ namespace PSADT.UserInterface.DialogOptions
         /// <param name="dialogExpiryDuration">The duration after which the dialog box will automatically close if no user action is taken.</param>
         private DialogBoxOptions(string appTitle, string messageText, DialogBoxButtons dialogButtons, DialogBoxDefaultButton dialogDefaultButton, DialogBoxIcon? dialogIcon, bool dialogTopMost, uint dialogExpiryDuration)
         {
-            if ((uint)dialogButtons == uint.MaxValue)
-            {
-                throw new ArgumentNullException(nameof(dialogButtons), "DialogButtons value is null or invalid.");
-            }
-            if ((uint)dialogDefaultButton == uint.MaxValue)
-            {
-                throw new ArgumentNullException(nameof(dialogDefaultButton), "DialogDefaultButton value is null or invalid.");
-            }
-            if (dialogExpiryDuration == uint.MaxValue)
-            {
-                throw new ArgumentNullException(nameof(dialogExpiryDuration), "DialogExpiryDuration value is null or invalid.");
-            }
             ArgumentException.ThrowIfNullOrWhiteSpace(appTitle);
             ArgumentException.ThrowIfNullOrWhiteSpace(messageText);
             AppTitle = appTitle;
@@ -73,49 +61,42 @@ namespace PSADT.UserInterface.DialogOptions
         /// <summary>
         /// The title of the application or process being displayed in the dialog.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string AppTitle;
 
         /// <summary>
         /// Gets the text of the message.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string MessageText;
 
         /// <summary>
         /// Gets the set of buttons to display in the message box dialog.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly DialogBoxButtons DialogButtons;
 
         /// <summary>
         /// Gets the default button that is selected in the dialog box when it is displayed.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly DialogBoxDefaultButton DialogDefaultButton;
 
         /// <summary>
         /// Gets the icon displayed in the dialog box.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly DialogBoxIcon? DialogIcon;
 
         /// <summary>
         /// Indicates whether the dialog should be displayed as a top-most window.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly bool DialogTopMost;
 
         /// <summary>
         /// The duration for which the dialog will be displayed before it automatically closes.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly uint DialogExpiryDuration;
     }

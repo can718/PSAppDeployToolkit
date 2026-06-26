@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 
 namespace PSADT.UserInterface.DialogResults
@@ -45,9 +44,9 @@ namespace PSADT.UserInterface.DialogResults
             // Only compare instances of the exact same type, not derived types.
             return obj switch
             {
-                CustomDialogResult other when other.GetType() == GetType() => Result == other.Result,
+                CustomDialogResult other when other.GetType() == GetType() => Result.Equals(other.Result, StringComparison.Ordinal),
                 string str when GetType() == typeof(CustomDialogResult) => Result.Equals(str, StringComparison.OrdinalIgnoreCase),
-                _ => false
+                _ => false,
             };
         }
 
@@ -55,7 +54,6 @@ namespace PSADT.UserInterface.DialogResults
         /// Returns a string that represents the current result value.
         /// </summary>
         /// <returns>A string containing the value of the result represented by this instance.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override string ToString()
         {
             return Result;
@@ -68,10 +66,9 @@ namespace PSADT.UserInterface.DialogResults
         /// property. Objects that are considered equal should return the same hash code to maintain correct behavior in
         /// hash-based collections.</remarks>
         /// <returns>An integer hash code representing the current instance.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
         {
-            return Result.GetHashCode();
+            return Result.GetHashCode(StringComparison.Ordinal);
         }
 
         /// <summary>

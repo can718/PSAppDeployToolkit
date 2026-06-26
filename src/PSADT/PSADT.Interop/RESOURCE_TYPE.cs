@@ -8,6 +8,7 @@ namespace PSADT.Interop
     /// </summary>
     /// <remarks>This class provides a set of predefined resource types that correspond to standard Windows
     /// resource types.</remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0182: Avoid unused internal types.", Justification = "This is used across InternalsVisibleTo boundaries.")]
     internal sealed class RESOURCE_TYPE : TypedConstant<RESOURCE_TYPE>
     {
         /// <summary>
@@ -120,7 +121,6 @@ namespace PSADT.Interop
         /// </summary>
         /// <param name="value">The handle to be associated with this instance.</param>
         /// <param name="name">The name of the constant, automatically captured from the calling member.</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private RESOURCE_TYPE(PCWSTR value, [CallerMemberName] string name = null!) : base(value, name)
         {
         }

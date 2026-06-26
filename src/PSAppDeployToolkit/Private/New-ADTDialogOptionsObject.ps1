@@ -28,10 +28,10 @@ function Private:New-ADTDialogOptionsObject
         AppIconDarkImage = 'LogoDark'
         AppBannerImage = 'Banner'
         AppTaskbarIconImage = 'TaskbarIcon'
-        TrayIcon = 'Logo'
     }
 
     # Spin until this works.
+    $configAssets = (Get-ADTConfig).Assets
     while ($true)
     {
         try
@@ -54,7 +54,7 @@ function Private:New-ADTDialogOptionsObject
             if ($null -ne ($dialogAssetValue = $Script:ADT.ModuleDefaults.Config.([System.String]::Empty).Ast.EndBlock.Statements.PipelineElements.Expression.KeyValuePairs.Where({ $_.Item1.Value.Equals('Assets') }).Item2.PipelineElements.Expression.KeyValuePairs.Where({ $_.Item1.Value.Equals($dialogAssetKey) }).Item2.PipelineElements.Expression | Select-Object -ExpandProperty Value -ErrorAction Ignore))
             {
                 Write-ADTLogEntry -Message "$($_.Exception.InnerException.Message.Replace($dialogAssetName, $dialogAssetKey).TrimEnd('.')): $($_.Exception.InnerException.InnerException.Message.TrimEnd('.')). Substituting with default asset." -Severity Warning
-                $Data.$dialogAssetName = $dialogAssetValue.PSObject.BaseObject
+                $configAssets.$dialogAssetKey = $Data.$dialogAssetName = $dialogAssetValue.PSObject.BaseObject
             }
             else
             {

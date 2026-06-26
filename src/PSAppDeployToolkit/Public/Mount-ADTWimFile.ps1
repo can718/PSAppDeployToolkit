@@ -91,7 +91,7 @@ function Mount-ADTWimFile
                 {
                     $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName ImagePath -ProvidedValue $_ -ExceptionMessage 'The specified image path cannot be found.'))
                 }
-                if ([System.Uri]::new($_).IsUnc)
+                if ([System.Uri]::new($_.FullName).IsUnc)
                 {
                     $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName ImagePath -ProvidedValue $_ -ExceptionMessage 'The specified image path cannot be a network share.'))
                 }
@@ -106,17 +106,13 @@ function Mount-ADTWimFile
                 {
                     $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName Path -ProvidedValue $_ -ExceptionMessage 'The specified input is null.'))
                 }
-                if ([System.Uri]::new($_).IsUnc)
+                if ([System.Uri]::new($_.FullName).IsUnc)
                 {
                     $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName Path -ProvidedValue $_ -ExceptionMessage 'The specified mount path cannot be a network share.'))
                 }
                 if (Get-ADTMountedWimFile -Path $_)
                 {
                     $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName Path -ProvidedValue $_ -ExceptionMessage 'The specified mount path has a pre-existing WIM mounted.'))
-                }
-                if (Get-ChildItem -LiteralPath $_ -ErrorAction Ignore)
-                {
-                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName Path -ProvidedValue $_ -ExceptionMessage 'The specified mount path is not empty.'))
                 }
                 return !!$_
             })]
@@ -144,6 +140,7 @@ function Mount-ADTWimFile
         # Attempt to get specified WIM image before initialising.
         $null = try
         {
+            $PSBoundParameters.ImagePath = $PSBoundParameters.ImagePath.FullName
             $PSBoundParameters.Remove('PassThru')
             $PSBoundParameters.Remove('Force')
             $PSBoundParameters.Remove('Path')
@@ -175,24 +172,21 @@ function Mount-ADTWimFile
                 }
 
                 # If we're using the force, forcibly remove the existing directory.
-                if (Test-Path -LiteralPath $Path -PathType Container)
+                if ((Test-Path -LiteralPath $Path -PathType Container) -and (Get-ChildItem -LiteralPath $Path -Force))
                 {
-                    if (Get-ChildItem -LiteralPath $Path -ErrorAction Ignore)
+                    if (!$Force)
                     {
-                        if (!$Force)
-                        {
-                            $naerParams = @{
-                                Exception = [System.IO.IOException]::new("The specified mount path is not empty.")
-                                Category = [System.Management.Automation.ErrorCategory]::InvalidOperation
-                                ErrorId = 'NonEmptyMountPathError'
-                                TargetObject = $Path
-                                RecommendedAction = "Please specify a path where a new folder can be created, or a path to an existing empty folder."
-                            }
-                            throw (New-ADTErrorRecord @naerParams)
+                        $naerParams = @{
+                            Exception = [System.IO.IOException]::new("The specified mount path is not empty.")
+                            Category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+                            ErrorId = 'NonEmptyMountPathError'
+                            TargetObject = $Path
+                            RecommendedAction = "Please specify a path where a new folder can be created, or a path to an existing empty folder."
                         }
-                        Write-ADTLogEntry -Message "Removing pre-existing path [$Path] as [-Force] was provided."
-                        Remove-Item -LiteralPath $Path -Force -Confirm:$false
+                        throw (New-ADTErrorRecord @naerParams)
                     }
+                    Write-ADTLogEntry -Message "Removing pre-existing path [$Path] as [-Force] was provided."
+                    Remove-Item -LiteralPath $Path -Force -Confirm:$false
                 }
 
                 # If the path doesn't exist, create it.
@@ -203,7 +197,7 @@ function Mount-ADTWimFile
                 }
 
                 # Mount the WIM file.
-                $res = Mount-WindowsImage @PSBoundParameters -Path $Path -ReadOnly -CheckIntegrity
+                $res = Mount-WindowsImage @PSBoundParameters -Path $Path.FullName -ReadOnly -CheckIntegrity
                 Write-ADTLogEntry -Message "Successfully mounted WIM file [$ImagePath]."
 
                 # Store the result within the user's ADTSession if there's an active one.

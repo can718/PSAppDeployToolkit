@@ -21,23 +21,25 @@ namespace PSADT.UserInterface.DialogOptions
         /// application title, subtitle, icon images, dialog properties, and progress message details.</param>
         /// <exception cref="ArgumentNullException">Thrown if the options dictionary is null.</exception>
         public ProgressDialogOptions(IDictionary options) : this(
-            (options ?? throw new ArgumentNullException(nameof(options)))["AppTitle"] as string ?? null!,
-            options["Subtitle"] as string ?? null!,
-            options["AppIconImage"] as string ?? null!,
-            options["AppIconDarkImage"] as string,
-            options["AppBannerImage"] as string ?? null!,
-            options["AppTaskbarIconImage"] as string,
-            options["DialogTopMost"] as bool? ?? false,
-            options["Language"] as CultureInfo ?? null!,
-            options["FluentAccentColor"] as int?,
-            options["DialogPosition"] as DialogPosition?,
-            options["DialogAllowMove"] as bool?,
-            options["DialogExpiryDuration"] as TimeSpan?,
-            options["DialogPersistInterval"] as TimeSpan?,
-            options["ProgressMessageText"] as string ?? null!,
-            options["ProgressDetailMessageText"] as string ?? null!,
-            options["ProgressPercentage"] as double?,
-            options["MessageAlignment"] as DialogMessageAlignment?)
+            (string?)(options ?? throw new ArgumentNullException(nameof(options)))["AppTitle"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppTitle' is missing."),
+            (string?)options["Subtitle"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'Subtitle' is missing."),
+            (string?)options["AppIconImage"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppIconImage' is missing."),
+            (string?)options["AppIconDarkImage"],
+            (string?)options["AppBannerImage"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'AppBannerImage' is missing."),
+            (string?)options["AppTaskbarIconImage"],
+            (bool?)options["DialogTopMost"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'DialogTopMost' is missing."),
+            (CultureInfo?)options["Language"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'Language' is missing."),
+            (int?)options["FluentAccentColor"],
+            (int?)options["FluentAccentColorDark"],
+            (DialogPosition?)options["DialogPosition"],
+            (bool?)options["DialogAllowMove"],
+            (bool?)options["DialogAllowMinimize"],
+            (TimeSpan?)options["DialogExpiryDuration"],
+            (TimeSpan?)options["DialogPersistInterval"],
+            (string?)options["ProgressMessageText"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'ProgressMessageText' is missing."),
+            (string?)options["ProgressDetailMessageText"] ?? throw new ArgumentNullException(nameof(options), "The specified key 'ProgressDetailMessageText' is missing."),
+            (double?)options["ProgressPercentage"],
+            (DialogMessageAlignment?)options["MessageAlignment"])
         {
         }
 
@@ -56,9 +58,12 @@ namespace PSADT.UserInterface.DialogOptions
         /// <param name="language">The culture information used for localizing the dialog.</param>
         /// <param name="fluentAccentColor">The accent color used for Fluent design elements in the dialog. If <see langword="null"/>, the default
         /// accent color is used.</param>
+        /// <param name="fluentAccentColorDark">The accent color used for Fluent design elements in the dialog when in dark mode. If <see langword="null"/>, the default dark accent color is used.</param>
         /// <param name="dialogPosition">The position of the dialog on the screen. If <see langword="null"/>, the default position is used.</param>
         /// <param name="dialogAllowMove">Indicates whether the dialog can be moved by the user. If <see langword="null"/>, the default behavior is
         /// used.</param>
+        /// <param name="dialogAllowMinimize">Indicates whether the dialog exposes a minimize button in its caption area. If <see langword="null"/> or
+        /// <see langword="false"/>, the minimize button remains hidden.</param>
         /// <param name="dialogExpiryDuration">The duration after which the dialog automatically expires. If <see langword="null"/>, the dialog does not
         /// expire automatically.</param>
         /// <param name="dialogPersistInterval">The interval at which the dialog persists its state. If <see langword="null"/>, the default interval is
@@ -71,7 +76,7 @@ namespace PSADT.UserInterface.DialogOptions
         /// is used.</param>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="progressMessageText"/> or <paramref name="progressDetailMessageText"/> is <see
         /// langword="null"/>.</exception>
-        private ProgressDialogOptions(string appTitle, string subtitle, string appIconImage, string? appIconDarkImage, string appBannerImage, string? appTaskbarIconImage, bool dialogTopMost, CultureInfo language, int? fluentAccentColor, DialogPosition? dialogPosition, bool? dialogAllowMove, TimeSpan? dialogExpiryDuration, TimeSpan? dialogPersistInterval, string progressMessageText, string progressDetailMessageText, double? progressPercentage, DialogMessageAlignment? messageAlignment) : base(appTitle, subtitle, appIconImage, appIconDarkImage, appBannerImage, appTaskbarIconImage, dialogTopMost, language, fluentAccentColor, dialogPosition, dialogAllowMove, dialogExpiryDuration, dialogPersistInterval)
+        private ProgressDialogOptions(string appTitle, string subtitle, string appIconImage, string? appIconDarkImage, string appBannerImage, string? appTaskbarIconImage, bool dialogTopMost, CultureInfo language, int? fluentAccentColor, int? fluentAccentColorDark, DialogPosition? dialogPosition, bool? dialogAllowMove, bool? dialogAllowMinimize, TimeSpan? dialogExpiryDuration, TimeSpan? dialogPersistInterval, string progressMessageText, string progressDetailMessageText, double? progressPercentage, DialogMessageAlignment? messageAlignment) : base(appTitle, subtitle, appIconImage, appIconDarkImage, appBannerImage, appTaskbarIconImage, dialogTopMost, language, fluentAccentColor, fluentAccentColorDark, dialogPosition, dialogAllowMove, dialogAllowMinimize, dialogExpiryDuration, dialogPersistInterval)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(progressMessageText);
             ArgumentException.ThrowIfNullOrWhiteSpace(progressDetailMessageText);
@@ -84,28 +89,24 @@ namespace PSADT.UserInterface.DialogOptions
         /// <summary>
         /// The message to be displayed in the progress dialog, indicating the current status or action being performed.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string ProgressMessageText;
 
         /// <summary>
         /// The detailed message to be displayed in the progress dialog, providing more context or information about the current action.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly string ProgressDetailMessageText;
 
         /// <summary>
         /// The percentage value to be displayed on the status bar, if available.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly double? ProgressPercentage;
 
         /// <summary>
         /// The alignment of the message text in the dialog.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "This needs to be a field for the DataContractSerializer.")]
         [DataMember]
         public readonly DialogMessageAlignment? MessageAlignment;
     }

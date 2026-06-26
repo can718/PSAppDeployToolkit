@@ -1,6 +1,6 @@
 ﻿using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Principal;
@@ -26,14 +26,16 @@ namespace PSADT.AccountManagement
         /// </summary>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1810:Initialize reference type static fields inline", Justification = "The static constructor is very much needed here.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1065:Do not raise exceptions in unexpected locations", Justification = "This exception will never be thrown during operation.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "There's no async support during static construction.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0301:Simplify collection initialization", Justification = "The collection expression won't compile for net8.0...")]
         static AccountUtilities()
         {
             // Cache information about the current user.
             using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
             {
                 CallerIsAdmin = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-                CallerGroups = new ReadOnlyCollection<SecurityIdentifier>(identity.Groups?.Select(static g => (SecurityIdentifier)g) is IEnumerable<SecurityIdentifier> callerGroups ? [.. callerGroups] : []);
-                CallerIsServiceAccount = CallerGroups.Contains(new SecurityIdentifier(WellKnownSidType.ServiceSid, null));
+                CallerGroups = identity.Groups?.Cast<SecurityIdentifier>().ToFrozenSet() ?? FrozenSet<SecurityIdentifier>.Empty;
+                CallerIsServiceAccount = CallerGroups.Contains(new SecurityIdentifier(WellKnownSidType.ServiceSid, domainSid: null));
                 CallerSid = identity.User ?? throw new NotSupportedException("Current Windows identity does not have a user SID.");
                 CallerUsername = new(identity.Name);
             }
@@ -53,50 +55,26 @@ namespace PSADT.AccountManagement
                 }
             }
 
-            // Initialize the lookup table for well-known SIDs, skipping ones that don't construct.
-            Array wellKnownSidTypes = typeof(WellKnownSidType).GetEnumValues();
-            Dictionary<WellKnownSidType, SecurityIdentifier> wellKnownSids = new(wellKnownSidTypes.Length);
-            foreach (WellKnownSidType wellKnownSidType in wellKnownSidTypes)
-            {
-                if (wellKnownSids.ContainsKey(wellKnownSidType) || wellKnownSidType == WellKnownSidType.LogonIdsSid || (int)wellKnownSidType == 80 || (int)wellKnownSidType == 83)  // WinLocalLogonSid/WinApplicationPackageAuthoritySid.
-                {
-                    continue;
-                }
-                wellKnownSids.Add(wellKnownSidType, new(wellKnownSidType, LocalAccountDomainSid));
-            }
-            LocalSystemSid = wellKnownSids[WellKnownSidType.LocalSystemSid];
-            WellKnownSidLookupTable = new(wellKnownSids);
-
             // Determine if the caller is the local system account.
-            CallerIsInteractive = Environment.UserInteractive;
             CallerIsLocalSystem = CallerSid.IsWellKnown(WellKnownSidType.LocalSystemSid);
             CallerIsLocalService = CallerSid.IsWellKnown(WellKnownSidType.LocalServiceSid);
             CallerIsNetworkService = CallerSid.IsWellKnown(WellKnownSidType.NetworkServiceSid);
             CallerIsSystemInteractive = CallerIsLocalSystem && CallerIsInteractive;
-            CallerUsingServiceUI = ProcessUtilities.GetParentProcesses().Any(static p => !ProcessUtilities.HasProcessExited(p) && p.ProcessName.Equals("ServiceUI", StringComparison.OrdinalIgnoreCase));
-
-            // Generate a RunAsActiveUser object for the current user.
-            CallerRunAsActiveUser = new(CallerUsername, CallerSid, CallerSessionId, CallerIsAdmin);
-            SessionRunAsActiveUser = SessionInfo.Get(CallerSessionId)?.ToRunAsActiveUser();
-            CallerIsLoggedOnUser = CallerRunAsActiveUser == SessionRunAsActiveUser;
-        }
-
-        /// <summary>
-        /// Retrieves the <see cref="SecurityIdentifier"/> associated with the specified well-known SID type.
-        /// </summary>
-        /// <remarks>Well-known SIDs are predefined identifiers for common security principals, such as
-        /// "Everyone" or "Local System." Use this method to obtain the <see cref="SecurityIdentifier"/> for a specific
-        /// well-known SID type.</remarks>
-        /// <param name="wellKnownSidType">The type of the well-known SID to retrieve. This must be a valid <see cref="WellKnownSidType"/> value.</param>
-        /// <returns>A <see cref="SecurityIdentifier"/> representing the specified well-known SID type.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown if the specified <paramref name="wellKnownSidType"/> is not recognized or is unavailable in the
-        /// current context.</exception>
-        public static SecurityIdentifier GetWellKnownSid(WellKnownSidType wellKnownSidType)
-        {
-            // Return the SecurityIdentifier for the specified well-known SID type.
-            return !WellKnownSidLookupTable.TryGetValue(wellKnownSidType, out SecurityIdentifier? sid)
-                ? throw new ArgumentOutOfRangeException(nameof(wellKnownSidType), wellKnownSidType, $"The specified well-known SID type '{wellKnownSidType}' is not recognized or not available in this context.")
-                : sid;
+            CallerUsingServiceUI = CallerIsLocalSystem && ProcessUtilities.GetParentProcesses().Any(static p =>
+            {
+                if (ProcessUtilities.HasProcessExited(p))
+                {
+                    return false;
+                }
+                try
+                {
+                    return ProcessVersionInfo.GetVersionInfo(p).InternalName?.Equals("ServiceUI", StringComparison.OrdinalIgnoreCase) == true;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return false;
+                }
+            });
         }
 
         /// <summary>
@@ -115,7 +93,7 @@ namespace PSADT.AccountManagement
         /// <remarks>This property is read-only and can be used to determine the group memberships of the
         /// caller for authorization or auditing purposes. The value may be null if group information is unavailable for
         /// the caller.</remarks>
-        public static readonly IReadOnlyList<SecurityIdentifier> CallerGroups;
+        public static readonly FrozenSet<SecurityIdentifier> CallerGroups;
 
         /// <summary>
         /// Gets a value indicating whether the current caller is a service account.
@@ -133,7 +111,7 @@ namespace PSADT.AccountManagement
         /// <summary>
         /// Represents the security identifier (SID) of the caller.
         /// </summary>
-        /// <remarks>This field provides the SID associated with the caller, which can be used for 
+        /// <remarks>This field provides the SID associated with the caller, which can be used for
         /// security-related operations such as access control or identity verification.</remarks>
         public static readonly SecurityIdentifier CallerSid;
 
@@ -153,7 +131,7 @@ namespace PSADT.AccountManagement
         /// <remarks>This value can be used to determine if the code is executing in an environment where
         /// user interaction is possible, such as a desktop session, as opposed to a background service or automated
         /// process.</remarks>
-        public static readonly bool CallerIsInteractive;
+        public static readonly bool CallerIsInteractive = Environment.UserInteractive;
 
         /// <summary>
         /// Indicates whether the caller is the local system account.
@@ -183,19 +161,19 @@ namespace PSADT.AccountManagement
         /// <summary>
         /// Indicates whether the current caller is the user currently logged on to the system.
         /// </summary>
-        public static readonly bool CallerIsLoggedOnUser;
+        public static bool CallerIsLoggedOnUser => CallerRunAsActiveUser == SessionRunAsActiveUser;
 
         /// <summary>
         /// Represents a predefined instance of <see cref="RunAsActiveUser"/> that executes operations as the currently
         /// active user.
         /// </summary>
-        public static readonly RunAsActiveUser CallerRunAsActiveUser;
+        public static RunAsActiveUser CallerRunAsActiveUser => RunAsActiveUserConstants.Caller;
 
         /// <summary>
         /// Gets the value indicating whether the session should run as the active user, or null if the setting is
         /// unspecified.
         /// </summary>
-        public static readonly RunAsActiveUser? SessionRunAsActiveUser;
+        public static RunAsActiveUser? SessionRunAsActiveUser => RunAsActiveUserConstants.Session;
 
         /// <summary>
         /// Represents the security identifier (SID) for the local system account (NT AUTHORITY\SYSTEM).
@@ -203,7 +181,7 @@ namespace PSADT.AccountManagement
         /// <remarks>This SID is commonly used to grant permissions to the local system account, which has
         /// extensive privileges on the local computer. Use this value when specifying access control or auditing rules
         /// that should apply to the system account.</remarks>
-        public static readonly SecurityIdentifier LocalSystemSid;
+        public static readonly SecurityIdentifier LocalSystemSid = new(WellKnownSidType.LocalSystemSid, domainSid: null);
 
         /// <summary>
         /// Represents the security identifier (SID) for the local account domain.
@@ -214,12 +192,19 @@ namespace PSADT.AccountManagement
         public static readonly SecurityIdentifier LocalAccountDomainSid;
 
         /// <summary>
-        /// A read-only dictionary that maps <see cref="WellKnownSidType"/> values to their corresponding <see
-        /// cref="SecurityIdentifier"/> instances.
+        /// A private static class that encapsulates constant values related to running operations as the active user.
         /// </summary>
-        /// <remarks>This dictionary provides a lookup table for well-known security identifiers (SIDs)
-        /// based on their type. It is intended to facilitate quick access to predefined SIDs commonly used in
-        /// security-related operations.</remarks>
-        private static readonly ReadOnlyDictionary<WellKnownSidType, SecurityIdentifier> WellKnownSidLookupTable;
+        private static class RunAsActiveUserConstants
+        {
+            /// <summary>
+            /// Represents the active user context for the caller, encapsulated as a <see cref="RunAsActiveUser"/> instance.
+            /// </summary>
+            internal static readonly RunAsActiveUser Caller = new(CallerUsername, CallerSid, CallerSessionId, CallerIsAdmin);
+
+            /// <summary>
+            /// Represents the active user context for the current session, encapsulated as a nullable <see cref="RunAsActiveUser"/> instance.
+            /// </summary>
+            internal static readonly RunAsActiveUser? Session = SessionInfo.GetAsync(CallerSessionId).AsTask().ConfigureAwait(false).GetAwaiter().GetResult()?.ToRunAsActiveUser();
+        }
     }
 }

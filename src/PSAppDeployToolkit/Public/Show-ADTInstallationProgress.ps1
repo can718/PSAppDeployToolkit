@@ -142,12 +142,11 @@ function Show-ADTInstallationProgress
     {
         # Initialize function.
         Initialize-ADTFunction -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
-        $errRecord = $null
 
         # Initialise the string table.
         $sessionState = if ($adtSession)
         {
-            $adtSession.SessionState
+            $adtSession.DeployAppScriptSessionState
         }
         if ($null -eq $sessionState)
         {
@@ -201,14 +200,14 @@ function Show-ADTInstallationProgress
         }
 
         # Determine if progress window is open before proceeding.
-        $progressOpen = Invoke-ADTClientServerOperation -ProgressDialogOpen -User $runAsActiveUser
+        $progressOpen = Test-ADTInstallationProgressOpen -RunAsActiveUser $runAsActiveUser
 
         # Notify user that the software installation has started.
-        if ($adtSession -and !$progressOpen)
+        if ($adtSession -and !$progressOpen -and ($adtConfig.UI.DialogStyle -eq 'Classic'))
         {
             try
             {
-                Show-ADTBalloonTip -BalloonTipIcon Info -BalloonTipText $adtStrings.BalloonTip.Start.$deploymentType -NoWait
+                Show-ADTBalloonTip -Icon Info -Text $adtStrings.BalloonTip.Start.$deploymentType
             }
             catch
             {
@@ -216,7 +215,7 @@ function Show-ADTInstallationProgress
             }
         }
 
-        # Call the underlying function to open the progress window.
+        # Call the underlying function to open/update the progress window.
         try
         {
             try
@@ -261,6 +260,10 @@ function Show-ADTInstallationProgress
                     {
                         $dialogOptions.Add('FluentAccentColor', $adtConfig.UI.FluentAccentColor)
                     }
+                    if ($null -ne $adtConfig.UI.FluentAccentColorDark)
+                    {
+                        $dialogOptions.Add('FluentAccentColorDark', $adtConfig.UI.FluentAccentColorDark)
+                    }
                     $dialogOptions = New-ADTDialogOptionsObject -Type ([PSADT.UserInterface.DialogOptions.ProgressDialogOptions]) -Data $dialogOptions
 
                     # Create the new progress dialog.
@@ -302,14 +305,7 @@ function Show-ADTInstallationProgress
         }
         catch
         {
-            Invoke-ADTFunctionErrorHandler -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState -ErrorRecord ($errRecord = $_)
-        }
-        finally
-        {
-            if ($errRecord)
-            {
-                Close-ADTInstallationProgress
-            }
+            Invoke-ADTFunctionErrorHandler -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState -ErrorRecord $_
         }
     }
 

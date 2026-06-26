@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 
 namespace PSADT.ClientServer
@@ -12,8 +11,9 @@ namespace PSADT.ClientServer
     /// program execution, with an optional exit code that is set to the <see cref="Exception.HResult"/> property.
     /// This allows the exception to convey both the error details and a numeric code that can be used for
     /// programmatic handling or process termination.</remarks>
-    [Serializable]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1032:Implement standard exception constructors", Justification = "The constructors we have are fine for our internal usage.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1194:Implement exception constructors", Justification = "The constructors we have are fine for our internal usage.")]
+    [Serializable]
     internal sealed class ClientException : InvalidOperationException
     {
         /// <summary>
@@ -22,20 +22,18 @@ namespace PSADT.ClientServer
         /// </summary>
         /// <param name="message">The error message that explains the reason for the exception.</param>
         /// <param name="exitCode">The exit code associated with the exception, which is used to set the <see cref="Exception.HResult"/> property.</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ClientException(string message, ClientExitCode exitCode) : base(message)
         {
             HResult = (int)exitCode;
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ClientException"/> class with a specified error message, 
+        /// Initializes a new instance of the <see cref="ClientException"/> class with a specified error message,
         /// a reference to the inner exception that caused this exception, and an exit code.
         /// </summary>
         /// <param name="message">The error message that explains the reason for the exception.</param>
         /// <param name="exitCode">The exit code associated with the exception, which is used to set the <see cref="Exception.HResult"/> property.</param>
         /// <param name="innerException">The exception that is the cause of the current exception, or <see langword="null"/> if no inner exception is specified.</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ClientException(string message, ClientExitCode exitCode, Exception innerException) : base(message, innerException)
         {
             HResult = (int)exitCode;
@@ -53,7 +51,6 @@ namespace PSADT.ClientServer
 #if NET8_0_OR_GREATER
         [Obsolete("Formatter-based exception serialization is obsolete and should not be used.", DiagnosticId = "SYSLIB0051")]
 #endif
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private ClientException(SerializationInfo info, StreamingContext context) : base(info, context)
         {
         }
@@ -70,7 +67,6 @@ namespace PSADT.ClientServer
 #if NET8_0_OR_GREATER
         [Obsolete("Formatter-based exception serialization is obsolete and should not be used.", DiagnosticId = "SYSLIB0051")]
 #endif
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             base.GetObjectData(info, context);
