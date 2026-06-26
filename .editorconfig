@@ -30,6 +30,7 @@ dotnet_analyzer_diagnostic.category-Usage.severity = error
 dotnet_diagnostic.RS0030.severity = error
 
 # Disable severities we can't address while dual-targeting.
+dotnet_diagnostic.IDE0055.severity = none
 dotnet_diagnostic.IDE0056.severity = none
 dotnet_diagnostic.IDE0057.severity = none
 dotnet_diagnostic.CA1307.severity = none
@@ -58,6 +59,8 @@ dotnet_diagnostic.S1121.severity = none
 dotnet_diagnostic.S1659.severity = none
 dotnet_diagnostic.S3358.severity = none
 dotnet_diagnostic.S3869.severity = none
+dotnet_diagnostic.S1449.severity = none
+dotnet_diagnostic.S3458.severity = none
 
 # Roslynator defaults.
 dotnet_analyzer_diagnostic.category-roslynator.severity = error
