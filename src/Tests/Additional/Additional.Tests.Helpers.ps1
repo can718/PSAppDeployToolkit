@@ -421,13 +421,22 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
     {
         throw "Template parameter file [$templateParamsPath] did not resolve any valid [Files] entries."
     }
-    # 获取 $PackageDir当前文件夹名字或上一层路径
-    $packageDirName = (Get-Item -Path $PackageDir).Name
-    $packageDirParent = Get-Item -Path $PackageDir -Parent
+    $packageDirName = Split-Path -Path $PackageDir -Leaf
+    $packageDirParent = Split-Path -Path $PackageDir -Parent
+
+    if ([string]::IsNullOrWhiteSpace($packageDirName) -or [string]::IsNullOrWhiteSpace($packageDirParent))
+    {
+        throw "Invalid PackageDir path: $PackageDir"
+    }
+
+    if (-not (Test-Path -LiteralPath $packageDirParent -PathType Container))
+    {
+        New-Item -Path $packageDirParent -ItemType Directory -Force | Out-Null
+    }
 
     $invokeTemplateParams = @{
         TemplatefilePath = $templateParamsPath
-        DestinationPath = $packageDirParent.FullName
+        DestinationPath = $packageDirParent
         Name = $packageDirName
         Files = $filesList
     }
