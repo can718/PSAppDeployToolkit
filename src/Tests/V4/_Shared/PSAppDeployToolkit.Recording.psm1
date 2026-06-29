@@ -1,4 +1,4 @@
-$script:recordingStarted = $false
+﻿$script:recordingStarted = $false
 $script:recordingStopAttempted = $false
 $script:recordingOutputFile = $null
 $script:helperLoaded = $false

@@ -1,4 +1,4 @@
-@{
+﻿@{
     RootModule = 'PSAppDeployToolkit.Recording.psm1'
     ModuleVersion = '1.0.0'
     GUID = 'f7b6c8b6-7ab4-4ef6-9483-1de2f2f2f31b'

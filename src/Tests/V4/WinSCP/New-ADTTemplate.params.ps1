@@ -1,4 +1,4 @@
-$NewADTTemplateParameters = @{
+﻿$NewADTTemplateParameters = @{
     SessionProperties = @{
         AppVendor = 'Martin Prikryl'
         AppName = 'WinSCP'

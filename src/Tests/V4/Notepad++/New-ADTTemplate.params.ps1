@@ -1,4 +1,4 @@
-$NewADTTemplateParameters = @{
+﻿$NewADTTemplateParameters = @{
     SessionProperties = @{
         AppVendor = 'Don HO don.h@free.fr'
         AppName = 'Notepad++'
@@ -77,7 +77,7 @@ $NewADTTemplateParameters = @{
 
     RepairScriptBlock = {
         Uninstall-ADTApplication -Name 'Notepad++ (64-bit x64)' -NameMatch 'Exact' -ArgumentList '/S'
-        Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.x64.exe"
+        Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.exe" -ArgumentList '/S'
     }
 
     PostRepairScriptBlock = {

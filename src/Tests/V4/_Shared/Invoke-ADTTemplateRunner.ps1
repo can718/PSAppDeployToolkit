@@ -1,4 +1,4 @@
-function Invoke-ADTTemplateRunner {
+﻿function Invoke-ADTTemplateRunner {
     param (
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrWhiteSpace()]
