@@ -5,6 +5,13 @@ $script:helperLoaded = $false
 
 function Start-AdditionalTestRecording
 {
+    #Import-AdditionalTestRecordingHelper firstly to ensure the helper is loaded before attempting to start recording.
+    if (-not $script:helperLoaded)
+    {
+        Import-AdditionalTestRecordingHelper
+        $script:helperLoaded = $true
+        Write-ADTLogEntry -Message 'TerraForge helper loaded successfully.' -Severity Info
+    }
     Write-ADTLogEntry -Message 'Start-AdditionalTestRecording callback invoked.' -Severity Info
 
     if ($script:recordingStarted)
@@ -125,20 +132,29 @@ function Import-AdditionalTestRecordingHelper
 
     try
     {
-        $helperScriptPath = 'C:\PSADTScripts\TerraForge-AgentHelper.ps1'
-        if ([System.String]::IsNullOrWhiteSpace($helperScriptPath) -or -not (Test-Path -LiteralPath $helperScriptPath -PathType Leaf))
-        {
-            $helperScriptPath = Join-Path $ScriptRoot '..\..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'
-        }
+        $candidatePaths = @(
+            $env:TERRAFORGE_HELPER_PATH,
+            'C:\PSADTScripts\TerraForge-AgentHelper.ps1',
+            (Join-Path $ScriptRoot 'TerraForge-AgentHelper.ps1'),
+            (Join-Path $ScriptRoot '.github\scripts\TerraForge-AgentHelper.ps1'),
+            (Join-Path $ScriptRoot '..\.github\scripts\TerraForge-AgentHelper.ps1'),
+            (Join-Path $ScriptRoot '..\..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'),
+            (if ($env:GITHUB_WORKSPACE) { Join-Path $env:GITHUB_WORKSPACE 'TerraForge-AgentHelper.ps1' } else { $null }),
+            (if ($env:GITHUB_WORKSPACE) { Join-Path $env:GITHUB_WORKSPACE 'PSAppDeployToolkit\.github\scripts\TerraForge-AgentHelper.ps1' } else { $null })
+        ) | Where-Object { -not [System.String]::IsNullOrWhiteSpace($_) }
 
-        if (Test-Path -LiteralPath $helperScriptPath -PathType Leaf)
+        $helperScriptPath = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+
+        if ($helperScriptPath)
         {
             . $helperScriptPath
             $script:helperLoaded = $true
+            Write-ADTLogEntry -Message "Loaded TerraForge helper from path: $helperScriptPath" -Severity Info
         }
         else
         {
-            Write-ADTLogEntry -Message "TerraForge-AgentHelper.ps1 not found at path: $helperScriptPath. Skipping recording start." -Severity Warning
+            $searchedPaths = $candidatePaths -join '; '
+            Write-ADTLogEntry -Message "TerraForge-AgentHelper.ps1 not found. Paths checked: $searchedPaths. Skipping recording start." -Severity Warning
         }
     }
     catch
