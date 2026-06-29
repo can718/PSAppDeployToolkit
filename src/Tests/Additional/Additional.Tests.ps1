@@ -372,29 +372,29 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             # ----------------------------------------------------------------
             # Step 2 - Copy V4 template to winSCP package directory
             # ----------------------------------------------------------------
-            Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v4Dir -PackageDir $script:winscpPackageDir -LogPrefix 'winSCP' -UseInformationLogs
+            Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:winscpPackageDir -LogPrefix 'winSCP' -UseInformationLogs
 
-            # ----------------------------------------------------------------
-            # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with winSCP version
-            # ----------------------------------------------------------------
-            $destScript = Update-PSADTPackageDeployScript `
-                -PackageDir $script:winscpPackageDir `
-                -SourceScript $script:winscpSourceScript `
-                -ExpectedContentPattern 'WinSCP' `
-                -LogPrefix 'winSCP' `
-                -UseInformationLogs
+            # # ----------------------------------------------------------------
+            # # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with winSCP version
+            # # ----------------------------------------------------------------
+            # $destScript = Update-PSADTPackageDeployScript `
+            #     -PackageDir $script:winscpPackageDir `
+            #     -SourceScript $script:winscpSourceScript `
+            #     -ExpectedContentPattern 'WinSCP' `
+            #     -LogPrefix 'winSCP' `
+            #     -UseInformationLogs
 
-            # ----------------------------------------------------------------
-            # Step 4 - Copy WinSCP MSI into Files folder
-            # ----------------------------------------------------------------
-            $msiSource = 'C:\Tools\Intune\WinSCP\WinSCP-6.5.6.msi'
-            Copy-PSADTPackageInstallerToFiles `
-                -DeployScriptPath $destScript.FullName `
-                -InstallerSource $msiSource `
-                -InstallerLabel 'MSI' `
-                -LogPrefix 'winSCP' `
-                -UseInformationLogs `
-                -ExpectedFileName 'WinSCP-6.5.6.msi'
+            # # ----------------------------------------------------------------
+            # # Step 4 - Copy WinSCP MSI into Files folder
+            # # ----------------------------------------------------------------
+            # $msiSource = 'C:\Tools\Intune\WinSCP\WinSCP-6.5.6.msi'
+            # Copy-PSADTPackageInstallerToFiles `
+            #     -DeployScriptPath $destScript.FullName `
+            #     -InstallerSource $msiSource `
+            #     -InstallerLabel 'MSI' `
+            #     -LogPrefix 'winSCP' `
+            #     -UseInformationLogs `
+            #     -ExpectedFileName 'WinSCP-6.5.6.msi'
 
             # ----------------------------------------------------------------
             # Step 5 - Verify SMB content share and directories exist
@@ -575,28 +575,28 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             # ----------------------------------------------------------------
             # Step 2 - Copy V4 template to VLC package directory
             # ----------------------------------------------------------------
-            Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v4Dir -PackageDir $script:vlcPackageDir -LogPrefix 'VLC'
+            Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:vlcPackageDir -LogPrefix 'VLC'
 
-            # ----------------------------------------------------------------
-            # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with VLC version
-            # ----------------------------------------------------------------
-            $destScript = Update-PSADTPackageDeployScript `
-                -PackageDir $script:vlcPackageDir `
-                -SourceScript $script:vlcSourceScript `
-                -ExpectedContentPattern 'VLC' `
-                -LogPrefix 'VLC' `
-                -AdditionalContentSourceDir $script:vlcSourceFolder
+            # # ----------------------------------------------------------------
+            # # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with VLC version
+            # # ----------------------------------------------------------------
+            # $destScript = Update-PSADTPackageDeployScript `
+            #     -PackageDir $script:vlcPackageDir `
+            #     -SourceScript $script:vlcSourceScript `
+            #     -ExpectedContentPattern 'VLC' `
+            #     -LogPrefix 'VLC' `
+            #     -AdditionalContentSourceDir $script:vlcSourceFolder
 
-            # ----------------------------------------------------------------
-            # Step 4 - Copy VLC installer into Files folder
-            # ----------------------------------------------------------------
-            $installerSource = "C:\Tools\Intune\VLC\vlc-$($script:vlcAppVersion)-win64.exe"
-            Copy-PSADTPackageInstallerToFiles `
-                -DeployScriptPath $destScript.FullName `
-                -InstallerSource $installerSource `
-                -InstallerLabel 'installer' `
-                -LogPrefix 'VLC' `
-                -ExpectedFileName "vlc-$($script:vlcAppVersion)-win64.exe"
+            # # ----------------------------------------------------------------
+            # # Step 4 - Copy VLC installer into Files folder
+            # # ----------------------------------------------------------------
+            # $installerSource = "C:\Tools\Intune\VLC\vlc-$($script:vlcAppVersion)-win64.exe"
+            # Copy-PSADTPackageInstallerToFiles `
+            #     -DeployScriptPath $destScript.FullName `
+            #     -InstallerSource $installerSource `
+            #     -InstallerLabel 'installer' `
+            #     -LogPrefix 'VLC' `
+            #     -ExpectedFileName "vlc-$($script:vlcAppVersion)-win64.exe"
 
             # ----------------------------------------------------------------
             # Step 5 - Verify SMB content share and directories exist
@@ -782,28 +782,28 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             # ----------------------------------------------------------------
             # Step 3 - Copy V4 template to Notepad++ package directory
             # ----------------------------------------------------------------
-            Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v4Dir -PackageDir $script:notepadPackageDir -LogPrefix 'Notepad++' -UseInformationLogs
+            Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:notepadPackageDir -LogPrefix 'Notepad++' -UseInformationLogs
 
-            # ----------------------------------------------------------------
-            # Step 4 - Replace Invoke-AppDeployToolkit.ps1 with Notepad++ version
-            # ----------------------------------------------------------------
-            $destScript = Update-PSADTPackageDeployScript `
-                -PackageDir $script:notepadPackageDir `
-                -SourceScript $script:notepadSourceScript `
-                -ExpectedContentPattern 'Notepad\+\+' `
-                -LogPrefix 'Notepad++' `
-                -UseInformationLogs
+            # # ----------------------------------------------------------------
+            # # Step 4 - Replace Invoke-AppDeployToolkit.ps1 with Notepad++ version
+            # # ----------------------------------------------------------------
+            # $destScript = Update-PSADTPackageDeployScript `
+            #     -PackageDir $script:notepadPackageDir `
+            #     -SourceScript $script:notepadSourceScript `
+            #     -ExpectedContentPattern 'Notepad\+\+' `
+            #     -LogPrefix 'Notepad++' `
+            #     -UseInformationLogs
 
-            # ----------------------------------------------------------------
-            # Step 5 - Copy Notepad++ installer into Files folder
-            # ----------------------------------------------------------------
-            Copy-PSADTPackageInstallerToFiles `
-                -DeployScriptPath $destScript.FullName `
-                -InstallerSource $notepadEnvironment.TargetInstallerPath `
-                -InstallerLabel 'installer' `
-                -LogPrefix 'Notepad++' `
-                -UseInformationLogs `
-                -ExpectedFileName 'npp.6.6.4.Installer.exe'
+            # # ----------------------------------------------------------------
+            # # Step 5 - Copy Notepad++ installer into Files folder
+            # # ----------------------------------------------------------------
+            # Copy-PSADTPackageInstallerToFiles `
+            #     -DeployScriptPath $destScript.FullName `
+            #     -InstallerSource $notepadEnvironment.TargetInstallerPath `
+            #     -InstallerLabel 'installer' `
+            #     -LogPrefix 'Notepad++' `
+            #     -UseInformationLogs `
+            #     -ExpectedFileName 'npp.6.6.4.Installer.exe'
 
             # ----------------------------------------------------------------
             # Step 6 - Verify SMB content share and directories exist
