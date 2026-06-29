@@ -215,6 +215,31 @@ function script:Initialize-PSADTPackageDirectoryFromTemplate
         [switch]$UseInformationLogs
     )
 
+    $resolvedPackageRoot = $null
+    function Resolve-PSADTPackageRoot
+    {
+        param (
+            [Parameter(Mandatory = $true)]
+            [string]$RootPath
+        )
+
+        if (Test-Path -LiteralPath (Join-Path $RootPath 'Invoke-AppDeployToolkit.ps1') -PathType Leaf)
+        {
+            return $RootPath
+        }
+
+        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+        if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
+        {
+            return $nestedRoot
+        }
+
+        return $RootPath
+    }
+
     if ($UseInformationLogs)
     {
         Write-Information "::info::[$LogPrefix] Step 2: Copying V4 template to package directory..." -InformationAction Continue
@@ -245,10 +270,12 @@ function script:Initialize-PSADTPackageDirectoryFromTemplate
 
     Copy-Item -Path "$TemplateDir\*" -Destination $PackageDir -Recurse -Force
 
+    $resolvedPackageRoot = Resolve-PSADTPackageRoot -RootPath $PackageDir
+
     $recordingModuleSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
     if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
     {
-        $recordingDir = Join-Path $PackageDir 'PSAppDeployToolkit.Recording'
+        $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
         if (-not (Test-Path -LiteralPath $recordingDir -PathType Container))
         {
             New-Item -Path $recordingDir -ItemType Directory -Force | Out-Null
@@ -285,6 +312,31 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
         [string]$LogPrefix,
         [switch]$UseInformationLogs
     )
+
+    $resolvedPackageRoot = $null
+    function Resolve-PSADTPackageRoot
+    {
+        param (
+            [Parameter(Mandatory = $true)]
+            [string]$RootPath
+        )
+
+        if (Test-Path -LiteralPath (Join-Path $RootPath 'Invoke-AppDeployToolkit.ps1') -PathType Leaf)
+        {
+            return $RootPath
+        }
+
+        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+        if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
+        {
+            return $nestedRoot
+        }
+
+        return $RootPath
+    }
 
     if ($UseInformationLogs)
     {
@@ -369,10 +421,14 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
     {
         throw "Template parameter file [$templateParamsPath] did not resolve any valid [Files] entries."
     }
+    # 获取 $PackageDir当前文件夹名字或上一层路径
+    $packageDirName = (Get-Item -Path $PackageDir).Name
+    $packageDirParent = Get-Item -Path $PackageDir -Parent
 
     $invokeTemplateParams = @{
         TemplatefilePath = $templateParamsPath
-        DestinationPath = $PackageDir
+        DestinationPath = $packageDirParent.FullName
+        Name = $packageDirName
         Files = $filesList
     }
 
@@ -392,7 +448,9 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
         }
     }
 
-    Invoke-ADTTemplateRunner @invokeTemplateParams
+    Invoke-ADTTemplateRunner @invokeTemplateParams 
+
+    $resolvedPackageRoot = Resolve-PSADTPackageRoot -RootPath $PackageDir
 
     if ($UseInformationLogs)
     {
@@ -403,7 +461,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
     $recordingManifestSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psd1'
     if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
     {
-        $recordingDir = Join-Path $PackageDir 'PSAppDeployToolkit.Recording'
+        $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
         if (-not (Test-Path -LiteralPath $recordingDir -PathType Container))
         {
             New-Item -Path $recordingDir -ItemType Directory -Force | Out-Null

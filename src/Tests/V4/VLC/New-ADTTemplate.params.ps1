@@ -1,4 +1,10 @@
-﻿$NewADTTemplateParameters = @{
+﻿$supportFilesPath = (Join-Path $PSScriptRoot '..\..\..\..\examples\VLC\SupportFiles\vlc')
+if (-not (Test-Path -Path $supportFilesPath -PathType Container))
+{
+    throw "Support files directory does not exist. path: $supportFilesPath"
+}
+
+$NewADTTemplateParameters = @{
     SessionProperties = @{
         AppVendor = 'VideoLAN'
         AppName = 'VLC media player'
@@ -21,14 +27,7 @@
     }
     Destination = 'C:\PSADT\VLC'
     Files = 'C:\Tools\Intune\VLC\vlc-3.0.23-win64.exe'
-    SupportFiles = (Join-Path $PSScriptRoot '..\..\..\..\examples\VLC\SupportFiles\vlc')
-    # check if the support files exist and are not empty, otherwise throew an error to prevent the template from being used without the required support files.
-    if (-not (Test-Path -Path $NewADTTemplateParameters.SupportFiles -PathType Container))
-    {
-        # get full path of the support files directory for the error message
-        $NewADTTemplateParameters.SupportFiles = (Resolve-Path -Path $NewADTTemplateParameters.SupportFiles).Path
-        throw "Support files directory does not exist. path: $($NewADTTemplateParameters.SupportFiles)"
-    }   
+    SupportFiles = $supportFilesPath
 
     PreInstallScriptBlock = {
         Start-AdditionalTestRecording

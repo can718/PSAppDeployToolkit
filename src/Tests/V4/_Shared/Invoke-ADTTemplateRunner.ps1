@@ -14,7 +14,11 @@
 
         [Parameter(Mandatory = $false)]
         [ValidateNotNull()]
-        [System.Collections.Generic.List[System.String]]$SupportFiles
+        [System.Collections.Generic.List[System.String]]$SupportFiles,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrWhiteSpace()]
+        [System.String]$Name
 
     )
 
@@ -81,6 +85,18 @@
         else
         {
             $params.Add('SupportFiles', @($SupportFiles))
+        }
+    }
+
+    if ($PSBoundParameters.ContainsKey('Name') -and $null -ne $Name -and [System.String]::IsNullOrWhiteSpace($Name) -eq $false)
+    {
+        if ($params.Contains('Name'))
+        {
+            $params['Name'] = $Name
+        }
+        else
+        {
+            $params.Add('Name', $Name)
         }
     }
 
