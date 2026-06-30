@@ -192,7 +192,6 @@ function script:Test-PSADTPackageBuildPrerequisites
     }
 
     Test-Path $TemplateDir | Should -BeTrue -Because "V4 template directory '$TemplateDir' must exist"
-   # Test-Path $SourceScript | Should -BeTrue -Because "$SourceScriptLabel must exist"
 
     if ($UseInformationLogs)
     {

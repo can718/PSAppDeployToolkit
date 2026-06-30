@@ -420,7 +420,7 @@ jobs:
           $executedValidation = [math]::Max([int]$validationResult.PassedCount + [int]$validationResult.FailedCount + [int]$validationResult.SkippedCount, 0)
           $notRunValidation = [math]::Max($discoveredTotal - $executedValidation, 0)
           "pester_discovered=$discoveredTotal"               | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "pester_total=$discoveredTotal"                    | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "pester_total=$executedValidation"                 | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester_passed=$($validationResult.PassedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester_failed=$($validationResult.FailedCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "pester_skipped=$($validationResult.SkippedCount)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -468,17 +468,17 @@ jobs:
             FailedCount = $result.FailedCount
             SkippedCount = $result.SkippedCount
           }
-        } -ThrottleLimit 2
+        } -ThrottleLimit 3
 
         $allResults = @($validationResult) + @($parallelResults)
-        $executedTotal = ($allResults | Measure-Object -Property TotalCount -Sum).Sum
         $passed = ($allResults | Measure-Object -Property PassedCount -Sum).Sum
         $failed = ($allResults | Measure-Object -Property FailedCount -Sum).Sum
         $skipped = ($allResults | Measure-Object -Property SkippedCount -Sum).Sum
-        $notRun = $discoveredTotal - $executedTotal
+        $executedTotal = [math]::Max(([int]$passed + [int]$failed + [int]$skipped), 0)
+        $notRun = [math]::Max(([int]$discoveredTotal - [int]$executedTotal), 0)
 
         "pester_discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester_total=$discoveredTotal"      | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_total=$executedTotal"        | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester_passed=$passed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester_failed=$failed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester_skipped=$skipped"            | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -861,6 +861,9 @@ jobs:
         $pesterFailed = Get-IntFromEnv -Name 'PESTER_FAILED'
         $pesterSkipped = Get-IntFromEnv -Name 'PESTER_SKIPPED'
         $pesterNotRun = Get-IntFromEnv -Name 'PESTER_NOTRUN'
+        if ($pesterNotRun -lt 0) {
+          $pesterNotRun = [math]::Max($pesterDiscovered - ($pesterPassed + $pesterFailed + $pesterSkipped), 0)
+        }
 
         $steps = @{}
         try {
@@ -900,6 +903,32 @@ jobs:
         Write-Host "  Failed:     ❌ $pesterFailed"
         Write-Host "  Skipped:    ⏭️ $pesterSkipped"
         Write-Host "  Not Run:    ⏸️ $pesterNotRun"
+
+        if ($steps.Count -gt 0) {
+          Write-Host ''
+          Write-Host 'Pipeline Steps (parsed)'
+          foreach ($stepName in ($steps.Keys | Sort-Object)) {
+            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$steps[$stepName])
+            $icon = Get-StatusIcon -Status $outcome
+            Write-Host ("  - {0}: {1} {2} | {3}" -f $stepName, $icon, $outcome, $duration)
+          }
+        }
+
+        if ($cases.Count -gt 0) {
+          $maxCaseLogCount = 30
+          $sortedCaseNames = @($cases.Keys | Sort-Object)
+          $visibleCaseNames = @($sortedCaseNames | Select-Object -First $maxCaseLogCount)
+          Write-Host ''
+          Write-Host ("Test Cases (parsed, showing {0}/{1})" -f $visibleCaseNames.Count, $sortedCaseNames.Count)
+          foreach ($caseName in $visibleCaseNames) {
+            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
+            $icon = Get-StatusIcon -Status $outcome
+            Write-Host ("  - {0}: {1} {2} | {3}" -f $caseName, $icon, $outcome, $duration)
+          }
+          if ($sortedCaseNames.Count -gt $maxCaseLogCount) {
+            Write-Host ("  ... and {0} more test case(s)." -f ($sortedCaseNames.Count - $maxCaseLogCount))
+          }
+        }
 
         if ($steps.Count -gt 0) {
           Write-Host ''

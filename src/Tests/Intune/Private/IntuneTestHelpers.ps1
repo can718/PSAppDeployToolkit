@@ -206,7 +206,7 @@ function New-IntuneTestWorkDir
         Remove-Item -Path $workDir -Recurse -Force
     }
 
-    $templateRunnerPath = Join-Path $PSScriptRoot '..\V4\_Shared\Invoke-ADTTemplateRunner.ps1'
+    $templateRunnerPath = Join-Path $PSScriptRoot '..\..\V4\_Shared\Invoke-ADTTemplateRunner.ps1'
     if (-not (Test-Path -LiteralPath $templateRunnerPath -PathType Leaf))
     {
         throw "Template runner file not found: $templateRunnerPath"
@@ -303,8 +303,8 @@ function New-IntuneTestWorkDir
         $resolvedPackageRoot = $workDir
     }
 
-    $recordingModuleSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
-    $recordingManifestSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psd1'
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
+    $recordingManifestSource = Join-Path $PSScriptRoot '..\..\V4\_Shared\PSAppDeployToolkit.Recording.psd1'
     if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
     {
         $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'

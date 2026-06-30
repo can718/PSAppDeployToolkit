@@ -32,7 +32,6 @@
         throw "TemplatefilePath must point to a .ps1 file. Current value: [$TemplatefilePath]"
     }
 
-    # Dot-source the template parameter file into local scope so declared variables are available.
     . $TemplatefilePath
 
     $params = $null
