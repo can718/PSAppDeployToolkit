@@ -294,9 +294,7 @@ function New-IntuneTestWorkDir
     }
     else
     {
-        (Get-ChildItem -Path $workDir -Directory -ErrorAction SilentlyContinue |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
-        Select-Object -First 1 -ExpandProperty FullName)
+        (Get-ChildItem -Path $workDir -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } | Select-Object -First 1 -ExpandProperty FullName)
     }
     if ([string]::IsNullOrWhiteSpace($resolvedPackageRoot))
     {
@@ -485,9 +483,7 @@ function Publish-IntuneWin32App
     while (-not $win32App -and $retryCount -lt $MaxRetries)
     {
         Start-Sleep -Seconds $RetryIntervalSeconds
-        $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose |
-        Sort-Object -Property createdDateTime -Descending |
-        Select-Object -First 1
+        $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose | Sort-Object -Property createdDateTime -Descending | Select-Object -First 1
         $retryCount++
     }
 

@@ -227,9 +227,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplate
             return $RootPath
         }
 
-        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
-        Select-Object -First 1 -ExpandProperty FullName
+        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } | Select-Object -First 1 -ExpandProperty FullName
 
         if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
         {
@@ -325,9 +323,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
             return $RootPath
         }
 
-        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
-        Select-Object -First 1 -ExpandProperty FullName
+        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } | Select-Object -First 1 -ExpandProperty FullName
 
         if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
         {

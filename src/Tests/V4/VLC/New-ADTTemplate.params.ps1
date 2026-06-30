@@ -1,5 +1,6 @@
 ﻿$supportFilesPath = (Join-Path $PSScriptRoot '..\..\..\..\examples\VLC\SupportFiles\vlc')
-if (-not (Test-Path -Path $supportFilesPath -PathType Container)) {
+if (-not (Test-Path -Path $supportFilesPath -PathType Container))
+{
     throw "Support files directory does not exist. path: $supportFilesPath"
 }
 
@@ -36,7 +37,8 @@ $NewADTTemplateParameters = @{
             DeferTimes               = 3
             PersistPrompt            = $true
         }
-        if ($adtSession.AppProcessesToClose.Count -gt 0) {
+        if ($adtSession.AppProcessesToClose.Count -gt 0)
+        {
             $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
         }
         Show-ADTInstallationWelcome @saiwParams
@@ -58,7 +60,8 @@ $NewADTTemplateParameters = @{
     PreUninstallScriptBlock  = {
         Start-AdditionalTestRecording
 
-        if ($adtSession.AppProcessesToClose.Count -gt 0) {
+        if ($adtSession.AppProcessesToClose.Count -gt 0)
+        {
             Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
         }
         Show-ADTInstallationProgress
@@ -73,7 +76,8 @@ $NewADTTemplateParameters = @{
     }
 
     PreRepairScriptBlock     = {
-        if ($adtSession.AppProcessesToClose.Count -gt 0) {
+        if ($adtSession.AppProcessesToClose.Count -gt 0)
+        {
             Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
         }
         Show-ADTInstallationProgress

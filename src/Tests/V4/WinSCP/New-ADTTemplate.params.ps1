@@ -29,7 +29,8 @@
             DeferTimes               = 3
             PersistPrompt            = $true
         }
-        if ($adtSession.AppProcessesToClose.Count -gt 0) {
+        if ($adtSession.AppProcessesToClose.Count -gt 0)
+        {
             $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
         }
         Show-ADTInstallationWelcome @saiwParams
@@ -56,7 +57,8 @@
     PreUninstallScriptBlock  = {
         Start-AdditionalTestRecording
 
-        if ($adtSession.AppProcessesToClose.Count -gt 0) {
+        if ($adtSession.AppProcessesToClose.Count -gt 0)
+        {
             Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
         }
         Show-ADTInstallationProgress
@@ -71,7 +73,8 @@
     }
 
     PreRepairScriptBlock     = {
-        if ($adtSession.AppProcessesToClose.Count -gt 0) {
+        if ($adtSession.AppProcessesToClose.Count -gt 0)
+        {
             Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
         }
         Show-ADTInstallationProgress
