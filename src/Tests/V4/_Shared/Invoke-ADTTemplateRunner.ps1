@@ -16,7 +16,6 @@
         [Parameter(Mandatory = $false)]
         [ValidateNotNull()]
         [System.Collections.Generic.List[System.String]]$SupportFiles,
-        
         [Parameter(Mandatory = $false)]
         [ValidateNotNullOrWhiteSpace()]
         [System.String]$Name
@@ -99,5 +98,5 @@
     }
 
     New-ADTTemplate @params
-     
+
 }

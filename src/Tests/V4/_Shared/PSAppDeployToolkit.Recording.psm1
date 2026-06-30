@@ -4,6 +4,15 @@ $script:recordingOutputFile = $null
 $script:helperLoaded = $false
 $script:terraForgeHelperModule = $null
 
+<#
+.SYNOPSIS
+Starts additional test recording when the TerraForge helper is available.
+
+.DESCRIPTION
+Loads the TerraForge helper module when needed and starts recording for the
+current ADT session. The function safely skips start operations when recording
+is already active or when prerequisites are not available.
+#>
 function Start-AdditionalTestRecording
 {
     #Import-AdditionalTestRecordingHelper firstly to ensure the helper is loaded before attempting to start recording.
@@ -73,6 +82,15 @@ function Start-AdditionalTestRecording
     }
 }
 
+<#
+.SYNOPSIS
+Stops the additional test recording and uploads artifacts when available.
+
+.DESCRIPTION
+Finalizes the active TerraForge recording for the current test run. The function is
+safe to invoke multiple times and logs why stop/upload is skipped when prerequisites
+are not met.
+#>
 function Stop-AdditionalTestRecording
 {
     Write-ADTLogEntry -Message 'Stop-AdditionalTestRecording callback invoked.' -Severity Info
@@ -141,12 +159,29 @@ function Stop-AdditionalTestRecording
     }
 }
 
+<#
+.SYNOPSIS
+Registers recording callbacks for additional test execution.
+
+.DESCRIPTION
+Attaches the start and stop recording callbacks to ADT module hookpoints so
+recording begins after startup and is finalized when execution finishes.
+#>
 function Register-AdditionalTestRecordingCallbacks
 {
     Add-ADTModuleCallback -Hookpoint PostOpen -Callback (Get-Command -Name Start-AdditionalTestRecording)
     Add-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-Command -Name Stop-AdditionalTestRecording)
 }
 
+<#
+.SYNOPSIS
+Imports the TerraForge helper script used for recording operations.
+
+.DESCRIPTION
+Loads the TerraForge helper script from the expected local path into a dynamic
+module and verifies required helper commands are available for subsequent
+recording start and stop operations.
+#>
 function Import-AdditionalTestRecordingHelper
 {
     try

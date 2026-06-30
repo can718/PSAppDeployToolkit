@@ -452,7 +452,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
         }
     }
 
-    Invoke-ADTTemplateRunner @invokeTemplateParams 
+    Invoke-ADTTemplateRunner @invokeTemplateParams
 
     $resolvedPackageRoot = Resolve-PSADTPackageRoot -RootPath $PackageDir
 

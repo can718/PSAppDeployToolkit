@@ -4,6 +4,11 @@ if (-not (Test-Path -Path $supportFilesPath -PathType Container))
     throw "Support files directory does not exist. path: $supportFilesPath"
 }
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSUseDeclaredVarsMoreThanAssignments',
+    'NewADTTemplateParameters',
+    Justification = 'This hashtable is consumed by external test harness code after the script is loaded.'
+)]
 $NewADTTemplateParameters = @{
     SessionProperties        = @{
         AppVendor                   = 'VideoLAN'
