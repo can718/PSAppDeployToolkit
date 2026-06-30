@@ -794,6 +794,185 @@ jobs:
         }
         . $tfHelper
         Invoke-TFResetSessionVM
+    - name: ResultSummary
+      if: always()
+      shell: pwsh
+      env:
+        JOB_STATUS: ${{ job.status }}
+        PESTER_DISCOVERED: ${{ steps.run-pester.outputs.pester_discovered || '0' }}
+        PESTER_TOTAL: ${{ steps.run-pester.outputs.pester_total || '0' }}
+        PESTER_PASSED: ${{ steps.run-pester.outputs.pester_passed || '0' }}
+        PESTER_FAILED: ${{ steps.run-pester.outputs.pester_failed || '0' }}
+        PESTER_SKIPPED: ${{ steps.run-pester.outputs.pester_skipped || '0' }}
+        PESTER_NOTRUN: ${{ steps.run-pester.outputs.pester_notrun || '0' }}
+        STEPS_JSON: ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
+        CASES_JSON: ${{ steps.collect-cases.outputs.cases_json || '{}' }}
+        NOTIFICATION_SOURCE: SCCM Tests
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        BRANCH: ${{ github.ref_name }}
+        ACTOR: ${{ github.actor }}
+      run: |
+        function Get-StatusIcon {
+          param([string]$Status)
+
+          switch (($Status ?? '').Trim().ToLowerInvariant()) {
+            'success'   { return '✅' }
+            'failure'   { return '❌' }
+            'cancelled' { return '🚫' }
+            'skipped'   { return '⏭️' }
+            default     { return '⚠️' }
+          }
+        }
+
+        function Parse-OutcomeAndDuration {
+          param([string]$Value)
+
+          $text = ([string]$Value).Trim()
+          if ($text -match '^\s*(.+?)\s*\|\s*(.+?)\s*$') {
+            return @($matches[1].Trim(), $matches[2].Trim())
+          }
+
+          if ([string]::IsNullOrWhiteSpace($text)) {
+            return @('unknown', '-')
+          }
+
+          return @($text, '-')
+        }
+
+        function Escape-MarkdownCell {
+          param([string]$Value)
+          return ([string]$Value).Replace('|', '\|').Replace("`r", ' ').Replace("`n", ' ')
+        }
+
+        function Get-IntFromEnv {
+          param([string]$Name)
+          $value = 0
+          [void][int]::TryParse([string](Get-Item -Path "Env:$Name" -ErrorAction SilentlyContinue).Value, [ref]$value)
+          return $value
+        }
+
+        $jobStatus = ([string]$env:JOB_STATUS).Trim().ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($jobStatus)) { $jobStatus = 'unknown' }
+        $jobStatusIcon = Get-StatusIcon -Status $jobStatus
+
+        $pesterDiscovered = Get-IntFromEnv -Name 'PESTER_DISCOVERED'
+        $pesterTotal = Get-IntFromEnv -Name 'PESTER_TOTAL'
+        $pesterPassed = Get-IntFromEnv -Name 'PESTER_PASSED'
+        $pesterFailed = Get-IntFromEnv -Name 'PESTER_FAILED'
+        $pesterSkipped = Get-IntFromEnv -Name 'PESTER_SKIPPED'
+        $pesterNotRun = Get-IntFromEnv -Name 'PESTER_NOTRUN'
+
+        $steps = @{}
+        try {
+          $rawSteps = if ([string]::IsNullOrWhiteSpace($env:STEPS_JSON)) { '{}' } else { $env:STEPS_JSON }
+          $parsedSteps = $rawSteps | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+          if ($parsedSteps -is [hashtable]) {
+            $steps = $parsedSteps
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse STEPS_JSON: $($_.Exception.Message)"
+        }
+
+        $cases = @{}
+        try {
+          $rawCases = if ([string]::IsNullOrWhiteSpace($env:CASES_JSON)) { '{}' } else { $env:CASES_JSON }
+          $parsedCases = $rawCases | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+          if ($parsedCases -is [hashtable]) {
+            $cases = $parsedCases
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse CASES_JSON: $($_.Exception.Message)"
+        }
+
+        Write-Host "##[group]Detailed Result Summary"
+        Write-Host "Source:           $env:NOTIFICATION_SOURCE"
+        Write-Host "Job status:       $jobStatusIcon $jobStatus"
+        Write-Host "Branch:           $env:BRANCH"
+        Write-Host "Triggered by:     $env:ACTOR"
+        Write-Host "Workflow run URL: $env:RUN_URL"
+        Write-Host ''
+        Write-Host 'Pester Metrics'
+        Write-Host "  Discovered: $pesterDiscovered"
+        Write-Host "  Executed:   $pesterTotal"
+        Write-Host "  Passed:     ✅ $pesterPassed"
+        Write-Host "  Failed:     ❌ $pesterFailed"
+        Write-Host "  Skipped:    ⏭️ $pesterSkipped"
+        Write-Host "  Not Run:    ⏸️ $pesterNotRun"
+
+        if ($steps.Count -gt 0) {
+          Write-Host ''
+          Write-Host "Pipeline steps captured: $($steps.Count)"
+        }
+
+        if ($cases.Count -gt 0) {
+          Write-Host "Test cases captured:     $($cases.Count)"
+        }
+        Write-Host "##[endgroup]"
+
+        $summaryLines = New-Object System.Collections.Generic.List[string]
+        $summaryLines.Add("## $jobStatusIcon $($env:NOTIFICATION_SOURCE) - Result Summary") | Out-Null
+        $summaryLines.Add('') | Out-Null
+        $summaryLines.Add("**Job Status:** $jobStatusIcon $jobStatus") | Out-Null
+        $summaryLines.Add("**Branch:** $([string]$env:BRANCH)") | Out-Null
+        $summaryLines.Add("**Triggered by:** $([string]$env:ACTOR)") | Out-Null
+        $summaryLines.Add("**Workflow Run:** [Open run]($([string]$env:RUN_URL))") | Out-Null
+        $summaryLines.Add('') | Out-Null
+        $summaryLines.Add('### Pester Metrics') | Out-Null
+        $summaryLines.Add('') | Out-Null
+        $summaryLines.Add('| Metric | Value |') | Out-Null
+        $summaryLines.Add('|---|---|') | Out-Null
+        $summaryLines.Add("| Discovered | $pesterDiscovered |") | Out-Null
+        $summaryLines.Add("| Executed | $pesterTotal |") | Out-Null
+        $summaryLines.Add("| Passed | ✅ $pesterPassed |") | Out-Null
+        $summaryLines.Add("| Failed | ❌ $pesterFailed |") | Out-Null
+        $summaryLines.Add("| Skipped | ⏭️ $pesterSkipped |") | Out-Null
+        $summaryLines.Add("| Not Run | ⏸️ $pesterNotRun |") | Out-Null
+
+        if ($steps.Count -gt 0) {
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('### Pipeline Steps') | Out-Null
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('| Step | Status | Duration |') | Out-Null
+          $summaryLines.Add('|---|---|---|') | Out-Null
+
+          foreach ($stepName in ($steps.Keys | Sort-Object)) {
+            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$steps[$stepName])
+            $icon = Get-StatusIcon -Status $outcome
+            $safeName = Escape-MarkdownCell -Value ([string]$stepName)
+            $safeDuration = Escape-MarkdownCell -Value $duration
+            $summaryLines.Add("| $safeName | $icon $outcome | $safeDuration |") | Out-Null
+          }
+        }
+
+        if ($cases.Count -gt 0) {
+          $maxCases = 25
+          $sortedCaseNames = @($cases.Keys | Sort-Object)
+          $visibleCaseNames = @($sortedCaseNames | Select-Object -First $maxCases)
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add("### Test Cases (Top $($visibleCaseNames.Count) / $($sortedCaseNames.Count))") | Out-Null
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('| Test Case | Status | Duration |') | Out-Null
+          $summaryLines.Add('|---|---|---|') | Out-Null
+
+          foreach ($caseName in $visibleCaseNames) {
+            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
+            $icon = Get-StatusIcon -Status $outcome
+            $safeCase = Escape-MarkdownCell -Value ([string]$caseName)
+            $safeDuration = Escape-MarkdownCell -Value $duration
+            $summaryLines.Add("| $safeCase | $icon $outcome | $safeDuration |") | Out-Null
+          }
+
+          if ($sortedCaseNames.Count -gt $maxCases) {
+            $remaining = $sortedCaseNames.Count - $maxCases
+            $summaryLines.Add('') | Out-Null
+            $summaryLines.Add("_... and $remaining more test case(s). Full details are in Teams notification and test artifacts._") | Out-Null
+          }
+        }
+
+        [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, ($summaryLines -join "`n") + "`n", [System.Text.Encoding]::UTF8)
 
   notify-teams:
     name: Notify Teams (SCCM Tests)

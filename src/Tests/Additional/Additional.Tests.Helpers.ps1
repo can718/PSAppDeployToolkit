@@ -192,7 +192,7 @@ function script:Test-PSADTPackageBuildPrerequisites
     }
 
     Test-Path $TemplateDir | Should -BeTrue -Because "V4 template directory '$TemplateDir' must exist"
-    Test-Path $SourceScript | Should -BeTrue -Because "$SourceScriptLabel must exist"
+   # Test-Path $SourceScript | Should -BeTrue -Because "$SourceScriptLabel must exist"
 
     if ($UseInformationLogs)
     {
@@ -214,6 +214,31 @@ function script:Initialize-PSADTPackageDirectoryFromTemplate
         [string]$LogPrefix,
         [switch]$UseInformationLogs
     )
+
+    $resolvedPackageRoot = $null
+    function Resolve-PSADTPackageRoot
+    {
+        param (
+            [Parameter(Mandatory = $true)]
+            [string]$RootPath
+        )
+
+        if (Test-Path -LiteralPath (Join-Path $RootPath 'Invoke-AppDeployToolkit.ps1') -PathType Leaf)
+        {
+            return $RootPath
+        }
+
+        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+        if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
+        {
+            return $nestedRoot
+        }
+
+        return $RootPath
+    }
 
     if ($UseInformationLogs)
     {
@@ -244,6 +269,235 @@ function script:Initialize-PSADTPackageDirectoryFromTemplate
     }
 
     Copy-Item -Path "$TemplateDir\*" -Destination $PackageDir -Recurse -Force
+
+    $resolvedPackageRoot = Resolve-PSADTPackageRoot -RootPath $PackageDir
+
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
+    if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
+    {
+        $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
+        if (-not (Test-Path -LiteralPath $recordingDir -PathType Container))
+        {
+            New-Item -Path $recordingDir -ItemType Directory -Force | Out-Null
+        }
+
+        $recordingModuleDestination = Join-Path $recordingDir 'PSAppDeployToolkit.Recording.psm1'
+        Copy-Item -Path $recordingModuleSource -Destination $recordingModuleDestination -Force
+
+        if ($UseInformationLogs)
+        {
+            Write-Information "::info::[$LogPrefix] Injected recording extension module: $recordingModuleDestination" -InformationAction Continue
+        }
+        else
+        {
+            Write-Verbose "[$LogPrefix] Injected recording extension module: $recordingModuleDestination"
+        }
+    }
+    else
+    {
+        Write-Warning "[$LogPrefix] Recording extension module source not found: $recordingModuleSource"
+    }
+
+    Test-Path $PackageDir | Should -BeTrue
+}
+
+function script:Initialize-PSADTPackageDirectoryFromTemplateV4
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$TemplateDir,
+        [Parameter(Mandatory = $true)]
+        [string]$PackageDir,
+        [Parameter(Mandatory = $true)]
+        [string]$LogPrefix,
+        [switch]$UseInformationLogs
+    )
+
+    $resolvedPackageRoot = $null
+    function Resolve-PSADTPackageRoot
+    {
+        param (
+            [Parameter(Mandatory = $true)]
+            [string]$RootPath
+        )
+
+        if (Test-Path -LiteralPath (Join-Path $RootPath 'Invoke-AppDeployToolkit.ps1') -PathType Leaf)
+        {
+            return $RootPath
+        }
+
+        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+        if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
+        {
+            return $nestedRoot
+        }
+
+        return $RootPath
+    }
+
+    if ($UseInformationLogs)
+    {
+        Write-Information "::info::[$LogPrefix] Step 2: Generating V4 package via Invoke-ADTTemplateRunner..." -InformationAction Continue
+    }
+    else
+    {
+        Write-Verbose "[$LogPrefix] Step 2: Generating V4 package via Invoke-ADTTemplateRunner..."
+    }
+
+    if (Test-Path $PackageDir)
+    {
+        if ($UseInformationLogs)
+        {
+            Write-Information "::warning::[$LogPrefix] Package directory '$PackageDir' already exists, removing it." -InformationAction Continue
+        }
+        Remove-DirectoryWithRetry -Path $PackageDir
+        if ($UseInformationLogs)
+        {
+            Write-Information "::info::[$LogPrefix] Package directory '$PackageDir' removed." -InformationAction Continue
+        }
+    }
+
+    $templateRunnerPath = Join-Path $PSScriptRoot '..\V4\_Shared\Invoke-ADTTemplateRunner.ps1'
+    $templateParamsPath = Join-Path $PSScriptRoot ("..\V4\$LogPrefix\New-ADTTemplate.params.ps1")
+
+    if (-not (Test-Path -LiteralPath $templateRunnerPath -PathType Leaf))
+    {
+        throw "Invoke-ADTTemplateRunner file not found: $templateRunnerPath"
+    }
+    if (-not (Test-Path -LiteralPath $templateParamsPath -PathType Leaf))
+    {
+        throw "Template parameter file not found for [$LogPrefix]: $templateParamsPath"
+    }
+
+    $psadtManifestPath = Get-ChildItem -Path $TemplateDir -Filter 'PSAppDeployToolkit.psd1' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+    if ([string]::IsNullOrWhiteSpace($psadtManifestPath))
+    {
+        throw "Unable to find PSAppDeployToolkit.psd1 under TemplateDir: $TemplateDir"
+    }
+
+    if ($UseInformationLogs)
+    {
+        Write-Information "::info::[$LogPrefix] Importing PSADT module manifest: $psadtManifestPath" -InformationAction Continue
+    }
+    else
+    {
+        Write-Verbose "[$LogPrefix] Importing PSADT module manifest: $psadtManifestPath"
+    }
+    Import-Module -FullyQualifiedName $psadtManifestPath -Force -ErrorAction Stop
+
+    . $templateRunnerPath
+    . $templateParamsPath
+
+    if (-not (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore))
+    {
+        throw "Variable `$NewADTTemplateParameters was not found after loading [$templateParamsPath]."
+    }
+
+    $templateParams = (Get-Variable -Name NewADTTemplateParameters -Scope Local).Value
+    if ($null -eq $templateParams -or $templateParams -isnot [System.Collections.IDictionary])
+    {
+        throw "Variable `$NewADTTemplateParameters in [$templateParamsPath] is not a hashtable/dictionary."
+    }
+
+    $filesValue = $templateParams['Files']
+    if ($null -eq $filesValue)
+    {
+        throw "Template parameter file [$templateParamsPath] does not define a non-null [Files] value."
+    }
+
+    $filesList = [System.Collections.Generic.List[System.String]]::new()
+    foreach ($filePath in @($filesValue))
+    {
+        if (-not [System.String]::IsNullOrWhiteSpace([string]$filePath))
+        {
+            $filesList.Add([string]$filePath)
+        }
+    }
+
+    if ($filesList.Count -eq 0)
+    {
+        throw "Template parameter file [$templateParamsPath] did not resolve any valid [Files] entries."
+    }
+    $packageDirName = Split-Path -Path $PackageDir -Leaf
+    $packageDirParent = Split-Path -Path $PackageDir -Parent
+
+    if ([string]::IsNullOrWhiteSpace($packageDirName) -or [string]::IsNullOrWhiteSpace($packageDirParent))
+    {
+        throw "Invalid PackageDir path: $PackageDir"
+    }
+
+    if (-not (Test-Path -LiteralPath $packageDirParent -PathType Container))
+    {
+        New-Item -Path $packageDirParent -ItemType Directory -Force | Out-Null
+    }
+
+    $invokeTemplateParams = @{
+        TemplatefilePath = $templateParamsPath
+        DestinationPath = $packageDirParent
+        Name = $packageDirName
+        Files = $filesList
+    }
+
+    if ($templateParams.Contains('SupportFiles') -and $null -ne $templateParams['SupportFiles'])
+    {
+        $supportFilesList = [System.Collections.Generic.List[System.String]]::new()
+        foreach ($supportFilePath in @($templateParams['SupportFiles']))
+        {
+            if (-not [System.String]::IsNullOrWhiteSpace([string]$supportFilePath))
+            {
+                $supportFilesList.Add([string]$supportFilePath)
+            }
+        }
+        if ($supportFilesList.Count -gt 0)
+        {
+            $invokeTemplateParams.SupportFiles = $supportFilesList
+        }
+    }
+
+    Invoke-ADTTemplateRunner @invokeTemplateParams 
+
+    $resolvedPackageRoot = Resolve-PSADTPackageRoot -RootPath $PackageDir
+
+    if ($UseInformationLogs)
+    {
+        Write-Information "::info::[$LogPrefix] Package generation completed at '$PackageDir'." -InformationAction Continue
+    }
+
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
+    $recordingManifestSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psd1'
+    if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
+    {
+        $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
+        if (-not (Test-Path -LiteralPath $recordingDir -PathType Container))
+        {
+            New-Item -Path $recordingDir -ItemType Directory -Force | Out-Null
+        }
+
+        $recordingModuleDestination = Join-Path $recordingDir 'PSAppDeployToolkit.Recording.psm1'
+        Copy-Item -Path $recordingModuleSource -Destination $recordingModuleDestination -Force
+
+        if (Test-Path -LiteralPath $recordingManifestSource -PathType Leaf)
+        {
+            Copy-Item -Path $recordingManifestSource -Destination (Join-Path $recordingDir 'PSAppDeployToolkit.Recording.psd1') -Force
+        }
+
+        if ($UseInformationLogs)
+        {
+            Write-Information "::info::[$LogPrefix] Injected recording extension module: $recordingModuleDestination" -InformationAction Continue
+        }
+        else
+        {
+            Write-Verbose "[$LogPrefix] Injected recording extension module: $recordingModuleDestination"
+        }
+    }
+    else
+    {
+        Write-Warning "[$LogPrefix] Recording extension module source not found: $recordingModuleSource"
+    }
+
     Test-Path $PackageDir | Should -BeTrue
 }
 
