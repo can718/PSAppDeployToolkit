@@ -148,6 +148,7 @@ Describe 'Intune Tests' {
             $script:ParallelApps = @(
                 @{
                     Name              = 'VLC'
+                    TemplateName      = 'VLC'
                     AppFolderName     = 'VLC'
                     InstallerSourceDir = 'C:\Tools\Intune\vlc'
                     RegDisplayName    = 'VLC media player'
@@ -161,6 +162,7 @@ Describe 'Intune Tests' {
                 }
                 @{
                     Name              = 'WinSCP'
+                    TemplateName      = 'WinSCP'
                     AppFolderName     = 'WinSCP'
                     InstallerSourceDir = 'C:\Tools\Intune\WinSCP'
                     RegDisplayName    = 'WinSCP'
@@ -177,6 +179,7 @@ Describe 'Intune Tests' {
                 @{
                     Name              = 'Notepad++'
                     SkipUninstall     = $true
+                    TemplateName      = 'Notepad++'
                     AppFolderName     = 'Notepad++'
                     InstallerSourceDir = 'C:\Tools\Intune\Notepad6.6.4'
                     RegDisplayName    = 'Notepad++'
@@ -210,6 +213,10 @@ Describe 'Intune Tests' {
                             New-Item -Path $newDir -ItemType Directory -Force | Out-Null
                             Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-5/npp.6.6.4.Installer.exe' -OutFile $newPath -UseBasicParsing
                         }
+
+                        # Keep a copy at the V4 template default file path.
+                        $templateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
+                        Copy-Item -Path $newPath -Destination $templateExpectedInstallerPath -Force
                     }
                     PostInstallScript  = {
                         $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
@@ -255,12 +262,11 @@ Describe 'Intune Tests' {
                 }
 
                 # Prepare working directory.
-                $runnerScript = Join-Path $PSScriptRoot "$($app.AppFolderName)\Invoke-AppDeployToolkit.ps1"
+                $templateParamsPath = Join-Path $PSScriptRoot "..\V4\$($app.TemplateName)\New-ADTTemplate.params.ps1"
                 $env = New-IntuneTestWorkDir `
                     -AppFolderName      $app.AppFolderName `
                     -BasePath           $script:BasePath `
-                    -InstallerSourceDir $app.InstallerSourceDir `
-                    -RunnerScriptPath   $runnerScript
+                    -TemplateParamsPath $templateParamsPath
 
                 # Wrap into .intunewin package.
                 $package = New-IntuneWinPackage `
