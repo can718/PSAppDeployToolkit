@@ -1,4 +1,5 @@
-﻿function Invoke-ADTTemplateRunner {
+﻿function Invoke-ADTTemplateRunner
+{
     param (
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrWhiteSpace()]
@@ -22,11 +23,13 @@
 
     )
 
-    if (!(Test-Path -LiteralPath $TemplatefilePath -PathType Leaf)) {
+    if (!(Test-Path -LiteralPath $TemplatefilePath -PathType Leaf))
+    {
         throw "Template file was not found: [$TemplatefilePath]"
     }
 
-    if (![System.String]::Equals([System.IO.Path]::GetExtension($TemplatefilePath), '.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
+    if (![System.String]::Equals([System.IO.Path]::GetExtension($TemplatefilePath), '.ps1', [System.StringComparison]::OrdinalIgnoreCase))
+    {
         throw "TemplatefilePath must point to a .ps1 file. Current value: [$TemplatefilePath]"
     }
 
@@ -34,47 +37,65 @@
 
     $params = $null
 
-    if (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore) {
+    if (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore)
+    {
         $params = (Get-Variable -Name NewADTTemplateParameters -Scope Local).Value
     }
 
-    if ($null -eq $params) {
+    if ($null -eq $params)
+    {
         # Fallback: if exactly one hashtable variable exists after loading, treat it as template params.
         $candidateParams = @(Get-Variable -Scope Local | Where-Object { $_.Value -is [System.Collections.IDictionary] })
-        if ($candidateParams.Count -eq 1) {
+        if ($candidateParams.Count -eq 1)
+        {
             $params = $candidateParams[0].Value
         }
     }
 
-    if ($null -eq $params -or $params -isnot [System.Collections.IDictionary]) {
+    if ($null -eq $params -or $params -isnot [System.Collections.IDictionary])
+    {
         throw "Unable to resolve template parameters from [$TemplatefilePath]. Expected variable [\$NewADTTemplateParameters] of type hashtable/dictionary."
     }
 
-    if ($params.Contains('Destination')) {
+    if ($params.Contains('Destination'))
+    {
         $params['Destination'] = $DestinationPath
-    } else {
+    }
+    else
+    {
         $params.Add('Destination', $DestinationPath)
     }
 
     $templateFiles = @($Files)
-    if ($params.Contains('Files')) {
+    if ($params.Contains('Files'))
+    {
         $params['Files'] = $templateFiles
-    } else {
+    }
+    else
+    {
         $params.Add('Files', $templateFiles)
     }
 
-    if ($PSBoundParameters.ContainsKey('SupportFiles') -and $null -ne $SupportFiles -and $SupportFiles.Count -gt 0) {
-        if ($params.Contains('SupportFiles')) {
+    if ($PSBoundParameters.ContainsKey('SupportFiles') -and $null -ne $SupportFiles -and $SupportFiles.Count -gt 0)
+    {
+        if ($params.Contains('SupportFiles'))
+        {
             $params['SupportFiles'] = @($SupportFiles)
-        } else {
+        }
+        else
+        {
             $params.Add('SupportFiles', @($SupportFiles))
         }
     }
 
-    if ($PSBoundParameters.ContainsKey('Name') -and $null -ne $Name -and [System.String]::IsNullOrWhiteSpace($Name) -eq $false) {
-        if ($params.Contains('Name')) {
+    if ($PSBoundParameters.ContainsKey('Name') -and $null -ne $Name -and [System.String]::IsNullOrWhiteSpace($Name) -eq $false)
+    {
+        if ($params.Contains('Name'))
+        {
             $params['Name'] = $Name
-        } else {
+        }
+        else
+        {
             $params.Add('Name', $Name)
         }
     }

@@ -21,7 +21,8 @@ param()
 # Region: TerraForge Reporting
 # ---------------------------------------------------------------------------
 
-function Initialize-TerraForgeReporting {
+function Initialize-TerraForgeReporting
+{
     <#
     .SYNOPSIS
         Loads the TerraForge helper script and obtains an access token if
@@ -43,14 +44,18 @@ function Initialize-TerraForgeReporting {
 
     $helperPath = [System.IO.Path]::GetFullPath((Join-Path $ScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
     Write-Information "[TerraForge] Helper script path: $helperPath  Exists=$(Test-Path $helperPath)" -InformationAction Continue
-    if (Test-Path $helperPath) {
+    if (Test-Path $helperPath)
+    {
         try { . $helperPath }
         catch { Write-Warning "[TerraForge] Failed to load helper script: $($_.Exception.Message)" }
     }
 
-    if ($result.TestRunId -and $result.ApiBaseUrl) {
-        if (Get-Command 'Get-TerraForgeAuthToken' -ErrorAction SilentlyContinue) {
-            try {
+    if ($result.TestRunId -and $result.ApiBaseUrl)
+    {
+        if (Get-Command 'Get-TerraForgeAuthToken' -ErrorAction SilentlyContinue)
+        {
+            try
+            {
                 $result.AccessToken = Get-TerraForgeAuthToken `
                     -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
                     -KeyVaultName            $env:INFRA_KEYVAULT `
@@ -58,10 +63,14 @@ function Initialize-TerraForgeReporting {
                     -ApiBaseUrl              $result.ApiBaseUrl
                 $result.Enabled = $true
                 Write-Information "[TerraForge] Reporting enabled for TestRunId: $($result.TestRunId)" -InformationAction Continue
-            } catch {
+            }
+            catch
+            {
                 Write-Warning "[TerraForge] Could not obtain access token, reporting disabled: $($_.Exception.Message)"
             }
-        } else {
+        }
+        else
+        {
             Write-Warning "[TerraForge] Helper script not found or failed to load -- reporting disabled."
         }
     }
@@ -69,7 +78,8 @@ function Initialize-TerraForgeReporting {
     return $result
 }
 
-function Invoke-TFReportTestCase {
+function Invoke-TFReportTestCase
+{
     <#
     .SYNOPSIS
         Creates a TerraForge test run result entry before the test executes.
@@ -85,12 +95,14 @@ function Invoke-TFReportTestCase {
 
     if (-not $TFState.Enabled) { return $null }
 
-    if ([string]::IsNullOrWhiteSpace($TestMethod)) {
+    if ([string]::IsNullOrWhiteSpace($TestMethod))
+    {
         Write-Warning "[TerraForge] Skipping result entry creation: could not resolve test name."
         return $null
     }
 
-    try {
+    try
+    {
         $result = New-TestRunResults `
             -ApiBaseUrl  $TFState.ApiBaseUrl `
             -AccessToken $TFState.AccessToken `
@@ -101,13 +113,16 @@ function Invoke-TFReportTestCase {
             -MachineId   $env:COMPUTERNAME
         Write-Information "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod" -InformationAction Continue
         return $result.Id
-    } catch {
+    }
+    catch
+    {
         Write-Warning "[TerraForge] Failed to create result entry for '$TestMethod': $($_.Exception.Message)"
         return $null
     }
 }
 
-function Invoke-TFUpdateTestCase {
+function Invoke-TFUpdateTestCase
+{
     <#
     .SYNOPSIS
         Updates a TerraForge test run result after the test completes.
@@ -124,17 +139,26 @@ function Invoke-TFUpdateTestCase {
 
     if (-not $TFState.Enabled -or -not $ResultId) { return }
 
-    try {
-        $resultCode = if ($TestResult.Skipped) {
+    try
+    {
+        $resultCode = if ($TestResult.Skipped)
+        {
             $null
-        } elseif ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0) {
+        }
+        elseif ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0)
+        {
             0
-        } else {
+        }
+        else
+        {
             2
         }
-        $errorMsg = if ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0) {
+        $errorMsg = if ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0)
+        {
             $TestResult.ErrorRecord[0].Exception.Message
-        } else {
+        }
+        else
+        {
             $null
         }
 
@@ -145,7 +169,9 @@ function Invoke-TFUpdateTestCase {
             -Result           $resultCode `
             -ErrorMessage     $errorMsg
         Write-Verbose "[TerraForge] Updated result Id=$ResultId -> code=$resultCode"
-    } catch {
+    }
+    catch
+    {
         Write-Warning "[TerraForge] Failed to update result Id=${ResultId}: $($_.Exception.Message)"
     }
 }
@@ -154,7 +180,8 @@ function Invoke-TFUpdateTestCase {
 # Region: Package Preparation
 # ---------------------------------------------------------------------------
 
-function New-IntuneTestWorkDir {
+function New-IntuneTestWorkDir
+{
     <#
     .SYNOPSIS
         Prepares a working directory for an app by copying the PSADT template,
@@ -174,25 +201,30 @@ function New-IntuneTestWorkDir {
     )
 
     $workDir = Join-Path $BasePath $AppFolderName
-    if (Test-Path -LiteralPath $workDir) {
+    if (Test-Path -LiteralPath $workDir)
+    {
         Remove-Item -Path $workDir -Recurse -Force
     }
 
     $templateRunnerPath = Join-Path $PSScriptRoot '..\..\V4\_Shared\Invoke-ADTTemplateRunner.ps1'
-    if (-not (Test-Path -LiteralPath $templateRunnerPath -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $templateRunnerPath -PathType Leaf))
+    {
         throw "Template runner file not found: $templateRunnerPath"
     }
-    if (-not (Test-Path -LiteralPath $TemplateParamsPath -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $TemplateParamsPath -PathType Leaf))
+    {
         throw "Template parameter file not found: $TemplateParamsPath"
     }
 
     $v4TemplatePath = $env:PSADT_TEMPLATE_V4_DIR
-    if ([string]::IsNullOrWhiteSpace($v4TemplatePath) -or -not (Test-Path -LiteralPath $v4TemplatePath -PathType Container)) {
+    if ([string]::IsNullOrWhiteSpace($v4TemplatePath) -or -not (Test-Path -LiteralPath $v4TemplatePath -PathType Container))
+    {
         throw "PSADT_TEMPLATE_V4_DIR is missing or invalid: $v4TemplatePath"
     }
 
     $psadtManifestPath = Get-ChildItem -Path $v4TemplatePath -Filter 'PSAppDeployToolkit.psd1' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-    if ([string]::IsNullOrWhiteSpace($psadtManifestPath)) {
+    if ([string]::IsNullOrWhiteSpace($psadtManifestPath))
+    {
         throw "Unable to find PSAppDeployToolkit.psd1 under PSADT_TEMPLATE_V4_DIR: $v4TemplatePath"
     }
 
@@ -201,27 +233,33 @@ function New-IntuneTestWorkDir {
     . $templateRunnerPath
     . $TemplateParamsPath
 
-    if (-not (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore)) {
+    if (-not (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore))
+    {
         throw "Variable `$NewADTTemplateParameters was not found after loading [$TemplateParamsPath]."
     }
 
     $templateParams = (Get-Variable -Name NewADTTemplateParameters -Scope Local).Value
-    if ($null -eq $templateParams -or $templateParams -isnot [System.Collections.IDictionary]) {
+    if ($null -eq $templateParams -or $templateParams -isnot [System.Collections.IDictionary])
+    {
         throw "Variable `$NewADTTemplateParameters in [$TemplateParamsPath] is not a hashtable/dictionary."
     }
 
     $filesValue = $templateParams['Files']
-    if ($null -eq $filesValue) {
+    if ($null -eq $filesValue)
+    {
         throw "Template parameter file [$TemplateParamsPath] does not define a non-null [Files] value."
     }
 
     $filesList = [System.Collections.Generic.List[System.String]]::new()
-    foreach ($filePath in @($filesValue)) {
-        if (-not [System.String]::IsNullOrWhiteSpace([string]$filePath)) {
+    foreach ($filePath in @($filesValue))
+    {
+        if (-not [System.String]::IsNullOrWhiteSpace([string]$filePath))
+        {
             $filesList.Add([string]$filePath)
         }
     }
-    if ($filesList.Count -eq 0) {
+    if ($filesList.Count -eq 0)
+    {
         throw "Template parameter file [$TemplateParamsPath] did not resolve any valid [Files] entries."
     }
 
@@ -232,47 +270,59 @@ function New-IntuneTestWorkDir {
         Files            = $filesList
     }
 
-    if ($templateParams.Contains('SupportFiles') -and $null -ne $templateParams['SupportFiles']) {
+    if ($templateParams.Contains('SupportFiles') -and $null -ne $templateParams['SupportFiles'])
+    {
         $supportFilesList = [System.Collections.Generic.List[System.String]]::new()
-        foreach ($supportFilePath in @($templateParams['SupportFiles'])) {
-            if (-not [System.String]::IsNullOrWhiteSpace([string]$supportFilePath)) {
+        foreach ($supportFilePath in @($templateParams['SupportFiles']))
+        {
+            if (-not [System.String]::IsNullOrWhiteSpace([string]$supportFilePath))
+            {
                 $supportFilesList.Add([string]$supportFilePath)
             }
         }
-        if ($supportFilesList.Count -gt 0) {
+        if ($supportFilesList.Count -gt 0)
+        {
             $invokeTemplateParams.SupportFiles = $supportFilesList
         }
     }
 
     Invoke-ADTTemplateRunner @invokeTemplateParams
 
-    $resolvedPackageRoot = if (Test-Path -LiteralPath (Join-Path $workDir 'Invoke-AppDeployToolkit.ps1') -PathType Leaf) {
+    $resolvedPackageRoot = if (Test-Path -LiteralPath (Join-Path $workDir 'Invoke-AppDeployToolkit.ps1') -PathType Leaf)
+    {
         $workDir
-    } else {
+    }
+    else
+    {
         (Get-ChildItem -Path $workDir -Directory -ErrorAction SilentlyContinue |
         Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
         Select-Object -First 1 -ExpandProperty FullName)
     }
-    if ([string]::IsNullOrWhiteSpace($resolvedPackageRoot)) {
+    if ([string]::IsNullOrWhiteSpace($resolvedPackageRoot))
+    {
         $resolvedPackageRoot = $workDir
     }
 
     $recordingModuleSource = Join-Path $PSScriptRoot '..\..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
     $recordingManifestSource = Join-Path $PSScriptRoot '..\..\V4\_Shared\PSAppDeployToolkit.Recording.psd1'
-    if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf) {
+    if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
+    {
         $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
-        if (-not (Test-Path -LiteralPath $recordingDir -PathType Container)) {
+        if (-not (Test-Path -LiteralPath $recordingDir -PathType Container))
+        {
             New-Item -Path $recordingDir -ItemType Directory -Force | Out-Null
         }
 
         Copy-Item -Path $recordingModuleSource -Destination (Join-Path $recordingDir 'PSAppDeployToolkit.Recording.psm1') -Force
-        if (Test-Path -LiteralPath $recordingManifestSource -PathType Leaf) {
+        if (Test-Path -LiteralPath $recordingManifestSource -PathType Leaf)
+        {
             Copy-Item -Path $recordingManifestSource -Destination (Join-Path $recordingDir 'PSAppDeployToolkit.Recording.psd1') -Force
         }
     }
 
     $filesDir = Join-Path $resolvedPackageRoot 'Files'
-    if (-not (Test-Path -LiteralPath $filesDir -PathType Container)) {
+    if (-not (Test-Path -LiteralPath $filesDir -PathType Container))
+    {
         throw "Files directory was not created by template generation: $filesDir"
     }
 
@@ -284,7 +334,8 @@ function New-IntuneTestWorkDir {
     }
 }
 
-function New-IntuneWinPackage {
+function New-IntuneWinPackage
+{
     <#
     .SYNOPSIS
         Wraps a working directory into an .intunewin package using IntuneWinAppUtil,
@@ -305,7 +356,8 @@ function New-IntuneWinPackage {
     # Wrap with IntuneWinAppUtil
     & $IntuneWinAppUtilPath -c $WorkDir -s $SetupFileName -o $WorkDir
     $intunewinFile = Join-Path $WorkDir 'Invoke-AppDeployToolkit.intunewin'
-    if (-not (Test-Path $intunewinFile)) {
+    if (-not (Test-Path $intunewinFile))
+    {
         throw "IntuneWinAppUtil did not produce expected output: $intunewinFile"
     }
 
@@ -315,7 +367,8 @@ function New-IntuneWinPackage {
         $_.Extension -in '.msi', '.exe'
     } | Select-Object -First 1
 
-    if (-not $packageFile) {
+    if (-not $packageFile)
+    {
         throw "No .msi or .exe found in '$filesDir' to derive display name."
     }
 
@@ -325,7 +378,8 @@ function New-IntuneWinPackage {
     Rename-Item -Path $intunewinFile -NewName $newFileName -Force
     Write-Information "Renamed intunewin to '$newIntuneWinFile'." -InformationAction Continue
 
-    if (-not (Test-Path $newIntuneWinFile)) {
+    if (-not (Test-Path $newIntuneWinFile))
+    {
         throw "Renamed intunewin file not found: $newIntuneWinFile"
     }
 
@@ -339,7 +393,8 @@ function New-IntuneWinPackage {
 # Region: Intune Upload & Assignment
 # ---------------------------------------------------------------------------
 
-function Remove-ExistingIntuneWin32App {
+function Remove-ExistingIntuneWin32App
+{
     <#
     .SYNOPSIS
         Removes any existing Win32 apps from Intune that match the given DisplayName.
@@ -357,19 +412,22 @@ function Remove-ExistingIntuneWin32App {
     )
 
     $existingApps = Get-IntuneWin32App -DisplayName $DisplayName -ErrorAction SilentlyContinue
-    if (-not $existingApps) {
+    if (-not $existingApps)
+    {
         Write-Information "No existing Intune app found with DisplayName '$DisplayName'." -InformationAction Continue
         return 0
     }
 
     $removedCount = 0
-    foreach ($app in $existingApps) {
+    foreach ($app in $existingApps)
+    {
         Write-Information "Removing existing Intune app '$($app.displayName)' (Id: $($app.id))..." -InformationAction Continue
         Remove-IntuneWin32App -ID $app.id
         $removedCount++
     }
 
-    if ($removedCount -gt 0 -and $PropagationDelaySeconds -gt 0) {
+    if ($removedCount -gt 0 -and $PropagationDelaySeconds -gt 0)
+    {
         # Allow time for Graph API to propagate the deletion.
         Start-Sleep -Seconds $PropagationDelaySeconds
     }
@@ -378,7 +436,8 @@ function Remove-ExistingIntuneWin32App {
     return $removedCount
 }
 
-function Publish-IntuneWin32App {
+function Publish-IntuneWin32App
+{
     <#
     .SYNOPSIS
         Uploads a Win32 app to Intune and waits for it to become visible
@@ -406,7 +465,8 @@ function Publish-IntuneWin32App {
         [int]$RetryIntervalSeconds = 10
     )
 
-    if (-not $RequirementRule) {
+    if (-not $RequirementRule)
+    {
         $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture 'x64x86' -MinimumSupportedWindowsRelease 'W10_1607'
     }
 
@@ -422,7 +482,8 @@ function Publish-IntuneWin32App {
     # Intune Graph API has eventual consistency; retry until the app is visible.
     $win32App = $null
     $retryCount = 0
-    while (-not $win32App -and $retryCount -lt $MaxRetries) {
+    while (-not $win32App -and $retryCount -lt $MaxRetries)
+    {
         Start-Sleep -Seconds $RetryIntervalSeconds
         $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose |
         Sort-Object -Property createdDateTime -Descending |
@@ -437,7 +498,8 @@ function Publish-IntuneWin32App {
 # Region: MDM Sync & IME Readiness
 # ---------------------------------------------------------------------------
 
-function Wait-IntuneManagementExtension {
+function Wait-IntuneManagementExtension
+{
     <#
     .SYNOPSIS
         Ensures IntuneManagementExtension (IME) is running. Restarts it if
@@ -450,7 +512,8 @@ function Wait-IntuneManagementExtension {
     )
 
     $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
-    if ($imeSvc) {
+    if ($imeSvc)
+    {
         Write-Information "Restarting service 'IntuneManagementExtension' (current state: $($imeSvc.Status))..." -InformationAction Continue
         Restart-Service -Name 'IntuneManagementExtension' -Force -ErrorAction SilentlyContinue
         $imeSvc.Refresh()
@@ -465,16 +528,19 @@ function Wait-IntuneManagementExtension {
     # Trigger sync at: 0 s, 300 s (5 min), 600 s (10 min)
     $syncAtSeconds = @(0, 300, 600) | Select-Object -First $MaxSyncAttempts
 
-    while ($waited -le $MaxWaitSeconds) {
+    while ($waited -le $MaxWaitSeconds)
+    {
         # Trigger an MDM sync at scheduled intervals.
-        if ($syncCount -lt $MaxSyncAttempts -and $waited -ge $syncAtSeconds[$syncCount]) {
+        if ($syncCount -lt $MaxSyncAttempts -and $waited -ge $syncAtSeconds[$syncCount])
+        {
             Write-Information "Triggering MDM full sync (attempt $($syncCount + 1)/$MaxSyncAttempts) at $waited s..." -InformationAction Continue
             Invoke-MdmSync
             $syncCount++
         }
 
         $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
-        if ($imeSvc) {
+        if ($imeSvc)
+        {
             $installed = $true
             Write-Information "IntuneManagementExtension installed after $waited s." -InformationAction Continue
             break
@@ -486,32 +552,41 @@ function Wait-IntuneManagementExtension {
         $waited += $PollIntervalSeconds
     }
 
-    if (-not $installed) {
+    if (-not $installed)
+    {
         throw "IntuneManagementExtension was not installed within $($MaxWaitSeconds / 60) minutes after $MaxSyncAttempts MDM sync attempts."
     }
 }
 
-function Invoke-MdmSync {
+function Invoke-MdmSync
+{
     <#
     .SYNOPSIS
         Triggers MDM scheduled sync tasks for the first Azure AD / Intune enrollment found.
     #>
-    try {
+    try
+    {
         $enrollmentId = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Enrollments' -ErrorAction SilentlyContinue | Where-Object {
                 (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).EnrollmentType -eq 6
             } | Select-Object -First 1).PSChildName
 
-        if ($enrollmentId) {
+        if ($enrollmentId)
+        {
             $taskPath = "\Microsoft\Windows\EnterpriseMgmt\$enrollmentId\"
             $syncTasks = Get-ScheduledTask -TaskPath $taskPath -ErrorAction SilentlyContinue
-            foreach ($task in $syncTasks) {
+            foreach ($task in $syncTasks)
+            {
                 Start-ScheduledTask -TaskPath $task.TaskPath -TaskName $task.TaskName -ErrorAction SilentlyContinue
             }
             Write-Information "MDM sync tasks triggered for enrollment: $enrollmentId" -InformationAction Continue
-        } else {
+        }
+        else
+        {
             Write-Information "No MDM enrollment (EnrollmentType=6) found; cannot trigger sync." -InformationAction Continue
         }
-    } catch {
+    }
+    catch
+    {
         Write-Information "MDM sync trigger failed: $($_.Exception.Message)" -InformationAction Continue
     }
 }
@@ -520,7 +595,8 @@ function Invoke-MdmSync {
 # Region: Installation Detection
 # ---------------------------------------------------------------------------
 
-function Wait-AppInstallation {
+function Wait-AppInstallation
+{
     <#
     .SYNOPSIS
         Polls registry uninstall keys for a specific app version, checking
@@ -557,13 +633,17 @@ function Wait-AppInstallation {
     $nextSyncAt = 0
 
     Write-Information "Polling for '$DisplayName' installation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
-    while ($waited -lt $MaxWaitSeconds) {
-        foreach ($root in $uninstallRoots) {
+    while ($waited -lt $MaxWaitSeconds)
+    {
+        foreach ($root in $uninstallRoots)
+        {
             $subKeys = Get-ChildItem -Path $root -ErrorAction SilentlyContinue
-            foreach ($subKey in $subKeys) {
+            foreach ($subKey in $subKeys)
+            {
                 $props = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
                 $displayNameMatched = $props -and (($props.DisplayName -eq $DisplayName) -or ($props.DisplayName -like "$DisplayName*"))
-                if ($displayNameMatched -and $props.$ValueName -eq $ExpectedValue) {
+                if ($displayNameMatched -and $props.$ValueName -eq $ExpectedValue)
+                {
                     $verified = $true
                     Write-Information "'$DisplayName' detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
                     Write-Information "[Succeed] '$DisplayName' installation verification successful." -InformationAction Continue
@@ -575,11 +655,13 @@ function Wait-AppInstallation {
         if ($verified) { break }
 
         # Trigger MDM sync and restart IME at regular intervals to accelerate install.
-        if (-not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt) {
+        if (-not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt)
+        {
             Write-Information "'$DisplayName' not yet installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
             Invoke-MdmSync
             $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
-            if ($imeSvc) {
+            if ($imeSvc)
+            {
                 Restart-Service -Name 'IntuneManagementExtension' -Force -ErrorAction SilentlyContinue
             }
             $nextSyncAt = $waited + $SyncIntervalSeconds
@@ -593,7 +675,8 @@ function Wait-AppInstallation {
     return $verified
 }
 
-function Wait-AppUninstallation {
+function Wait-AppUninstallation
+{
     <#
     .SYNOPSIS
         Polls registry uninstall keys until a specific app version is no longer
@@ -631,14 +714,18 @@ function Wait-AppUninstallation {
     $nextSyncAt = 0
 
     Write-Information "Polling for '$DisplayName' uninstallation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
-    while ($waited -lt $MaxWaitSeconds) {
+    while ($waited -lt $MaxWaitSeconds)
+    {
         $found = $false
-        foreach ($root in $uninstallRoots) {
+        foreach ($root in $uninstallRoots)
+        {
             $subKeys = Get-ChildItem -Path $root -ErrorAction SilentlyContinue
-            foreach ($subKey in $subKeys) {
+            foreach ($subKey in $subKeys)
+            {
                 $props = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
                 $displayNameMatched = $props -and (($props.DisplayName -eq $DisplayName) -or ($props.DisplayName -like "$DisplayName*"))
-                if ($displayNameMatched -and $props.$ValueName -eq $ExpectedValue) {
+                if ($displayNameMatched -and $props.$ValueName -eq $ExpectedValue)
+                {
                     $found = $true
                     break
                 }
@@ -646,7 +733,8 @@ function Wait-AppUninstallation {
             if ($found) { break }
         }
 
-        if (-not $found) {
+        if (-not $found)
+        {
             $removed = $true
             Write-Information "'$DisplayName' no longer detected in registry after $waited s." -InformationAction Continue
             Write-Information "[Succeed] '$DisplayName' uninstallation verification successful." -InformationAction Continue
@@ -654,11 +742,13 @@ function Wait-AppUninstallation {
         }
 
         # Trigger MDM sync and restart IME at regular intervals to accelerate uninstall.
-        if (-not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt) {
+        if (-not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt)
+        {
             Write-Information "'$DisplayName' still installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
             Invoke-MdmSync
             $imeSvc = Get-Service -Name 'IntuneManagementExtension' -ErrorAction SilentlyContinue
-            if ($imeSvc) {
+            if ($imeSvc)
+            {
                 Restart-Service -Name 'IntuneManagementExtension' -Force -ErrorAction SilentlyContinue
             }
             $nextSyncAt = $waited + $SyncIntervalSeconds
@@ -676,7 +766,8 @@ function Wait-AppUninstallation {
 # Region: Azure AD Test Group Management
 # ---------------------------------------------------------------------------
 
-function Initialize-IntuneTestGroup {
+function Initialize-IntuneTestGroup
+{
     <#
     .SYNOPSIS
         Connects to Microsoft Graph, creates a test security group, and adds
@@ -703,7 +794,8 @@ function Initialize-IntuneTestGroup {
     # Install and import required Graph modules.
     $requiredModules = @('Microsoft.Graph.Authentication', 'Microsoft.Graph.Groups', 'Microsoft.Graph.Identity.DirectoryManagement')
     $missing = $requiredModules | Where-Object { -not (Get-Module -Name $_ -ListAvailable) }
-    if ($missing) {
+    if ($missing)
+    {
         Write-Information "Installing missing Graph modules: $($missing -join ', ')" -InformationAction Continue
         Install-Module -Name $missing -Force -Scope CurrentUser
     }
@@ -713,13 +805,15 @@ function Initialize-IntuneTestGroup {
     $credential = New-Object System.Management.Automation.PSCredential ($ClientId, $secureSecret)
     $deviceName = $env:COMPUTERNAME
 
-    try {
+    try
+    {
         Connect-MgGraph -TenantId $TenantId -ClientSecretCredential $credential -NoWelcome -ErrorAction Stop
 
         # Remove existing test group if present.
         $testGroupName = "PSADT Test Group $deviceName"
         $existingGroups = Get-MgGroup -Filter "displayName eq '$testGroupName'" -ErrorAction Stop
-        foreach ($g in $existingGroups) {
+        foreach ($g in $existingGroups)
+        {
             Write-Information "Removing existing group '$testGroupName' (Id: $($g.Id))" -InformationAction Continue
             Remove-MgGroup -GroupId $g.Id -ErrorAction Stop
             Start-Sleep -Seconds 5
@@ -737,28 +831,37 @@ function Initialize-IntuneTestGroup {
 
         # Wait for group to propagate.
         $maxWait = 20; $waited = 0
-        while ($waited -lt $maxWait) {
+        while ($waited -lt $maxWait)
+        {
             if (Get-MgGroup -GroupId $result.GroupId -ErrorAction SilentlyContinue) { break }
             Write-Information "Waiting for group to propagate... ($waited s)" -InformationAction Continue
             Start-Sleep -Seconds 5
             $waited += 5
         }
-        if ($waited -ge $maxWait) {
+        if ($waited -ge $maxWait)
+        {
             throw "Group '$testGroupName' did not propagate within $maxWait seconds."
         }
 
         # Add current device as a member.
         $device = Get-MgDevice -Filter "displayName eq '$deviceName'" -ErrorAction Stop | Select-Object -First 1
-        if (-not $device) {
+        if (-not $device)
+        {
             Write-Information "Unable to find a Microsoft Graph device with displayName '$deviceName'." -InformationAction Continue
-        } else {
+        }
+        else
+        {
             $addMaxRetries = 6
             $addRetry = 0
-            while ($true) {
-                try {
+            while ($true)
+            {
+                try
+                {
                     New-MgGroupMember -GroupId $result.GroupId -DirectoryObjectId $device.Id -ErrorAction Stop
                     break
-                } catch {
+                }
+                catch
+                {
                     $addRetry++
                     if ($addRetry -ge $addMaxRetries -or $_.Exception.Message -notmatch 'ResourceNotFound') { throw }
                     Write-Information "Member add failed (ResourceNotFound), retrying... ($addRetry/$addMaxRetries)" -InformationAction Continue
@@ -767,7 +870,9 @@ function Initialize-IntuneTestGroup {
             }
             Write-Information "Added device '$deviceName' (Id: $($device.Id)) to group '$testGroupName'." -InformationAction Continue
         }
-    } catch {
+    }
+    catch
+    {
         $result.SkipReason = "Azure AD group setup failed: $($_.Exception.Message)"
         Write-Warning "[Intune] Skipping group-assignment tests: $($_.Exception.Message)"
     }
@@ -779,7 +884,8 @@ function Initialize-IntuneTestGroup {
 # Region: MSI Utilities
 # ---------------------------------------------------------------------------
 
-function Get-MsiProductCode {
+function Get-MsiProductCode
+{
     <#
     .SYNOPSIS
         Reads the ProductCode from an MSI file using the WindowsInstaller COM object.
@@ -799,13 +905,15 @@ function Get-MsiProductCode {
     return [string]($record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, @(1)))
 }
 
-function Get-IntuneWinAppUtilPath {
+function Get-IntuneWinAppUtilPath
+{
     <#
     .SYNOPSIS
         Returns the path to IntuneWinAppUtil.exe if it exists at the default location.
     #>
     $toolPath = 'C:\Tools\Intune\IntuneWinAppUtil.exe'
-    if (Test-Path $toolPath) {
+    if (Test-Path $toolPath)
+    {
         return $toolPath
     }
     return $null

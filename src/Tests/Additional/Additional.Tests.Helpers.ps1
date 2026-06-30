@@ -228,8 +228,8 @@ function script:Initialize-PSADTPackageDirectoryFromTemplate
         }
 
         $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
-            Select-Object -First 1 -ExpandProperty FullName
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
+        Select-Object -First 1 -ExpandProperty FullName
 
         if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
         {
@@ -326,8 +326,8 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
         }
 
         $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
-            Select-Object -First 1 -ExpandProperty FullName
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
+        Select-Object -First 1 -ExpandProperty FullName
 
         if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
         {
@@ -435,9 +435,9 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
 
     $invokeTemplateParams = @{
         TemplatefilePath = $templateParamsPath
-        DestinationPath = $packageDirParent
-        Name = $packageDirName
-        Files = $filesList
+        DestinationPath  = $packageDirParent
+        Name             = $packageDirName
+        Files            = $filesList
     }
 
     if ($templateParams.Contains('SupportFiles') -and $null -ne $templateParams['SupportFiles'])
@@ -682,9 +682,9 @@ function script:Initialize-NotepadPlusPlusSccmEnvironment
 
     return @{
         LegacyInstallerPath = $legacyInstallerPath
-        LegacyExePath = $legacyExePath
+        LegacyExePath       = $legacyExePath
         TargetInstallerPath = $targetInstallerPath
-        TargetInstallerDir = $TargetInstallerDir
+        TargetInstallerDir  = $TargetInstallerDir
     }
 }
 
