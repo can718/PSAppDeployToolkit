@@ -32,9 +32,7 @@
     {
         throw "TemplatefilePath must point to a .ps1 file. Current value: [$TemplatefilePath]"
     }
-
     . $TemplatefilePath
-
     $params = $null
 
     if (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore)

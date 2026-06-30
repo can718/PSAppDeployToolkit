@@ -1029,24 +1029,7 @@ jobs:
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_console<<$delimConsole`n$consoleText`n$delimConsole`n", [System.Text.Encoding]::UTF8)
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_markdown<<$delimMarkdown`n$markdownText`n$delimMarkdown`n", [System.Text.Encoding]::UTF8)
         Write-Host 'Result summary payload, console text, and markdown prepared.'
-        $payload = [ordered]@{
-          PesterDiscovered = [string]$env:PESTER_DISCOVERED
-          PesterTotal = [string]$env:PESTER_TOTAL
-          PesterPassed = [string]$env:PESTER_PASSED
-          PesterFailed = [string]$env:PESTER_FAILED
-          PesterSkipped = [string]$env:PESTER_SKIPPED
-          PesterNotRun = [string]$env:PESTER_NOTRUN
-          StepsJson = [string]$env:STEPS_JSON
-          CasesJson = [string]$env:CASES_JSON
-          NotificationSource = [string]$env:NOTIFICATION_SOURCE
-          RunUrl = [string]$env:RUN_URL
-          Branch = [string]$env:BRANCH
-          Actor = [string]$env:ACTOR
-        }
-
-        $resultSummaryPayload = $payload | ConvertTo-Json -Compress -Depth 5
-        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_payload=$resultSummaryPayload`n", [System.Text.Encoding]::UTF8)
-        Write-Host 'Result summary payload collected.'
+          Write-Host 'Result summary payload collected.'
 
   result-summary:
     name: Result Summary
@@ -1057,20 +1040,15 @@ jobs:
     - name: ResultSummary
       shell: pwsh
       env:
-        RESULT_SUMMARY_CONSOLE: ${{ needs.run-additional-tests.outputs.result_summary_console || '' }}
         RESULT_SUMMARY_MARKDOWN: ${{ needs.run-additional-tests.outputs.result_summary_markdown || '' }}
       run: |
-        Write-Host "##[group]Detailed Result Summary"
-        $consoleText = [string]$env:RESULT_SUMMARY_CONSOLE
-        if ([string]::IsNullOrWhiteSpace($consoleText)) {
-          $consoleText = 'No result summary text was provided.'
-        }
-        Write-Host $consoleText
-        Write-Host "##[endgroup]"
-
         $markdownText = [string]$env:RESULT_SUMMARY_MARKDOWN
         if (-not [string]::IsNullOrWhiteSpace($markdownText)) {
           [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, $markdownText, [System.Text.Encoding]::UTF8)
+            Write-Host 'Published workflow result summary to GITHUB_STEP_SUMMARY.'
+          }
+          else {
+            Write-Host 'No workflow result summary text was provided.'
         }
 
   notify-teams:
