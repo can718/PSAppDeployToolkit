@@ -48,6 +48,9 @@ jobs:
       pester_skipped: ${{ steps.run-pester.outputs.pester_skipped || '0' }}
       pester_notrun:  ${{ steps.run-pester.outputs.pester_notrun || '0' }}
       cases_json:     ${{ steps.collect-cases.outputs.cases_json || '{}' }}
+      result_summary_payload: ${{ steps.result-summary-collect.outputs.result_summary_payload || '{}' }}
+      result_summary_console: ${{ steps.result-summary-collect.outputs.result_summary_console || '' }}
+      result_summary_markdown: ${{ steps.result-summary-collect.outputs.result_summary_markdown || '' }}
     strategy:
       fail-fast: false
     env:
@@ -794,7 +797,8 @@ jobs:
         }
         . $tfHelper
         Invoke-TFResetSessionVM
-    - name: ResultSummary
+    - name: ResultSummary (Collect)
+      id: result-summary-collect
       if: always()
       shell: pwsh
       env:
@@ -889,28 +893,28 @@ jobs:
           Write-Warning "Failed to parse CASES_JSON: $($_.Exception.Message)"
         }
 
-        Write-Host "##[group]Detailed Result Summary"
-        Write-Host "Source:           $env:NOTIFICATION_SOURCE"
-        Write-Host "Job status:       $jobStatusIcon $jobStatus"
-        Write-Host "Branch:           $env:BRANCH"
-        Write-Host "Triggered by:     $env:ACTOR"
-        Write-Host "Workflow run URL: $env:RUN_URL"
-        Write-Host ''
-        Write-Host 'Pester Metrics'
-        Write-Host "  Discovered: $pesterDiscovered"
-        Write-Host "  Executed:   $pesterTotal"
-        Write-Host "  Passed:     ✅ $pesterPassed"
-        Write-Host "  Failed:     ❌ $pesterFailed"
-        Write-Host "  Skipped:    ⏭️ $pesterSkipped"
-        Write-Host "  Not Run:    ⏸️ $pesterNotRun"
+        $consoleLines = New-Object System.Collections.Generic.List[string]
+        $consoleLines.Add("Source:           $env:NOTIFICATION_SOURCE") | Out-Null
+        $consoleLines.Add("Job status:       $jobStatusIcon $jobStatus") | Out-Null
+        $consoleLines.Add("Branch:           $env:BRANCH") | Out-Null
+        $consoleLines.Add("Triggered by:     $env:ACTOR") | Out-Null
+        $consoleLines.Add("Workflow run URL: $env:RUN_URL") | Out-Null
+        $consoleLines.Add('') | Out-Null
+        $consoleLines.Add('Pester Metrics') | Out-Null
+        $consoleLines.Add("  Discovered: $pesterDiscovered") | Out-Null
+        $consoleLines.Add("  Executed:   $pesterTotal") | Out-Null
+        $consoleLines.Add("  Passed:     ✅ $pesterPassed") | Out-Null
+        $consoleLines.Add("  Failed:     ❌ $pesterFailed") | Out-Null
+        $consoleLines.Add("  Skipped:    ⏭️ $pesterSkipped") | Out-Null
+        $consoleLines.Add("  Not Run:    ⏸️ $pesterNotRun") | Out-Null
 
         if ($steps.Count -gt 0) {
-          Write-Host ''
-          Write-Host 'Pipeline Steps (parsed)'
+          $consoleLines.Add('') | Out-Null
+          $consoleLines.Add('Pipeline Steps (parsed)') | Out-Null
           foreach ($stepName in ($steps.Keys | Sort-Object)) {
             $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$steps[$stepName])
             $icon = Get-StatusIcon -Status $outcome
-            Write-Host ("  - {0}: {1} {2} | {3}" -f $stepName, $icon, $outcome, $duration)
+            $consoleLines.Add(("  - {0}: {1} {2} | {3}" -f $stepName, $icon, $outcome, $duration)) | Out-Null
           }
         }
 
@@ -918,27 +922,26 @@ jobs:
           $maxCaseLogCount = 30
           $sortedCaseNames = @($cases.Keys | Sort-Object)
           $visibleCaseNames = @($sortedCaseNames | Select-Object -First $maxCaseLogCount)
-          Write-Host ''
-          Write-Host ("Test Cases (parsed, showing {0}/{1})" -f $visibleCaseNames.Count, $sortedCaseNames.Count)
+          $consoleLines.Add('') | Out-Null
+          $consoleLines.Add(("Test Cases (parsed, showing {0}/{1})" -f $visibleCaseNames.Count, $sortedCaseNames.Count)) | Out-Null
           foreach ($caseName in $visibleCaseNames) {
             $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
             $icon = Get-StatusIcon -Status $outcome
-            Write-Host ("  - {0}: {1} {2} | {3}" -f $caseName, $icon, $outcome, $duration)
+            $consoleLines.Add(("  - {0}: {1} {2} | {3}" -f $caseName, $icon, $outcome, $duration)) | Out-Null
           }
           if ($sortedCaseNames.Count -gt $maxCaseLogCount) {
-            Write-Host ("  ... and {0} more test case(s)." -f ($sortedCaseNames.Count - $maxCaseLogCount))
+            $consoleLines.Add(("  ... and {0} more test case(s)." -f ($sortedCaseNames.Count - $maxCaseLogCount))) | Out-Null
           }
         }
 
         if ($steps.Count -gt 0) {
-          Write-Host ''
-          Write-Host "Pipeline steps captured: $($steps.Count)"
+          $consoleLines.Add('') | Out-Null
+          $consoleLines.Add("Pipeline steps captured: $($steps.Count)") | Out-Null
         }
 
         if ($cases.Count -gt 0) {
-          Write-Host "Test cases captured:     $($cases.Count)"
+          $consoleLines.Add("Test cases captured:     $($cases.Count)") | Out-Null
         }
-        Write-Host "##[endgroup]"
 
         $summaryLines = New-Object System.Collections.Generic.List[string]
         $summaryLines.Add("## $jobStatusIcon $($env:NOTIFICATION_SOURCE) - Result Summary") | Out-Null
@@ -1001,11 +1004,78 @@ jobs:
           }
         }
 
-        [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, ($summaryLines -join "`n") + "`n", [System.Text.Encoding]::UTF8)
+        $payload = [ordered]@{
+          JobStatus = $jobStatus
+          JobStatusIcon = $jobStatusIcon
+          PesterDiscovered = [string]$pesterDiscovered
+          PesterTotal = [string]$pesterTotal
+          PesterPassed = [string]$pesterPassed
+          PesterFailed = [string]$pesterFailed
+          PesterSkipped = [string]$pesterSkipped
+          PesterNotRun = [string]$pesterNotRun
+          NotificationSource = [string]$env:NOTIFICATION_SOURCE
+          RunUrl = [string]$env:RUN_URL
+          Branch = [string]$env:BRANCH
+          Actor = [string]$env:ACTOR
+        }
+
+        $resultSummaryPayload = $payload | ConvertTo-Json -Compress -Depth 5
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_payload=$resultSummaryPayload`n", [System.Text.Encoding]::UTF8)
+
+        $consoleText = ($consoleLines -join "`n")
+        $markdownText = ($summaryLines -join "`n") + "`n"
+        $delimConsole = [guid]::NewGuid().Guid
+        $delimMarkdown = [guid]::NewGuid().Guid
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_console<<$delimConsole`n$consoleText`n$delimConsole`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_markdown<<$delimMarkdown`n$markdownText`n$delimMarkdown`n", [System.Text.Encoding]::UTF8)
+        Write-Host 'Result summary payload, console text, and markdown prepared.'
+        $payload = [ordered]@{
+          PesterDiscovered = [string]$env:PESTER_DISCOVERED
+          PesterTotal = [string]$env:PESTER_TOTAL
+          PesterPassed = [string]$env:PESTER_PASSED
+          PesterFailed = [string]$env:PESTER_FAILED
+          PesterSkipped = [string]$env:PESTER_SKIPPED
+          PesterNotRun = [string]$env:PESTER_NOTRUN
+          StepsJson = [string]$env:STEPS_JSON
+          CasesJson = [string]$env:CASES_JSON
+          NotificationSource = [string]$env:NOTIFICATION_SOURCE
+          RunUrl = [string]$env:RUN_URL
+          Branch = [string]$env:BRANCH
+          Actor = [string]$env:ACTOR
+        }
+
+        $resultSummaryPayload = $payload | ConvertTo-Json -Compress -Depth 5
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_payload=$resultSummaryPayload`n", [System.Text.Encoding]::UTF8)
+        Write-Host 'Result summary payload collected.'
+
+  result-summary:
+    name: Result Summary
+    needs: run-additional-tests
+    if: ${{ always() }}
+    runs-on: windows-latest
+    steps:
+    - name: ResultSummary
+      shell: pwsh
+      env:
+        RESULT_SUMMARY_CONSOLE: ${{ needs.run-additional-tests.outputs.result_summary_console || '' }}
+        RESULT_SUMMARY_MARKDOWN: ${{ needs.run-additional-tests.outputs.result_summary_markdown || '' }}
+      run: |
+        Write-Host "##[group]Detailed Result Summary"
+        $consoleText = [string]$env:RESULT_SUMMARY_CONSOLE
+        if ([string]::IsNullOrWhiteSpace($consoleText)) {
+          $consoleText = 'No result summary text was provided.'
+        }
+        Write-Host $consoleText
+        Write-Host "##[endgroup]"
+
+        $markdownText = [string]$env:RESULT_SUMMARY_MARKDOWN
+        if (-not [string]::IsNullOrWhiteSpace($markdownText)) {
+          [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, $markdownText, [System.Text.Encoding]::UTF8)
+        }
 
   notify-teams:
     name: Notify Teams (SCCM Tests)
-    needs: run-additional-tests
+    needs: [run-additional-tests, result-summary]
     if: ${{ always() }} # notify even if tests fail so the team can investigate
     uses: ./.github/workflows/notify_teams.yml
     with:
