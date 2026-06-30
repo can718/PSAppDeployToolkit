@@ -2,6 +2,7 @@
 $script:recordingStopAttempted = $false
 $script:recordingOutputFile = $null
 $script:helperLoaded = $false
+$script:terraForgeHelperModule = $null
 
 function Start-AdditionalTestRecording
 {
@@ -9,7 +10,15 @@ function Start-AdditionalTestRecording
     if (-not $script:helperLoaded)
     {
         Import-AdditionalTestRecordingHelper
-        $script:helperLoaded = $true
+
+        if (-not $script:helperLoaded)
+        {
+            Write-ADTLogEntry -Message 'Recording start skipped because TerraForge helper could not be loaded.' -Severity Warning
+            return
+        }
+
+        #sleep for a few seconds to allow the helper to load and initialize before attempting to start recording.
+        Start-Sleep -Seconds 10
         Write-ADTLogEntry -Message 'TerraForge helper loaded successfully.' -Severity Info
     }
     Write-ADTLogEntry -Message 'Start-AdditionalTestRecording callback invoked.' -Severity Info
@@ -28,7 +37,7 @@ function Start-AdditionalTestRecording
             return
         }
 
-        if (-not (Get-Command -Name Start-TerraForgeRecording -ErrorAction SilentlyContinue))
+        if (-not $script:terraForgeHelperModule -or -not (Get-Command -Name Start-TerraForgeRecording -Module $script:terraForgeHelperModule -CommandType Function -ErrorAction SilentlyContinue))
         {
             Write-ADTLogEntry -Message 'Recording start skipped because Start-TerraForgeRecording is unavailable.' -Severity Info
             return
@@ -36,7 +45,15 @@ function Start-AdditionalTestRecording
 
         $currentSession = Get-ADTSession
         Write-ADTLogEntry -Message "Starting recording for [$($currentSession.AppName)] deployment type [$($currentSession.DeploymentType)]." -Severity Info
-        $recordingContext = Start-TerraForgeRecording -AppName $currentSession.AppName -DeploymentType $currentSession.DeploymentType
+        $recordingContext = & $script:terraForgeHelperModule {
+            param
+            (
+                [string]$AppName,
+                [string]$DeploymentType
+            )
+
+            Start-TerraForgeRecording -AppName $AppName -DeploymentType $DeploymentType
+        } $currentSession.AppName $currentSession.DeploymentType
         $script:recordingStarted = $recordingContext.Started
         $script:recordingOutputFile = $recordingContext.OutputFile
 
@@ -80,7 +97,7 @@ function Stop-AdditionalTestRecording
         return
     }
 
-    if (-not (Get-Command -Name Stop-TerraForgeRecording -ErrorAction SilentlyContinue))
+    if (-not $script:terraForgeHelperModule -or -not (Get-Command -Name Stop-TerraForgeRecording -Module $script:terraForgeHelperModule -CommandType Function -ErrorAction SilentlyContinue))
     {
         Write-ADTLogEntry -Message 'Recording stop skipped because Stop-TerraForgeRecording is unavailable.' -Severity Warning
         return
@@ -96,7 +113,15 @@ function Stop-AdditionalTestRecording
     ) -join ', '
     Write-ADTLogEntry -Message "TerraForge upload environment status: $uploadEnvironmentStatus" -Severity Info
     Write-ADTLogEntry -Message "Stopping recording for [$($script:adtSession.AppName)] deployment type [$($script:adtSession.DeploymentType)]." -Severity Info
-    $recordingResult = Stop-TerraForgeRecording -RecordingStarted:$script:recordingStarted -RecordingOutputFile $script:recordingOutputFile
+    $recordingResult = & $script:terraForgeHelperModule {
+        param
+        (
+            [bool]$RecordingStarted,
+            [string]$RecordingOutputFile
+        )
+
+        Stop-TerraForgeRecording -RecordingStarted:$RecordingStarted -RecordingOutputFile $RecordingOutputFile
+    } $script:recordingStarted $script:recordingOutputFile
     if ($recordingResult.Error)
     {
         Write-ADTLogEntry -Message "Recording stop/upload completed with warning for output file [$($script:recordingOutputFile)]: $($recordingResult.Error)" -Severity Warning
@@ -124,41 +149,37 @@ function Register-AdditionalTestRecordingCallbacks
 
 function Import-AdditionalTestRecordingHelper
 {
-    param
-    (
-        [Parameter(Mandatory = $true)]
-        [string]$ScriptRoot
-    )
-
     try
     {
-        $candidatePaths = @(
-            $env:TERRAFORGE_HELPER_PATH,
-            'C:\PSADTScripts\TerraForge-AgentHelper.ps1',
-            (Join-Path $ScriptRoot 'TerraForge-AgentHelper.ps1'),
-            (Join-Path $ScriptRoot '.github\scripts\TerraForge-AgentHelper.ps1'),
-            (Join-Path $ScriptRoot '..\.github\scripts\TerraForge-AgentHelper.ps1'),
-            (Join-Path $ScriptRoot '..\..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'),
-            (if ($env:GITHUB_WORKSPACE) { Join-Path $env:GITHUB_WORKSPACE 'TerraForge-AgentHelper.ps1' } else { $null }),
-            (if ($env:GITHUB_WORKSPACE) { Join-Path $env:GITHUB_WORKSPACE 'PSAppDeployToolkit\.github\scripts\TerraForge-AgentHelper.ps1' } else { $null })
-        ) | Where-Object { -not [System.String]::IsNullOrWhiteSpace($_) }
+        $helperScriptPath = 'C:\PSADTScripts\TerraForge-AgentHelper.ps1'
 
-        $helperScriptPath = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-
-        if ($helperScriptPath)
+        if (Test-Path -LiteralPath $helperScriptPath -PathType Leaf)
         {
-            . $helperScriptPath
-            $script:helperLoaded = $true
-            Write-ADTLogEntry -Message "Loaded TerraForge helper from path: $helperScriptPath" -Severity Info
+            $helperScriptContent = Get-Content -LiteralPath $helperScriptPath -Raw
+            $script:terraForgeHelperModule = New-Module -Name ('TerraForgeAgentHelper_{0}' -f [guid]::NewGuid().ToString('N')) -ScriptBlock ([scriptblock]::Create($helperScriptContent))
+
+            $script:helperLoaded = [bool](Get-Command -Name Start-TerraForgeRecording -Module $script:terraForgeHelperModule -CommandType Function -ErrorAction SilentlyContinue)
+            if ($script:helperLoaded)
+            {
+                Write-ADTLogEntry -Message "Loaded TerraForge helper from path: $helperScriptPath" -Severity Info
+            }
+            else
+            {
+                $script:terraForgeHelperModule = $null
+                Write-ADTLogEntry -Message "TerraForge helper script loaded but Start-TerraForgeRecording was still unavailable." -Severity Warning
+            }
         }
         else
         {
-            $searchedPaths = $candidatePaths -join '; '
-            Write-ADTLogEntry -Message "TerraForge-AgentHelper.ps1 not found. Paths checked: $searchedPaths. Skipping recording start." -Severity Warning
+            $script:helperLoaded = $false
+            $script:terraForgeHelperModule = $null
+            Write-ADTLogEntry -Message "TerraForge-AgentHelper.ps1 not found at path: $helperScriptPath. Skipping recording start." -Severity Warning
         }
     }
     catch
     {
+        $script:helperLoaded = $false
+        $script:terraForgeHelperModule = $null
         Write-ADTLogEntry -Message "Failed to load TerraForge-AgentHelper.ps1. Skipping recording integration. $($_.Exception.Message)" -Severity Warning
     }
 }

@@ -20,7 +20,7 @@
         DeployAppScriptVersion = '4.2.0'
     }
     Destination = 'C:\PSADT\NotepadPlusPlus'
-    Files = 'C:\Tools\Intune\Notepad++\npp.6.6.4.Installer.exe'
+    Files = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
     
     PreInstallScriptBlock = {
         Start-AdditionalTestRecording
