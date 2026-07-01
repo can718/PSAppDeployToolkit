@@ -962,22 +962,6 @@ jobs:
         $summaryLines.Add("| Skipped | ⏭️ $pesterSkipped |") | Out-Null
         $summaryLines.Add("| Not Run | ⏸️ $pesterNotRun |") | Out-Null
 
-        if ($steps.Count -gt 0) {
-          $summaryLines.Add('') | Out-Null
-          $summaryLines.Add('### Pipeline Steps') | Out-Null
-          $summaryLines.Add('') | Out-Null
-          $summaryLines.Add('| Step | Status | Duration |') | Out-Null
-          $summaryLines.Add('|---|---|---|') | Out-Null
-
-          foreach ($stepName in ($steps.Keys | Sort-Object)) {
-            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$steps[$stepName])
-            $icon = Get-StatusIcon -Status $outcome
-            $safeName = Escape-MarkdownCell -Value ([string]$stepName)
-            $safeDuration = Escape-MarkdownCell -Value $duration
-            $summaryLines.Add("| $safeName | $icon $outcome | $safeDuration |") | Out-Null
-          }
-        }
-
         if ($cases.Count -gt 0) {
           $maxCases = 25
           $sortedCaseNames = @($cases.Keys | Sort-Object)
@@ -1001,6 +985,23 @@ jobs:
             $remaining = $sortedCaseNames.Count - $maxCases
             $summaryLines.Add('') | Out-Null
             $summaryLines.Add("_... and $remaining more test case(s). Full details are in Teams notification and test artifacts._") | Out-Null
+          }
+        }
+        
+        
+        if ($steps.Count -gt 0) {
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('### Pipeline Steps') | Out-Null
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('| Step | Status | Duration |') | Out-Null
+          $summaryLines.Add('|---|---|---|') | Out-Null
+
+          foreach ($stepName in ($steps.Keys | Sort-Object)) {
+            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$steps[$stepName])
+            $icon = Get-StatusIcon -Status $outcome
+            $safeName = Escape-MarkdownCell -Value ([string]$stepName)
+            $safeDuration = Escape-MarkdownCell -Value $duration
+            $summaryLines.Add("| $safeName | $icon $outcome | $safeDuration |") | Out-Null
           }
         }
 
@@ -1029,7 +1030,7 @@ jobs:
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_console<<$delimConsole`n$consoleText`n$delimConsole`n", [System.Text.Encoding]::UTF8)
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_markdown<<$delimMarkdown`n$markdownText`n$delimMarkdown`n", [System.Text.Encoding]::UTF8)
         Write-Host 'Result summary payload, console text, and markdown prepared.'
-          Write-Host 'Result summary payload collected.'
+        Write-Host 'Result summary payload collected.'
 
   result-summary:
     name: Result Summary
