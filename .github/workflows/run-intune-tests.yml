@@ -559,11 +559,11 @@ jobs:
           param([string]$Status)
 
           switch (($Status ?? '').Trim().ToLowerInvariant()) {
-            'success'   { return '[OK]' }
-            'failure'   { return '[FAIL]' }
-            'cancelled' { return '[STOP]' }
-            'skipped'   { return '[SKIP]' }
-            default     { return '[WARN]' }
+            'success'   { return '✅' }
+            'failure'   { return '❌' }
+            'cancelled' { return '🚫' }
+            'skipped'   { return '⏭️' }
+            default     { return '⚠️' }
           }
         }
 
@@ -642,10 +642,10 @@ jobs:
         $consoleLines.Add('Pester Metrics') | Out-Null
         $consoleLines.Add("  Discovered: $pesterDiscovered") | Out-Null
         $consoleLines.Add("  Executed:   $pesterTotal") | Out-Null
-        $consoleLines.Add("  Passed:     [OK] $pesterPassed") | Out-Null
-        $consoleLines.Add("  Failed:     [FAIL] $pesterFailed") | Out-Null
-        $consoleLines.Add("  Skipped:    [SKIP] $pesterSkipped") | Out-Null
-        $consoleLines.Add("  Not Run:    [WAIT] $pesterNotRun") | Out-Null
+        $consoleLines.Add("  Passed:     ✅ $pesterPassed") | Out-Null
+        $consoleLines.Add("  Failed:     ❌ $pesterFailed") | Out-Null
+        $consoleLines.Add("  Skipped:    ⏭️ $pesterSkipped") | Out-Null
+        $consoleLines.Add("  Not Run:    ⏸️ $pesterNotRun") | Out-Null
 
         if ($steps.Count -gt 0) {
           $consoleLines.Add('') | Out-Null
@@ -696,10 +696,10 @@ jobs:
         $summaryLines.Add('|---|---|') | Out-Null
         $summaryLines.Add("| Discovered | $pesterDiscovered |") | Out-Null
         $summaryLines.Add("| Executed | $pesterTotal |") | Out-Null
-        $summaryLines.Add("| Passed | [OK] $pesterPassed |") | Out-Null
-        $summaryLines.Add("| Failed | [FAIL] $pesterFailed |") | Out-Null
-        $summaryLines.Add("| Skipped | [SKIP] $pesterSkipped |") | Out-Null
-        $summaryLines.Add("| Not Run | [WAIT] $pesterNotRun |") | Out-Null
+        $summaryLines.Add("| Passed | ✅ $pesterPassed |") | Out-Null
+        $summaryLines.Add("| Failed | ❌ $pesterFailed |") | Out-Null
+        $summaryLines.Add("| Skipped | ⏭️ $pesterSkipped |") | Out-Null
+        $summaryLines.Add("| Not Run | ⏸️ $pesterNotRun |") | Out-Null
 
         if ($cases.Count -gt 0) {
           $maxCases = 25

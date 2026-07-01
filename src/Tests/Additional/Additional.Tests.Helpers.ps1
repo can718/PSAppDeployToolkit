@@ -269,7 +269,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplate
 
     $resolvedPackageRoot = Resolve-PSADTPackageRoot -RootPath $PackageDir
 
-    $recordingModuleSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psm1'
     if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
     {
         $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
@@ -355,7 +355,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
         }
     }
 
-    $templateRunnerPath = Join-Path $PSScriptRoot '..\V4\_Shared\Invoke-ADTTemplateRunner.ps1'
+    $templateRunnerPath = Join-Path $PSScriptRoot '..\_Shared\Invoke-ADTTemplateRunner.ps1'
     $templateParamsPath = Join-Path $PSScriptRoot ("..\V4\$LogPrefix\New-ADTTemplate.params.ps1")
 
     if (-not (Test-Path -LiteralPath $templateRunnerPath -PathType Leaf))
@@ -461,8 +461,8 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
         Write-Information "::info::[$LogPrefix] Package generation completed at '$PackageDir'." -InformationAction Continue
     }
 
-    $recordingModuleSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
-    $recordingManifestSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psd1'
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psm1'
+    $recordingManifestSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psd1'
     if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
     {
         $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
