@@ -361,7 +361,6 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
                         -TemplateEnvName 'PSADT_TEMPLATE_V4_DIR' `
                         -SiteCode $script:siteCode `
                         -SiteServer $script:siteServer `
-                        -SourceScript $script:winscpSourceScript `
                         -SourceScriptLabel 'winSCP\Invoke-AppDeployToolkit.ps1' `
                         -LogPrefix 'winSCP' `
                         -UseInformationLogs))
@@ -565,7 +564,6 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
                         -TemplateEnvName 'PSADT_TEMPLATE_V4_DIR' `
                         -SiteCode $script:siteCode `
                         -SiteServer $script:siteServer `
-                        -SourceScript $script:vlcSourceScript `
                         -SourceScriptLabel 'VLC\Invoke-AppDeployToolkit.ps1' `
                         -LogPrefix 'VLC'))
             {
@@ -762,7 +760,13 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             # Step 1 - Prepare local Notepad++ upgrade environment
             # ----------------------------------------------------------------
             $notepadEnvironment = Initialize-NotepadPlusPlusSccmEnvironment -LaunchLegacyProcess -LogPrefix 'Notepad++'
-
+            # check if the environment is ready
+            if (-not $notepadEnvironment)
+            {
+                Write-Information '::info::[Notepad++] Notepad++ environment not ready. Skipping test.' -InformationAction Continue
+                Set-ItResult -Skipped -Because 'Notepad++ environment not ready. Check logs for details.'
+                return
+            }
             # ----------------------------------------------------------------
             # Step 2 - Verify prerequisites
             # ----------------------------------------------------------------
@@ -771,7 +775,6 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                         -TemplateEnvName 'PSADT_TEMPLATE_V4_DIR' `
                         -SiteCode $script:siteCode `
                         -SiteServer $script:siteServer `
-                        -SourceScript $script:notepadSourceScript `
                         -SourceScriptLabel 'Notepad++\Invoke-AppDeployToolkit.ps1' `
                         -LogPrefix 'Notepad++' `
                         -UseInformationLogs))

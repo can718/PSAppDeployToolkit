@@ -1,4 +1,5 @@
-﻿function Invoke-ADTTemplateRunner {
+﻿function Invoke-ADTTemplateRunner
+{
     param (
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrWhiteSpace()]
@@ -15,7 +16,6 @@
         [Parameter(Mandatory = $false)]
         [ValidateNotNull()]
         [System.Collections.Generic.List[System.String]]$SupportFiles,
-        
         [Parameter(Mandatory = $false)]
         [ValidateNotNullOrWhiteSpace()]
         [System.String]$Name
@@ -31,10 +31,7 @@
     {
         throw "TemplatefilePath must point to a .ps1 file. Current value: [$TemplatefilePath]"
     }
-
-    # Dot-source the template parameter file into local scope so declared variables are available.
     . $TemplatefilePath
-
     $params = $null
 
     if (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore)
@@ -101,5 +98,5 @@
     }
 
     New-ADTTemplate @params
-     
+
 }

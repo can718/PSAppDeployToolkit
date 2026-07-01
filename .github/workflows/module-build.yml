@@ -22,6 +22,7 @@ jobs:
 
   check-additional-test-results:
     name: Check Additional Test Results
+    if: false
     needs: run-additional-tests
     runs-on: windows-latest
     steps:

@@ -36,10 +36,10 @@ function Initialize-TerraForgeReporting
     )
 
     $result = @{
-        Enabled = $false
+        Enabled     = $false
         AccessToken = $null
-        TestRunId = $env:TEST_RUN_ID
-        ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL
+        TestRunId   = $env:TEST_RUN_ID
+        ApiBaseUrl  = $env:TERRAFORGE_API_BASE_URL
     }
 
     $helperPath = [System.IO.Path]::GetFullPath((Join-Path $ScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
@@ -197,45 +197,137 @@ function New-IntuneTestWorkDir
         [string]$BasePath,
 
         [Parameter(Mandatory)]
-        [string]$InstallerSourceDir,
-
-        [Parameter(Mandatory)]
-        [string]$RunnerScriptPath
+        [string]$TemplateParamsPath
     )
 
     $workDir = Join-Path $BasePath $AppFolderName
-    New-Item -Path $workDir -ItemType Directory -Force | Out-Null
-
-    # Step 1: Copy PSADT v4 template
-    $v4Path = $env:PSADT_TEMPLATE_V4_DIR
-    if (-not (Test-Path $v4Path))
+    if (Test-Path -LiteralPath $workDir)
     {
-        throw "PSADT v4 template folder missing: $v4Path"
+        Remove-Item -Path $workDir -Recurse -Force
     }
-    Copy-Item -Path (Join-Path $v4Path '*') -Destination $workDir -Recurse -Force
-    Write-Information "[$AppFolderName] Copied PSADT template from '$v4Path' to '$workDir'." -InformationAction Continue
 
-    # Step 2: Copy installer files
-    $filesDir = Join-Path $workDir 'Files'
-    if (-not (Test-Path $filesDir))
+    $templateRunnerPath = Join-Path $PSScriptRoot '..\..\_Shared\Invoke-ADTTemplateRunner.ps1'
+    if (-not (Test-Path -LiteralPath $templateRunnerPath -PathType Leaf))
     {
-        New-Item -Path $filesDir -ItemType Directory -Force | Out-Null
+        throw "Template runner file not found: $templateRunnerPath"
     }
-    $installerFile = Get-ChildItem -Path $InstallerSourceDir -File | Select-Object -First 1
-    if (-not $installerFile)
+    if (-not (Test-Path -LiteralPath $TemplateParamsPath -PathType Leaf))
     {
-        throw "No installer file found in '$InstallerSourceDir'."
+        throw "Template parameter file not found: $TemplateParamsPath"
     }
-    Copy-Item -Path $installerFile.FullName -Destination $filesDir -Force
-    Write-Information "[$AppFolderName] Copied installer '$($installerFile.Name)' to '$filesDir'." -InformationAction Continue
 
-    # Step 3: Copy Invoke-AppDeployToolkit.ps1 runner script
-    $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
-    Copy-Item -Path $RunnerScriptPath -Destination $targetScript -Force
-    Write-Information "[$AppFolderName] Copied runner script to '$targetScript'." -InformationAction Continue
+    $v4TemplatePath = $env:PSADT_TEMPLATE_V4_DIR
+    if ([string]::IsNullOrWhiteSpace($v4TemplatePath) -or -not (Test-Path -LiteralPath $v4TemplatePath -PathType Container))
+    {
+        throw "PSADT_TEMPLATE_V4_DIR is missing or invalid: $v4TemplatePath"
+    }
+
+    $psadtManifestPath = Get-ChildItem -Path $v4TemplatePath -Filter 'PSAppDeployToolkit.psd1' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+    if ([string]::IsNullOrWhiteSpace($psadtManifestPath))
+    {
+        throw "Unable to find PSAppDeployToolkit.psd1 under PSADT_TEMPLATE_V4_DIR: $v4TemplatePath"
+    }
+
+    Import-Module -FullyQualifiedName $psadtManifestPath -Force -ErrorAction Stop
+
+    . $templateRunnerPath
+    . $TemplateParamsPath
+
+    if (-not (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore))
+    {
+        throw "Variable `$NewADTTemplateParameters was not found after loading [$TemplateParamsPath]."
+    }
+
+    $templateParams = (Get-Variable -Name NewADTTemplateParameters -Scope Local).Value
+    if ($null -eq $templateParams -or $templateParams -isnot [System.Collections.IDictionary])
+    {
+        throw "Variable `$NewADTTemplateParameters in [$TemplateParamsPath] is not a hashtable/dictionary."
+    }
+
+    $filesValue = $templateParams['Files']
+    if ($null -eq $filesValue)
+    {
+        throw "Template parameter file [$TemplateParamsPath] does not define a non-null [Files] value."
+    }
+
+    $filesList = [System.Collections.Generic.List[System.String]]::new()
+    foreach ($filePath in @($filesValue))
+    {
+        if (-not [System.String]::IsNullOrWhiteSpace([string]$filePath))
+        {
+            $filesList.Add([string]$filePath)
+        }
+    }
+    if ($filesList.Count -eq 0)
+    {
+        throw "Template parameter file [$TemplateParamsPath] did not resolve any valid [Files] entries."
+    }
+
+    $invokeTemplateParams = @{
+        TemplatefilePath = $TemplateParamsPath
+        DestinationPath  = $BasePath
+        Name             = $AppFolderName
+        Files            = $filesList
+    }
+
+    if ($templateParams.Contains('SupportFiles') -and $null -ne $templateParams['SupportFiles'])
+    {
+        $supportFilesList = [System.Collections.Generic.List[System.String]]::new()
+        foreach ($supportFilePath in @($templateParams['SupportFiles']))
+        {
+            if (-not [System.String]::IsNullOrWhiteSpace([string]$supportFilePath))
+            {
+                $supportFilesList.Add([string]$supportFilePath)
+            }
+        }
+        if ($supportFilesList.Count -gt 0)
+        {
+            $invokeTemplateParams.SupportFiles = $supportFilesList
+        }
+    }
+
+    Invoke-ADTTemplateRunner @invokeTemplateParams
+
+    $resolvedPackageRoot = if (Test-Path -LiteralPath (Join-Path $workDir 'Invoke-AppDeployToolkit.ps1') -PathType Leaf)
+    {
+        $workDir
+    }
+    else
+    {
+        (Get-ChildItem -Path $workDir -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } | Select-Object -First 1 -ExpandProperty FullName)
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedPackageRoot))
+    {
+        $resolvedPackageRoot = $workDir
+    }
+
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\..\_Shared\PSAppDeployToolkit.Recording.psm1'
+    $recordingManifestSource = Join-Path $PSScriptRoot '..\..\_Shared\PSAppDeployToolkit.Recording.psd1'
+    if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
+    {
+        $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
+        if (-not (Test-Path -LiteralPath $recordingDir -PathType Container))
+        {
+            New-Item -Path $recordingDir -ItemType Directory -Force | Out-Null
+        }
+
+        Copy-Item -Path $recordingModuleSource -Destination (Join-Path $recordingDir 'PSAppDeployToolkit.Recording.psm1') -Force
+        if (Test-Path -LiteralPath $recordingManifestSource -PathType Leaf)
+        {
+            Copy-Item -Path $recordingManifestSource -Destination (Join-Path $recordingDir 'PSAppDeployToolkit.Recording.psd1') -Force
+        }
+    }
+
+    $filesDir = Join-Path $resolvedPackageRoot 'Files'
+    if (-not (Test-Path -LiteralPath $filesDir -PathType Container))
+    {
+        throw "Files directory was not created by template generation: $filesDir"
+    }
+
+    Write-Information "[$AppFolderName] Generated package from V4 template params '$TemplateParamsPath' into '$resolvedPackageRoot'." -InformationAction Continue
 
     return @{
-        WorkDir = $workDir
+        WorkDir  = $resolvedPackageRoot
         FilesDir = $filesDir
     }
 }
@@ -291,7 +383,7 @@ function New-IntuneWinPackage
 
     return @{
         IntuneWinPath = $newIntuneWinFile
-        DisplayName = $displayName
+        DisplayName   = $displayName
     }
 }
 
@@ -391,9 +483,7 @@ function Publish-IntuneWin32App
     while (-not $win32App -and $retryCount -lt $MaxRetries)
     {
         Start-Sleep -Seconds $RetryIntervalSeconds
-        $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose |
-            Sort-Object -Property createdDateTime -Descending |
-            Select-Object -First 1
+        $win32App = Get-IntuneWin32App -DisplayName $DisplayName -Verbose | Sort-Object -Property createdDateTime -Descending | Select-Object -First 1
         $retryCount++
     }
 
@@ -693,7 +783,7 @@ function Initialize-IntuneTestGroup
     )
 
     $result = @{
-        GroupId = $null
+        GroupId    = $null
         SkipReason = $null
     }
 
@@ -727,10 +817,10 @@ function Initialize-IntuneTestGroup
 
         # Create a fresh security group.
         $group = New-MgGroup -BodyParameter @{
-            displayName = $testGroupName
+            displayName     = $testGroupName
             securityEnabled = $true
-            mailEnabled = $false
-            mailNickname = [System.Guid]::NewGuid().Guid
+            mailEnabled     = $false
+            mailNickname    = [System.Guid]::NewGuid().Guid
         } -ErrorAction Stop
         $result.GroupId = $group.Id
         Write-Information "Created test group '$testGroupName' with ObjectId: $($result.GroupId)" -InformationAction Continue

@@ -147,12 +147,13 @@ Describe 'Intune Tests' {
             # Define all apps to install in parallel.
             $script:ParallelApps = @(
                 @{
-                    Name              = 'VLC'
-                    AppFolderName     = 'VLC'
-                    InstallerSourceDir = 'C:\Tools\Intune\vlc'
-                    RegDisplayName    = 'VLC media player'
-                    RegVersionValue   = '3.0.23'
-                    RegVersionName    = 'DisplayVersion'
+                    Name                 = 'VLC'
+                    TemplateName         = 'VLC'
+                    AppFolderName        = 'VLC'
+                    InstallerSourceDir   = 'C:\Tools\Intune\vlc'
+                    RegDisplayName       = 'VLC media player'
+                    RegVersionValue      = '3.0.23'
+                    RegVersionName       = 'DisplayVersion'
                     DetectionRuleBuilder = {
                         New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                             -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
@@ -160,12 +161,13 @@ Describe 'Intune Tests' {
                     }
                 }
                 @{
-                    Name              = 'WinSCP'
-                    AppFolderName     = 'WinSCP'
-                    InstallerSourceDir = 'C:\Tools\Intune\WinSCP'
-                    RegDisplayName    = 'WinSCP'
-                    RegVersionValue   = '6.5.6'
-                    RegVersionName    = 'DisplayVersion'
+                    Name                 = 'WinSCP'
+                    TemplateName         = 'WinSCP'
+                    AppFolderName        = 'WinSCP'
+                    InstallerSourceDir   = 'C:\Tools\Intune\WinSCP'
+                    RegDisplayName       = 'WinSCP'
+                    RegVersionValue      = '6.5.6'
+                    RegVersionName       = 'DisplayVersion'
                     DetectionRuleBuilder = {
                         param($FilesDir)
                         $msiFile = Get-ChildItem -Path $FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -175,14 +177,15 @@ Describe 'Intune Tests' {
                     }
                 }
                 @{
-                    Name              = 'Notepad++'
-                    SkipUninstall     = $true
-                    AppFolderName     = 'Notepad++'
-                    InstallerSourceDir = 'C:\Tools\Intune\Notepad6.6.4'
-                    RegDisplayName    = 'Notepad++'
-                    RegVersionValue   = '6.6.4'
-                    RegVersionName    = 'DisplayVersion'
-                    PreInstallScript  = {
+                    Name                 = 'Notepad++'
+                    SkipUninstall        = $true
+                    TemplateName         = 'Notepad++'
+                    AppFolderName        = 'Notepad++'
+                    InstallerSourceDir   = 'C:\Tools\Intune\Notepad6.6.4'
+                    RegDisplayName       = 'Notepad++'
+                    RegVersionValue      = '6.6.4'
+                    RegVersionName       = 'DisplayVersion'
+                    PreInstallScript     = {
                         # Install lower version as prerequisite for upgrade test.
                         $installerDir = 'C:\Tools\Intune\Notepad6.2.3'
                         $installerPath = Join-Path $installerDir 'npp.6.2.3.Installer.exe'
@@ -210,8 +213,12 @@ Describe 'Intune Tests' {
                             New-Item -Path $newDir -ItemType Directory -Force | Out-Null
                             Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-5/npp.6.6.4.Installer.exe' -OutFile $newPath -UseBasicParsing
                         }
+
+                        # Keep a copy at the V4 template default file path.
+                        $templateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
+                        Copy-Item -Path $newPath -Destination $templateExpectedInstallerPath -Force
                     }
-                    PostInstallScript  = {
+                    PostInstallScript    = {
                         $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
                         if (Test-Path $notepadExePath)
                         {
@@ -255,12 +262,11 @@ Describe 'Intune Tests' {
                 }
 
                 # Prepare working directory.
-                $runnerScript = Join-Path $PSScriptRoot "$($app.AppFolderName)\Invoke-AppDeployToolkit.ps1"
+                $templateParamsPath = Join-Path $PSScriptRoot "..\V4\$($app.TemplateName)\New-ADTTemplate.params.ps1"
                 $env = New-IntuneTestWorkDir `
                     -AppFolderName      $app.AppFolderName `
                     -BasePath           $script:BasePath `
-                    -InstallerSourceDir $app.InstallerSourceDir `
-                    -RunnerScriptPath   $runnerScript
+                    -TemplateParamsPath $templateParamsPath
 
                 # Wrap into .intunewin package.
                 $package = New-IntuneWinPackage `

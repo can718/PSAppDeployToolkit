@@ -162,8 +162,8 @@ function script:Test-PSADTPackageBuildPrerequisites
         [string]$SiteCode,
         [Parameter(Mandatory = $true)]
         [string]$SiteServer,
-        [Parameter(Mandatory = $true)]
-        [string]$SourceScript,
+        # [Parameter(Mandatory = $true)]
+        # [string]$SourceScript,
         [Parameter(Mandatory = $true)]
         [string]$SourceScriptLabel,
         [Parameter(Mandatory = $true)]
@@ -192,7 +192,6 @@ function script:Test-PSADTPackageBuildPrerequisites
     }
 
     Test-Path $TemplateDir | Should -BeTrue -Because "V4 template directory '$TemplateDir' must exist"
-   # Test-Path $SourceScript | Should -BeTrue -Because "$SourceScriptLabel must exist"
 
     if ($UseInformationLogs)
     {
@@ -228,9 +227,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplate
             return $RootPath
         }
 
-        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
-            Select-Object -First 1 -ExpandProperty FullName
+        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } | Select-Object -First 1 -ExpandProperty FullName
 
         if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
         {
@@ -272,7 +269,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplate
 
     $resolvedPackageRoot = Resolve-PSADTPackageRoot -RootPath $PackageDir
 
-    $recordingModuleSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psm1'
     if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
     {
         $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
@@ -326,9 +323,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
             return $RootPath
         }
 
-        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } |
-            Select-Object -First 1 -ExpandProperty FullName
+        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf } | Select-Object -First 1 -ExpandProperty FullName
 
         if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
         {
@@ -360,7 +355,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
         }
     }
 
-    $templateRunnerPath = Join-Path $PSScriptRoot '..\V4\_Shared\Invoke-ADTTemplateRunner.ps1'
+    $templateRunnerPath = Join-Path $PSScriptRoot '..\_Shared\Invoke-ADTTemplateRunner.ps1'
     $templateParamsPath = Join-Path $PSScriptRoot ("..\V4\$LogPrefix\New-ADTTemplate.params.ps1")
 
     if (-not (Test-Path -LiteralPath $templateRunnerPath -PathType Leaf))
@@ -436,9 +431,9 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
 
     $invokeTemplateParams = @{
         TemplatefilePath = $templateParamsPath
-        DestinationPath = $packageDirParent
-        Name = $packageDirName
-        Files = $filesList
+        DestinationPath  = $packageDirParent
+        Name             = $packageDirName
+        Files            = $filesList
     }
 
     if ($templateParams.Contains('SupportFiles') -and $null -ne $templateParams['SupportFiles'])
@@ -457,7 +452,7 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
         }
     }
 
-    Invoke-ADTTemplateRunner @invokeTemplateParams 
+    Invoke-ADTTemplateRunner @invokeTemplateParams
 
     $resolvedPackageRoot = Resolve-PSADTPackageRoot -RootPath $PackageDir
 
@@ -466,8 +461,8 @@ function script:Initialize-PSADTPackageDirectoryFromTemplateV4
         Write-Information "::info::[$LogPrefix] Package generation completed at '$PackageDir'." -InformationAction Continue
     }
 
-    $recordingModuleSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psm1'
-    $recordingManifestSource = Join-Path $PSScriptRoot '..\V4\_Shared\PSAppDeployToolkit.Recording.psd1'
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psm1'
+    $recordingManifestSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psd1'
     if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
     {
         $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
@@ -683,9 +678,9 @@ function script:Initialize-NotepadPlusPlusSccmEnvironment
 
     return @{
         LegacyInstallerPath = $legacyInstallerPath
-        LegacyExePath = $legacyExePath
+        LegacyExePath       = $legacyExePath
         TargetInstallerPath = $targetInstallerPath
-        TargetInstallerDir = $TargetInstallerDir
+        TargetInstallerDir  = $TargetInstallerDir
     }
 }
 
