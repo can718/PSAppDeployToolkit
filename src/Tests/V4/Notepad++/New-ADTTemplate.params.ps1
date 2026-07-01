@@ -1,4 +1,9 @@
-﻿$NewADTTemplateParameters = @{
+﻿[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSUseDeclaredVarsMoreThanAssignments',
+    'NewADTTemplateParameters',
+    Justification = 'This hashtable is consumed by external test harness code after the script is loaded.'
+)]
+$NewADTTemplateParameters = @{
     SessionProperties        = @{
         AppVendor                   = 'Don HO don.h@free.fr'
         AppName                     = 'Notepad++'
@@ -21,7 +26,6 @@
     }
     Destination              = 'C:\PSADT\NotepadPlusPlus'
     Files                    = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
-    
     PreInstallScriptBlock    = {
         Start-AdditionalTestRecording
 

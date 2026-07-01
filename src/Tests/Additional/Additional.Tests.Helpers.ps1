@@ -162,8 +162,8 @@ function script:Test-PSADTPackageBuildPrerequisites
         [string]$SiteCode,
         [Parameter(Mandatory = $true)]
         [string]$SiteServer,
-        [Parameter(Mandatory = $true)]
-        [string]$SourceScript,
+        # [Parameter(Mandatory = $true)]
+        # [string]$SourceScript,
         [Parameter(Mandatory = $true)]
         [string]$SourceScriptLabel,
         [Parameter(Mandatory = $true)]
