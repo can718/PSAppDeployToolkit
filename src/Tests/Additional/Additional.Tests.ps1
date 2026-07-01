@@ -893,3 +893,206 @@ if (Test-Path $uninstallKey)
         }
     }
 }
+
+Describe 'DigiExam SCCM Deployment' -Tag 'DigiExam' -Skip {
+    Context 'Build DigiExam package from V4 template and deploy into SCCM' {
+
+        BeforeAll {
+            $ctx = New-PSADTAppTestContext `
+                -SourceScriptRelativePath 'DigiExam\Invoke-AppDeployToolkit.ps1' `
+                -PackageDir 'C:\PSADT\DigiExam' `
+                -AppName 'DigiExam (PSADT v4 DigiExam)' `
+                -AppVendor 'Martin Prikryl' `
+                -AppVersion '6.5.6' `
+                -DeploymentTypeName 'DigiExam 6.5.6 (v4 DigiExam)' `
+                -ContentSubPath 'DigiExam'
+
+            $script:v3Dir = $ctx.V3Dir
+            $script:digiExamSourceScript = $ctx.SourceScript
+            $script:digiExamPackageDir = $ctx.PackageDir
+            $script:digiExamAppName = $ctx.AppName
+            $script:digiExamAppVendor = $ctx.AppVendor
+            $script:digiExamAppVersion = $ctx.AppVersion
+            $script:digiExamDTName = $ctx.DeploymentTypeName
+            $script:digiExamContentUNC = $ctx.ContentUNC
+            $script:targetCollection = $ctx.TargetCollection
+            $script:digiExamInstallDeploySucceeded = $false
+            $script:siteCode = $ctx.SiteCode
+            $script:siteServer = $ctx.SiteServer
+            $script:cmModulePath = $ctx.CmModulePath
+        }
+
+        AfterAll {
+            # if (Test-Path $script:digiExamPackageDir)
+            # {
+            #     Remove-Item $script:digiExamPackageDir -Recurse -Force -ErrorAction SilentlyContinue
+            #     Write-Verbose "  [teardown] Removed DigiExam package directory: $($script:digiExamPackageDir)"
+            # }
+        }
+
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass = 'DigiExam Package Preparation and SCCM Deployment / Build DigiExam package from V4 template and deploy into SCCM'
+            $script:CurrentTestMethod = $testInfo.Name
+            $script:CurrentTestKey = New-TFTestCaseKey -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod -TestKey $script:CurrentTestKey
+        }
+
+        AfterEach {
+            $currentTest = $____Pester.CurrentTest
+            Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
+        }
+
+        It 'Install DigiExam via SCCM application deployment' {
+            Write-Information "::info::[DigiExam] Step 0: Verifying template validation gate..."
+            if (-not (Test-PSADTTemplateValidationGate))
+            {
+                Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
+                return
+            }
+            Write-Information "::info::[DigiExam] Template validation gate satisfied." -InformationAction Continue
+
+            # ----------------------------------------------------------------
+            # Step 1 - Verify prerequisites
+            # ----------------------------------------------------------------
+            if (-not (Test-PSADTPackageBuildPrerequisites `
+                        -TemplateDir $script:v3Dir `
+                        -TemplateEnvName 'PSADT_TEMPLATE_V3_DIR' `
+                        -SiteCode $script:siteCode `
+                        -SiteServer $script:siteServer `
+                        -SourceScriptLabel 'DigiExam\Invoke-AppDeployToolkit.ps1' `
+                        -LogPrefix 'DigiExam' `
+                        -UseInformationLogs))
+            {
+                return
+            }
+
+            # ----------------------------------------------------------------
+            # Step 2 - Copy V3 template to DigiExam package directory
+            # ----------------------------------------------------------------
+            Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v3Dir -PackageDir $script:digiExamPackageDir -LogPrefix 'DigiExam' -UseInformationLogs
+
+            # # ----------------------------------------------------------------
+            # # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with DigiExam version
+            # # ----------------------------------------------------------------
+            # $destScript = Update-PSADTPackageDeployScript `
+            #     -PackageDir $script:digiExamPackageDir `
+            #     -SourceScript $script:digiExamSourceScript `
+            #     -ExpectedContentPattern 'DigiExam' `
+            #     -LogPrefix 'DigiExam' `
+            #     -UseInformationLogs
+
+            # # ----------------------------------------------------------------
+            # # Step 4 - Copy DigiExam MSI into Files folder
+            # # ----------------------------------------------------------------
+            # $msiSource = 'C:\Tools\Intune\DigiExam\DigiExam-6.5.6.msi'
+            # Copy-PSADTPackageInstallerToFiles `
+            #     -DeployScriptPath $destScript.FullName `
+            #     -InstallerSource $msiSource `
+            #     -InstallerLabel 'MSI' `
+            #     -LogPrefix 'DigiExam' `
+            #     -UseInformationLogs `
+            #     -ExpectedFileName 'DigiExam-6.5.6.msi'
+
+            # ----------------------------------------------------------------
+            # Step 5 - Verify SMB content share and directories exist
+            # ----------------------------------------------------------------
+            if (-not (Assert-PSADTContentPathReady `
+                        -CmModulePath $script:cmModulePath `
+                        -PackageDir $script:digiExamPackageDir `
+                        -ContentUNC $script:digiExamContentUNC `
+                        -LogPrefix 'DigiExam' `
+                        -UseInformationLogs))
+            {
+                return
+            }
+
+            # ----------------------------------------------------------------
+            # Step 6 - Import application into SCCM
+            # ----------------------------------------------------------------
+            Write-Verbose '[DigiExam] Step 6: Importing DigiExam application into SCCM...'
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                Write-Information '::info::[DigiExam] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
+                $detectScript = @'
+$uninstallRoots = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+$app = foreach ($root in $uninstallRoots)
+{
+    if (Test-Path $root)
+    {
+        Get-ChildItem -Path $root |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like '*DigiExam*' -and $_.DisplayVersion -like '6.5.6*' }
+    }
+}
+if ($app) { Write-Host "Installed" }
+'@
+
+                New-PSADTApplicationWithDeploymentType `
+                    -AppName $script:digiExamAppName `
+                    -Vendor $script:digiExamAppVendor `
+                    -Version $script:digiExamAppVersion `
+                    -DeploymentTypeName $script:digiExamDTName `
+                    -ContentUNC $script:digiExamContentUNC `
+                    -PackageDir $script:digiExamPackageDir `
+                    -DetectScript $detectScript `
+                    -Description "PSADT v4 DigiExam template - DigiExam $script:digiExamAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+
+                # ----------------------------------------------------------------
+                # Step 7 - Distribute content
+                # ----------------------------------------------------------------
+                Write-Verbose '[DigiExam] Step 7: Triggering content distribution...'
+                Start-PSADTContentDistributionAndAssert -AppName $script:digiExamAppName -LogPrefix 'DigiExam'
+
+                # ----------------------------------------------------------------
+                # Step 7b - Deploy application to collection
+                # ----------------------------------------------------------------
+                Write-Verbose "[DigiExam] Step 7b: Deploying application to collection '$($script:targetCollection)'..."
+                New-PSADTRequiredDeployment -AppName $script:digiExamAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'DigiExam'
+
+                # ----------------------------------------------------------------
+                # Step 8 - Poll application deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[DigiExam] Step 8: Polling application deployment status...' -InformationAction Continue
+                $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:digiExamAppName -SiteCode $script:siteCode -Label 'Deployment'
+                Write-Information $deploymentSummary -InformationAction Continue
+                $script:digiExamInstallDeploySucceeded = $true
+            }
+        }
+
+        It 'Uninstall DigiExam via SCCM application deployment' {
+            if (-not $script:digiExamInstallDeploySucceeded)
+            {
+                Set-ItResult -Skipped -Because "Prerequisite test 'Installs DigiExam via SCCM application deployment' did not complete successfully"
+                return
+            }
+
+            if (-not $script:cmModulePath)
+            {
+                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
+                return
+            }
+
+            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
+                return
+            }
+
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                $app = Get-CMApplication -Name $script:digiExamAppName -ErrorAction SilentlyContinue
+                $app | Should -Not -BeNullOrEmpty -Because 'DigiExam application must exist before creating uninstall deployment'
+
+                New-PSADTRequiredDeployment -AppName $script:digiExamAppName -TargetCollection $script:targetCollection -DeployAction Uninstall -LogPrefix 'DigiExam'
+
+                # ----------------------------------------------------------------
+                # Step 9 - Poll uninstall deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[DigiExam] Step 9: Polling uninstall deployment status...' -InformationAction Continue
+                [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:digiExamAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+            }
+        }
+    }
+}

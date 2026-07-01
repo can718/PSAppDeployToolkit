@@ -728,6 +728,7 @@ function script:New-PSADTAppTestContext
     $parallelSuffix = Get-PSADTParallelSafeSuffix
 
     return @{
+        V3Dir              = $env:PSADT_TEMPLATE_V3_DIR
         V4Dir              = $env:PSADT_TEMPLATE_V4_DIR
         SourceScript       = $sourceScript
         SourceFolder       = $sourceFolder
@@ -899,6 +900,21 @@ function script:Get-PSADTDeploymentCommands
             Uninstall = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
         }
     }
+        if (Test-Path (Join-Path $PackageDir 'Deploy-Application.exe'))
+        {
+            return @{
+                Install   = 'Deploy-Application.exe -DeploymentType Install -DeployMode Interactive'
+                Uninstall = 'Deploy-Application.exe -DeploymentType Uninstall -DeployMode Interactive'
+            }
+        }
+
+        if (Test-Path (Join-Path $PackageDir 'Deploy-Application.ps1'))
+        {
+            return @{
+                Install   = 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Deploy-Application.ps1" -DeploymentType Install'
+                Uninstall = 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Deploy-Application.ps1" -DeploymentType Uninstall'
+            }
+        }
 
     return @{
         Install   = 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File "Invoke-AppDeployToolkit.ps1" -DeploymentType Install'
