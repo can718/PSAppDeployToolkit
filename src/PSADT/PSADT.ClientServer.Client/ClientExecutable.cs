@@ -43,6 +43,8 @@ namespace PSADT.ClientServer
     /// ensures they conform to the expected format before executing the requested operation.</remarks>
     internal static class ClientExecutable
     {
+        private static bool winFormsInitialized;
+
         /// <summary>
         /// Initializes the application by setting the unhandled exception handler for the dialog manager.
         /// </summary>
@@ -132,6 +134,8 @@ namespace PSADT.ClientServer
             // Detect what mode the executable has been asked to run in.
             try
             {
+                EnsureWinFormsInitialized();
+
                 // Determine the mode of operation based on the provided arguments.
                 if (argv.Length == 0)
                 {
@@ -164,6 +168,25 @@ namespace PSADT.ClientServer
                 // This block is here as a fail-safe and should never be reached.
                 return InvokeMainErrorHandler(ex, $"An unexpected exception occurred with HRESULT [{ex.HResult.ToString("X8", CultureInfo.InvariantCulture)}].", ClientExitCode.Unknown);
             }
+        }
+
+        /// <summary>
+        /// Initializes WinForms application-wide settings once, before any WinForms-backed UI objects are created.
+        /// </summary>
+        private static void EnsureWinFormsInitialized()
+        {
+            if (winFormsInitialized)
+            {
+                return;
+            }
+
+            Type? applicationType = Type.GetType("System.Windows.Forms.Application, System.Windows.Forms", throwOnError: false);
+            if (applicationType is not null)
+            {
+                applicationType.GetMethod("EnableVisualStyles", BindingFlags.Public | BindingFlags.Static)?.Invoke(obj: null, parameters: null);
+                applicationType.GetMethod("SetCompatibleTextRenderingDefault", BindingFlags.Public | BindingFlags.Static)?.Invoke(obj: null, parameters: [false]);
+            }
+            winFormsInitialized = true;
         }
 
         /// <summary>
