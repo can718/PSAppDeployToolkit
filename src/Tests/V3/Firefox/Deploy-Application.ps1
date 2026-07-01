@@ -206,7 +206,7 @@ Try {
 
         ## <Perform Installation tasks here>
 
-        Execute-MSI -Action Install -Path 'C:\tools\intune\Firefox Setup 152.0.4.msi'
+        Execute-MSI -Action Install -Path 'Digiexam_26.1.24_x64_en-US.msi'
 
         ##*===============================================
         ##* POST-INSTALLATION
@@ -251,7 +251,7 @@ Try {
 
         ## <Perform Uninstallation tasks here>
 
-        Execute-MSI -Action Uninstall -Path 'Firefox Setup 152.0.4.msi'
+        Execute-MSI -Action Uninstall -Path 'Digiexam_26.1.24_x64_en-US.msi'
 
         ##*===============================================
         ##* POST-UNINSTALLATION
@@ -289,7 +289,7 @@ Try {
         }
         ## <Perform Repair tasks here>
 
-        Execute-MSI -Action Repair -Path 'C:\tools\intune\Firefox Setup 152.0.4.msi' -RepairFromSource $true
+        Execute-MSI -Action Repair -Path 'Digiexam_26.1.24_x64_en-US.msi' -RepairFromSource $true
 
         ##*===============================================
         ##* POST-REPAIR

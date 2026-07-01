@@ -9,6 +9,7 @@ env:
 jobs:
   discover-agent:
     name: Discover Agent Machine
+    timeout-minutes: 3
     runs-on: [self-hosted, Windows, X64, API]
     outputs:
       runner-label: ${{ steps.launch-agent.outputs.runner-label }}
@@ -356,6 +357,14 @@ jobs:
         Write-Host "V4 template ready at: $v4Dest"
         Write-Host "V3 contents: $((Get-ChildItem $v3Dest | Select-Object -ExpandProperty Name) -join ', ')"
         Write-Host "V4 contents: $((Get-ChildItem $v4Dest | Select-Object -ExpandProperty Name) -join ', ')"
+
+        # remove read-only attributes from copied files to avoid issues during test execution
+        Get-ChildItem $v3Dest -Recurse -Force | Set-Item -Attributes @{
+            Attributes = [System.IO.FileAttributes]::Normal
+        }
+        Get-ChildItem $v4Dest -Recurse -Force | Set-Item -Attributes @{
+            Attributes = [System.IO.FileAttributes]::Normal
+        }
 
         "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
