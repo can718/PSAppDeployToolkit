@@ -761,8 +761,14 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             # ----------------------------------------------------------------
             # Step 1 - Prepare local Notepad++ upgrade environment
             # ----------------------------------------------------------------
-            # $notepadEnvironment = Initialize-NotepadPlusPlusSccmEnvironment -LaunchLegacyProcess -LogPrefix 'Notepad++'
-
+            $notepadEnvironment = Initialize-NotepadPlusPlusSccmEnvironment -LaunchLegacyProcess -LogPrefix 'Notepad++'
+            # check if the environment is ready
+            if (-not $notepadEnvironment)
+            {
+                write-Information '::info::[Notepad++] Notepad++ environment not ready. Skipping test.' -InformationAction Continue
+                Set-ItResult -Skipped -Because 'Notepad++ environment not ready. Check logs for details.'
+                return
+            }
             # ----------------------------------------------------------------
             # Step 2 - Verify prerequisites
             # ----------------------------------------------------------------
