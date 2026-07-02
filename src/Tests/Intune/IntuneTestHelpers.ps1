@@ -363,8 +363,8 @@ function New-IntuneTestWorkDirV4
         $resolvedPackageRoot = $workDir
     }
 
-    $recordingModuleSource = Join-Path $PSScriptRoot '..\..\_Shared\PSAppDeployToolkit.Recording.psm1'
-    $recordingManifestSource = Join-Path $PSScriptRoot '..\..\_Shared\PSAppDeployToolkit.Recording.psd1'
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psm1'
+    $recordingManifestSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psd1'
     if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
     {
         $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'

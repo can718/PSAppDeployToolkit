@@ -80,7 +80,7 @@ https://psappdeploytoolkit.com
 
 
 [CmdletBinding()]
-Param (
+param (
     [Parameter(Mandatory = $false)]
     [ValidateSet('Install', 'Uninstall', 'Repair')]
     [String]$DeploymentType = 'Install',

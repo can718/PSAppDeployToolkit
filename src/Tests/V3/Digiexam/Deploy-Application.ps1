@@ -141,7 +141,7 @@ try
     {
         $InvocationInfo = $HostInvocation
     }
-    Else
+    else
     {
         $InvocationInfo = $MyInvocation
     }
@@ -159,7 +159,7 @@ try
         {
             . $moduleAppDeployToolkitMain -DisableLogging
         }
-        Else
+        else
         {
             . $moduleAppDeployToolkitMain
         }
@@ -176,7 +176,7 @@ try
         {
             $script:ExitCode = $mainExitCode; exit
         }
-        Else
+        else
         {
             exit $mainExitCode
         }
@@ -240,7 +240,7 @@ try
             Show-InstallationPrompt -Message "$appName installation complete." -ButtonRightText 'OK' -Icon Information -NoWait -Timeout 5
         }
     }
-    Elseif ($deploymentType -ieq 'Uninstall')
+    elseif ($deploymentType -ieq 'Uninstall')
     {
         ##*===============================================
         ##* PRE-UNINSTALLATION
@@ -285,7 +285,7 @@ try
             Show-InstallationPrompt -Message "$appName uninstallation complete." -ButtonRightText 'OK' -Icon Information -NoWait -Timeout 5
         }
     }
-    Elseif ($deploymentType -ieq 'Repair')
+    elseif ($deploymentType -ieq 'Repair')
     {
         ##*===============================================
         ##* PRE-REPAIR

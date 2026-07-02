@@ -299,7 +299,7 @@ Describe 'Intune Tests' {
                 # Prepare working directory.
                 if ( $app.TemplateVersion -eq 'V3')
                 {
-                    $runnerScript = Join-Path $PSScriptRoot "$($app.AppFolderName)\Deploy-Application.ps1"
+                    $runnerScript = Join-Path $PSScriptRoot "..\V3\$($app.AppFolderName)\Deploy-Application.ps1"
                     $env = New-IntuneTestWorkDirV3 `
                         -AppFolderName       $app.AppFolderName `
                         -BasePath            $script:BasePath `
@@ -464,7 +464,12 @@ Describe 'Intune Tests' {
             Write-Information "[Parallel Install] Succeeded: $(if ($succeededApps) { $succeededApps -join ', ' } else { 'none' })" -InformationAction Continue
             Write-Information "[Parallel Install] Failed: $(if ($failedApps) { $failedApps -join ', ' } else { 'none' })" -InformationAction Continue
 
-            $failedApps | Should -BeNullOrEmpty -Because "All apps should install successfully. Failed: $($failedApps -join ', ')"
+            # Store failures for per-app assertion in subsequent It blocks.
+            $script:ParallelInstallFailures = $failedApps
+        }
+
+        It '<Name> should install' -ForEach $script:ParallelApps {
+            $script:ParallelInstallResults[$Name] | Should -BeTrue -Because "'$Name' was not installed successfully via Intune MDM sync"
         }
 
         It 'Parallel uninstall all apps' {
@@ -584,7 +589,16 @@ Describe 'Intune Tests' {
             Write-Information "[Parallel Uninstall] Succeeded: $(if ($succeededApps) { $succeededApps -join ', ' } else { 'none' })" -InformationAction Continue
             Write-Information "[Parallel Uninstall] Failed: $(if ($failedApps) { $failedApps -join ', ' } else { 'none' })" -InformationAction Continue
 
-            $failedApps | Should -BeNullOrEmpty -Because "All apps should uninstall successfully. Failed: $($failedApps -join ', ')"
+            # Store results for per-app assertion in subsequent It blocks.
+            $script:ParallelUninstallResults = @{}
+            foreach ($app in $succeededApps)
+            {
+                $script:ParallelUninstallResults[$app] = $true
+            }
+        }
+
+        It '<Name> should uninstall' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) {
+            $script:ParallelUninstallResults[$Name] | Should -BeTrue -Because "'$Name' was not uninstalled successfully via Intune MDM sync"
         }
 
         AfterAll {
