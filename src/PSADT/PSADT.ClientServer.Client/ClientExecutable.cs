@@ -43,6 +43,7 @@ namespace PSADT.ClientServer
     /// ensures they conform to the expected format before executing the requested operation.</remarks>
     internal static class ClientExecutable
     {
+
         /// <summary>
         /// Initializes the application by setting the unhandled exception handler for the dialog manager.
         /// </summary>

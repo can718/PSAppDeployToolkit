@@ -9,6 +9,7 @@ env:
 jobs:
   discover-agent:
     name: Discover Agent Machine
+    timeout-minutes: 3
     runs-on: [self-hosted, Windows, X64, API]
     outputs:
       runner-label: ${{ steps.launch-agent.outputs.runner-label }}
@@ -356,6 +357,13 @@ jobs:
         Write-Host "V4 template ready at: $v4Dest"
         Write-Host "V3 contents: $((Get-ChildItem $v3Dest | Select-Object -ExpandProperty Name) -join ', ')"
         Write-Host "V4 contents: $((Get-ChildItem $v4Dest | Select-Object -ExpandProperty Name) -join ', ')"
+
+        # # Remove only the ReadOnly flag from all copied items.
+        # foreach ($dest in @($v3Dest, $v4Dest)) {
+        #   Get-ChildItem -LiteralPath $dest -Recurse -Force | ForEach-Object {
+        #     $_.Attributes = ($_.Attributes -band (-bnot [System.IO.FileAttributes]::ReadOnly))
+        #   }
+        # }
 
         "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append

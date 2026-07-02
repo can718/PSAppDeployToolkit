@@ -556,17 +556,6 @@ function New-ADTTemplate
                 # Copy in the frontend files.
                 Copy-Item -Path "$([System.Management.Automation.WildcardPattern]::Escape("$Script:PSScriptRoot\opt\Frontend\v$Version"))\*" -Destination $templatePath -Recurse -Force
 
-                # Clear read-only on copied script files so template mutations can be written safely.
-                Get-ChildItem -LiteralPath $templatePath -File -Filter *.ps*1 -Recurse | & {
-                    process
-                    {
-                        if (($_.Attributes -band [System.IO.FileAttributes]::ReadOnly) -ne 0)
-                        {
-                            $_.Attributes = ($_.Attributes -band (-bnot [System.IO.FileAttributes]::ReadOnly))
-                        }
-                    }
-                }
-
                 # Export default module assets to disk.
                 $null = New-Item -Path "$templatePath\Assets" -ItemType Directory -Force
                 $defaultAssets = $Script:ADT.ModuleDefaults.Config.([System.String]::Empty).Ast.EndBlock.Statements.PipelineElements.Expression.KeyValuePairs.Where({ $_.Item1.Value.Equals('Assets') }).Item2.PipelineElements.Expression.KeyValuePairs

@@ -16,7 +16,7 @@ PSApppDeployToolkit is licensed under the GNU LGPLv3 License - (C) 2023 PSAppDep
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the
 Free Software Foundation, either version 3 of the License, or any later version. This program is distributed in the hope that it will be useful, but
 WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
-for more details. You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <http://www.gnu.org/licenses/>.
+for more details. You should have received a copy of the GNU Lesser General Public License along with this program. if not, see <http://www.gnu.org/licenses/>.
 
 .PARAMETER DeploymentType
 
@@ -28,7 +28,7 @@ Specifies whether the installation should be run in Interactive, Silent, or NonI
 
 .PARAMETER AllowRebootPassThru
 
-Allows the 3010 return code (requires restart) to be passed back to the parent process (e.g. SCCM) if detected from an installation. If 3010 is passed back to SCCM, a reboot prompt will be triggered.
+Allows the 3010 return code (requires restart) to be passed back to the parent process (e.g. SCCM) if detected from an installation. if 3010 is passed back to SCCM, a reboot prompt will be triggered.
 
 .PARAMETER TerminalServerMode
 
@@ -54,7 +54,7 @@ powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeploymentType 'Unins
 
 Deploy-Application.exe -DeploymentType "Install" -DeployMode "Silent"
 
-.INPUT
+.INPUTS
 
 None
 
@@ -95,21 +95,24 @@ Param (
     [switch]$DisableLogging = $false
 )
 
-Try {
+try
+{
     ## Set the script execution policy for this process
-    Try {
+    try
+    {
         Set-ExecutionPolicy -ExecutionPolicy 'ByPass' -Scope 'Process' -Force -ErrorAction 'Stop'
     }
-    Catch {
+    catch
+    {
     }
 
     ##*===============================================
     ##* VARIABLE DECLARATION
     ##*===============================================
     ## Variables: Application
-    [String]$appVendor = 'Mozilla'
-    [String]$appName = 'Firefox'
-    [String]$appVersion = '152.0.4'
+    [String]$appVendor = 'voidtools'
+    [String]$appName = 'Everything'
+    [String]$appVersion = '1.4.1.1032'
     [String]$appArch = 'x64'
     [String]$appLang = 'EN'
     [String]$appRevision = '01'
@@ -134,37 +137,47 @@ Try {
     [Hashtable]$deployAppScriptParameters = $PsBoundParameters
 
     ## Variables: Environment
-    If (Test-Path -LiteralPath 'variable:HostInvocation') {
+    if (Test-Path -LiteralPath 'variable:HostInvocation')
+    {
         $InvocationInfo = $HostInvocation
     }
-    Else {
+    else
+    {
         $InvocationInfo = $MyInvocation
     }
     [String]$scriptDirectory = Split-Path -Path $InvocationInfo.MyCommand.Definition -Parent
 
     ## Dot source the required App Deploy Toolkit Functions
-    Try {
+    try
+    {
         [String]$moduleAppDeployToolkitMain = "$scriptDirectory\AppDeployToolkit\AppDeployToolkitMain.ps1"
-        If (-not (Test-Path -LiteralPath $moduleAppDeployToolkitMain -PathType 'Leaf')) {
-            Throw "Module does not exist at the specified location [$moduleAppDeployToolkitMain]."
+        if (-not (Test-Path -LiteralPath $moduleAppDeployToolkitMain -PathType 'Leaf'))
+        {
+            throw "Module does not exist at the specified location [$moduleAppDeployToolkitMain]."
         }
-        If ($DisableLogging) {
+        if ($DisableLogging)
+        {
             . $moduleAppDeployToolkitMain -DisableLogging
         }
-        Else {
+        else
+        {
             . $moduleAppDeployToolkitMain
         }
     }
-    Catch {
-        If ($mainExitCode -eq 0) {
+    catch
+    {
+        if ($mainExitCode -eq 0)
+        {
             [Int32]$mainExitCode = 60008
         }
         Write-Error -Message "Module [$moduleAppDeployToolkitMain] failed to load: `n$($_.Exception.Message)`n `n$($_.InvocationInfo.PositionMessage)" -ErrorAction 'Continue'
         ## Exit the script, returning the exit code to SCCM
-        If (Test-Path -LiteralPath 'variable:HostInvocation') {
+        if (Test-Path -LiteralPath 'variable:HostInvocation')
+        {
             $script:ExitCode = $mainExitCode; Exit
         }
-        Else {
+        else
+        {
             Exit $mainExitCode
         }
     }
@@ -175,19 +188,21 @@ Try {
     ##* END VARIABLE DECLARATION
     ##*===============================================
 
-    If ($deploymentType -ine 'Uninstall' -and $deploymentType -ine 'Repair') {
+    if ($deploymentType -ine 'Uninstall' -and $deploymentType -ine 'Repair')
+    {
         ##*===============================================
         ##* PRE-INSTALLATION
         ##*===============================================
         [String]$installPhase = 'Pre-Installation'
 
-        ## Show Welcome Message, close Firefox if required, allow up to 3 deferrals, and persist the prompt
-        Show-InstallationWelcome -CloseApps 'firefox=Firefox' -AllowDeferCloseApps -DeferTimes 3 -PersistPrompt -MinimizeWindows $false
+        ## Show Welcome Message, close Everything if required, allow up to 3 deferrals, and persist the prompt
+        Show-InstallationWelcome -CloseApps 'Everything=Everything' -AllowDeferCloseApps -DeferTimes 3 -PersistPrompt -MinimizeWindows $false
 
         ## Show Progress Message (with the default message)
         Show-InstallationProgress
 
         ## <Perform Pre-Installation tasks here>
+
 
         ##*===============================================
         ##* INSTALLATION
@@ -195,18 +210,21 @@ Try {
         [String]$installPhase = 'Installation'
 
         ## Handle Zero-Config MSI Installations
-        If ($useDefaultMsi) {
-            [Hashtable]$ExecuteDefaultMSISplat = @{ Action = 'Install'; Path = $defaultMsiFile }; If ($defaultMstFile) {
+        if ($useDefaultMsi)
+        {
+            [Hashtable]$ExecuteDefaultMSISplat = @{ Action = 'Install'; Path = $defaultMsiFile }; if ($defaultMstFile)
+            {
                 $ExecuteDefaultMSISplat.Add('Transform', $defaultMstFile)
             }
-            Execute-MSI @ExecuteDefaultMSISplat; If ($defaultMspFiles) {
+            Execute-MSI @ExecuteDefaultMSISplat; if ($defaultMspFiles)
+            {
                 $defaultMspFiles | ForEach-Object { Execute-MSI -Action 'Patch' -Path $_ }
             }
         }
 
         ## <Perform Installation tasks here>
 
-        Execute-MSI -Action Install -Path 'C:\tools\intune\Firefox Setup 152.0.4.msi'
+        Execute-Process -Path 'Everything-1.4.1.1032.x64-Setup.exe' -Parameters '/S'
 
         ##*===============================================
         ##* POST-INSTALLATION
@@ -215,26 +233,29 @@ Try {
 
         ## <Perform Post-Installation tasks here>
 
-        ## No app-specific post-install customization required for this MSI test sample.
+        Remove-File -Path "$envCommonDesktop\Everything.lnk" -ContinueOnError $true
 
         ## Display a message at the end of the install
-        If (-not $useDefaultMsi) {
+        if (-not $useDefaultMsi)
+        {
             Show-InstallationPrompt -Message "$appName installation complete." -ButtonRightText 'OK' -Icon Information -NoWait
         }
     }
-    ElseIf ($deploymentType -ieq 'Uninstall') {
+    elseif ($deploymentType -ieq 'Uninstall')
+    {
         ##*===============================================
         ##* PRE-UNINSTALLATION
         ##*===============================================
         [String]$installPhase = 'Pre-Uninstallation'
 
-        ## Show Welcome Message, close Firefox silently if running
-        Show-InstallationWelcome -CloseApps 'firefox=Firefox' -Silent
+        ## Show Welcome Message, close Everything with a 60 second countdown before automatically closing
+        Show-InstallationWelcome -CloseApps 'Everything=Everything' -CloseAppsCountdown 60
 
         ## Show Progress Message (with the default message)
         Show-InstallationProgress
 
         ## <Perform Pre-Uninstallation tasks here>
+
 
         ##*===============================================
         ##* UNINSTALLATION
@@ -242,8 +263,10 @@ Try {
         [String]$installPhase = 'Uninstallation'
 
         ## Handle Zero-Config MSI Uninstallations
-        If ($useDefaultMsi) {
-            [Hashtable]$ExecuteDefaultMSISplat = @{ Action = 'Uninstall'; Path = $defaultMsiFile }; If ($defaultMstFile) {
+        if ($useDefaultMsi)
+        {
+            [Hashtable]$ExecuteDefaultMSISplat = @{ Action = 'Uninstall'; Path = $defaultMsiFile }; if ($defaultMstFile)
+            {
                 $ExecuteDefaultMSISplat.Add('Transform', $defaultMstFile)
             }
             Execute-MSI @ExecuteDefaultMSISplat
@@ -251,7 +274,8 @@ Try {
 
         ## <Perform Uninstallation tasks here>
 
-        Execute-MSI -Action Uninstall -Path 'Firefox Setup 152.0.4.msi'
+        Execute-Process -Path "$envProgramFiles\Everything\unins000.exe" -Parameters '/SILENT' -ContinueOnError $true
+        Execute-Process -Path "$envProgramFilesX86\Everything\unins000.exe" -Parameters '/SILENT' -ContinueOnError $true
 
         ##*===============================================
         ##* POST-UNINSTALLATION
@@ -260,15 +284,17 @@ Try {
 
         ## <Perform Post-Uninstallation tasks here>
 
+
     }
-    ElseIf ($deploymentType -ieq 'Repair') {
+    elseif ($deploymentType -ieq 'Repair')
+    {
         ##*===============================================
         ##* PRE-REPAIR
         ##*===============================================
         [String]$installPhase = 'Pre-Repair'
 
-        ## Show Welcome Message, close Firefox with a 60 second countdown before automatically closing
-        Show-InstallationWelcome -CloseApps 'firefox=Firefox' -Silent -CloseAppsCountdown 60
+        ## Show Welcome Message, close Everything with a 60 second countdown before automatically closing
+        Show-InstallationWelcome -CloseApps 'Everything=Everything' -CloseAppsCountdown 60
 
         ## Show Progress Message (with the default message)
         Show-InstallationProgress
@@ -281,15 +307,19 @@ Try {
         [String]$installPhase = 'Repair'
 
         ## Handle Zero-Config MSI Repairs
-        If ($useDefaultMsi) {
-            [Hashtable]$ExecuteDefaultMSISplat = @{ Action = 'Repair'; Path = $defaultMsiFile; }; If ($defaultMstFile) {
+        if ($useDefaultMsi)
+        {
+            [Hashtable]$ExecuteDefaultMSISplat = @{ Action = 'Repair'; Path = $defaultMsiFile; }; if ($defaultMstFile)
+            {
                 $ExecuteDefaultMSISplat.Add('Transform', $defaultMstFile)
             }
             Execute-MSI @ExecuteDefaultMSISplat
         }
         ## <Perform Repair tasks here>
 
-        Execute-MSI -Action Repair -Path 'C:\tools\intune\Firefox Setup 152.0.4.msi' -RepairFromSource $true
+        Execute-Process -Path "$envProgramFiles\Everything\unins000.exe" -Parameters '/SILENT' -ContinueOnError $true -ExitOnProcessFailure $false
+        Execute-Process -Path "$envProgramFilesX86\Everything\unins000.exe" -Parameters '/SILENT' -ContinueOnError $true -ExitOnProcessFailure $false
+        Execute-Process -Path 'Everything-1.4.1.1032.x64-Setup.exe' -Parameters '/S'
 
         ##*===============================================
         ##* POST-REPAIR
@@ -298,7 +328,7 @@ Try {
 
         ## <Perform Post-Repair tasks here>
 
-        ## No app-specific post-repair customization required for this MSI test sample.
+        Remove-File -Path "$envCommonDesktop\Everything.lnk" -ContinueOnError $true
 
     }
     ##*===============================================
@@ -308,7 +338,8 @@ Try {
     ## Call the Exit-Script function to perform final cleanup operations
     Exit-Script -ExitCode $mainExitCode
 }
-Catch {
+catch
+{
     [Int32]$mainExitCode = 60001
     [String]$mainErrorMessage = "$(Resolve-Error)"
     Write-Log -Message $mainErrorMessage -Severity 3 -Source $deployAppScriptFriendlyName
