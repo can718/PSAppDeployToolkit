@@ -943,7 +943,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Digiexam_Install] Install DigiExam via SCCM application deployment' {
+        It '[MCM:Digiexam_Install] [V3] Install DigiExam via SCCM application deployment' {
             Write-Information "::info::[DigiExam] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -1062,7 +1062,7 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:Digiexam_Uninstall] Uninstall DigiExam via SCCM application deployment' {
+        It '[MCM:Digiexam_Uninstall] [V3] Uninstall DigiExam via SCCM application deployment' {
             if (-not $script:digiExamInstallDeploySucceeded)
             {
                 Set-ItResult -Skipped -Because "Prerequisite test 'Installs DigiExam via SCCM application deployment' did not complete successfully"
@@ -1146,7 +1146,7 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Everything_Install] Install Everything via SCCM application deployment' {
+        It '[MCM:Everything_Install] [V3] Install Everything via SCCM application deployment' {
             Write-Information "::info::[Everything] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -1265,7 +1265,7 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:Everything_Uninstall] Uninstall Everything via SCCM application deployment' {
+        It '[MCM:Everything_Uninstall] [V3] Uninstall Everything via SCCM application deployment' {
             if (-not $script:everythingInstallDeploySucceeded)
             {
                 Set-ItResult -Skipped -Because "Prerequisite test 'Installs Everything via SCCM application deployment' did not complete successfully"

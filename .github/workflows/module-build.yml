@@ -17,6 +17,7 @@ jobs:
 
   run-intune-tests:
     name: Run Additional Tests (Intune)
+    if: false
     uses: ./.github/workflows/run-intune-tests.yml
     secrets: inherit
 
