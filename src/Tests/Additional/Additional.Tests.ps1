@@ -894,17 +894,17 @@ if (Test-Path $uninstallKey)
     }
 }
 
-Describe 'DigiExam SCCM Deployment' -Tag 'DigiExam' -Skip {
-    Context 'Build DigiExam package from V4 template and deploy into SCCM' {
+Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'DigiExam' {
+    Context 'Build DigiExam package from V3 template and deploy into SCCM' {
 
         BeforeAll {
             $ctx = New-PSADTAppTestContext `
-                -SourceScriptRelativePath 'DigiExam\Invoke-AppDeployToolkit.ps1' `
+                -SourceScriptRelativePath '..\V3\DigiExam\Invoke-AppDeployToolkit.ps1' `
                 -PackageDir 'C:\PSADT\DigiExam' `
-                -AppName 'DigiExam (PSADT v4 DigiExam)' `
-                -AppVendor 'Martin Prikryl' `
-                -AppVersion '6.5.6' `
-                -DeploymentTypeName 'DigiExam 6.5.6 (v4 DigiExam)' `
+                -AppName 'Digiexam (PSADT v3 Digiexam)' `
+                -AppVendor 'DigiExam' `
+                -AppVersion '26.1.24' `
+                -DeploymentTypeName 'Digiexam 26.1.24 (v3 Digiexam)' `
                 -ContentSubPath 'DigiExam'
 
             $script:v3Dir = $ctx.V3Dir
@@ -932,7 +932,7 @@ Describe 'DigiExam SCCM Deployment' -Tag 'DigiExam' -Skip {
 
         BeforeEach {
             $testInfo = $____Pester.CurrentTest
-            $script:CurrentTestClass = 'DigiExam Package Preparation and SCCM Deployment / Build DigiExam package from V4 template and deploy into SCCM'
+            $script:CurrentTestClass = 'DigiExam Package Preparation and SCCM Deployment / Build DigiExam package from V3 template and deploy into SCCM'
             $script:CurrentTestMethod = $testInfo.Name
             $script:CurrentTestKey = New-TFTestCaseKey -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
             Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod -TestKey $script:CurrentTestKey
@@ -943,7 +943,7 @@ Describe 'DigiExam SCCM Deployment' -Tag 'DigiExam' -Skip {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It 'Install DigiExam via SCCM application deployment' {
+        It '[MCM:Digiexam_Install] Install DigiExam via SCCM application deployment' {
             Write-Information "::info::[DigiExam] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -972,27 +972,27 @@ Describe 'DigiExam SCCM Deployment' -Tag 'DigiExam' -Skip {
             # ----------------------------------------------------------------
             Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v3Dir -PackageDir $script:digiExamPackageDir -LogPrefix 'DigiExam' -UseInformationLogs
 
-            # # ----------------------------------------------------------------
-            # # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with DigiExam version
-            # # ----------------------------------------------------------------
-            # $destScript = Update-PSADTPackageDeployScript `
-            #     -PackageDir $script:digiExamPackageDir `
-            #     -SourceScript $script:digiExamSourceScript `
-            #     -ExpectedContentPattern 'DigiExam' `
-            #     -LogPrefix 'DigiExam' `
-            #     -UseInformationLogs
+            # ----------------------------------------------------------------
+            # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with DigiExam version
+            # ----------------------------------------------------------------
+            $destScript = Update-PSADTPackageDeployScript `
+                -PackageDir $script:digiExamPackageDir `
+                -SourceScript $script:digiExamSourceScript `
+                -ExpectedContentPattern 'DigiExam' `
+                -LogPrefix 'DigiExam' `
+                -UseInformationLogs
 
-            # # ----------------------------------------------------------------
-            # # Step 4 - Copy DigiExam MSI into Files folder
-            # # ----------------------------------------------------------------
-            # $msiSource = 'C:\Tools\Intune\DigiExam\DigiExam-6.5.6.msi'
-            # Copy-PSADTPackageInstallerToFiles `
-            #     -DeployScriptPath $destScript.FullName `
-            #     -InstallerSource $msiSource `
-            #     -InstallerLabel 'MSI' `
-            #     -LogPrefix 'DigiExam' `
-            #     -UseInformationLogs `
-            #     -ExpectedFileName 'DigiExam-6.5.6.msi'
+            # ----------------------------------------------------------------
+            # Step 4 - Copy DigiExam MSI into Files folder
+            # ----------------------------------------------------------------
+            $msiSource = 'C:\Tools\Intune\DigiExam\Digiexam_26.1.24_x64_en-US.msi'
+            Copy-PSADTPackageInstallerToFiles `
+                -DeployScriptPath $destScript.FullName `
+                -InstallerSource $msiSource `
+                -InstallerLabel 'MSI' `
+                -LogPrefix 'DigiExam' `
+                -UseInformationLogs `
+                -ExpectedFileName 'Digiexam_26.1.24_x64_en-US.msi'
 
             # ----------------------------------------------------------------
             # Step 5 - Verify SMB content share and directories exist
@@ -1024,7 +1024,7 @@ $app = foreach ($root in $uninstallRoots)
     {
         Get-ChildItem -Path $root |
             Get-ItemProperty -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like '*DigiExam*' -and $_.DisplayVersion -like '6.5.6*' }
+            Where-Object { $_.DisplayName -like '*DigiExam*' -and $_.DisplayVersion -like '26.1.24*' }
     }
 }
 if ($app) { Write-Host "Installed" }
@@ -1038,7 +1038,7 @@ if ($app) { Write-Host "Installed" }
                     -ContentUNC $script:digiExamContentUNC `
                     -PackageDir $script:digiExamPackageDir `
                     -DetectScript $detectScript `
-                    -Description "PSADT v4 DigiExam template - DigiExam $script:digiExamAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+                    -Description "PSADT v3 DigiExam template - DigiExam $script:digiExamAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
 
                 # ----------------------------------------------------------------
                 # Step 7 - Distribute content
@@ -1062,7 +1062,7 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It 'Uninstall DigiExam via SCCM application deployment' {
+        It '[MCM:Digiexam_Uninstall] Uninstall DigiExam via SCCM application deployment' {
             if (-not $script:digiExamInstallDeploySucceeded)
             {
                 Set-ItResult -Skipped -Because "Prerequisite test 'Installs DigiExam via SCCM application deployment' did not complete successfully"
@@ -1092,6 +1092,209 @@ if ($app) { Write-Host "Installed" }
                 # ----------------------------------------------------------------
                 Write-Information '[DigiExam] Step 9: Polling uninstall deployment status...' -InformationAction Continue
                 [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:digiExamAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+            }
+        }
+    }
+}
+
+Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag 'Everything' {
+    Context 'Build Everything package from V3 template and deploy into SCCM' {
+
+        BeforeAll {
+            $ctx = New-PSADTAppTestContext `
+                -SourceScriptRelativePath '..\V3\Everything\Deploy-Application.ps1' `
+                -PackageDir 'C:\PSADT\Everything' `
+                -AppName 'Everything (PSADT v3 Everything)' `
+                -AppVendor 'voidtools' `
+                -AppVersion '1.4.1.1032' `
+                -DeploymentTypeName 'Everything 1.4.1.1032 (v3 Everything)' `
+                -ContentSubPath 'Everything'
+
+            $script:v3Dir = $ctx.V3Dir
+            $script:everythingSourceScript = $ctx.SourceScript
+            $script:everythingPackageDir = $ctx.PackageDir
+            $script:everythingAppName = $ctx.AppName
+            $script:everythingAppVendor = $ctx.AppVendor
+            $script:everythingAppVersion = $ctx.AppVersion
+            $script:everythingDTName = $ctx.DeploymentTypeName
+            $script:everythingContentUNC = $ctx.ContentUNC
+            $script:targetCollection = $ctx.TargetCollection
+            $script:everythingInstallDeploySucceeded = $false
+            $script:siteCode = $ctx.SiteCode
+            $script:siteServer = $ctx.SiteServer
+            $script:cmModulePath = $ctx.CmModulePath
+        }
+
+        AfterAll {
+            # if (Test-Path $script:everythingPackageDir)
+            # {
+            #     Remove-Item $script:everythingPackageDir -Recurse -Force -ErrorAction SilentlyContinue
+            #     Write-Verbose "  [teardown] Removed Everything package directory: $($script:everythingPackageDir)"
+            # }
+        }
+
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass = 'Everything Package Preparation and SCCM Deployment / Build Everything package from V3 template and deploy into SCCM'
+            $script:CurrentTestMethod = $testInfo.Name
+            $script:CurrentTestKey = New-TFTestCaseKey -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod -TestKey $script:CurrentTestKey
+        }
+
+        AfterEach {
+            $currentTest = $____Pester.CurrentTest
+            Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
+        }
+
+        It '[MCM:Everything_Install] Install Everything via SCCM application deployment' {
+            Write-Information "::info::[Everything] Step 0: Verifying template validation gate..."
+            if (-not (Test-PSADTTemplateValidationGate))
+            {
+                Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
+                return
+            }
+            Write-Information "::info::[Everything] Template validation gate satisfied." -InformationAction Continue
+
+            # ----------------------------------------------------------------
+            # Step 1 - Verify prerequisites
+            # ----------------------------------------------------------------
+            if (-not (Test-PSADTPackageBuildPrerequisites `
+                        -TemplateDir $script:v3Dir `
+                        -TemplateEnvName 'PSADT_TEMPLATE_V3_DIR' `
+                        -SiteCode $script:siteCode `
+                        -SiteServer $script:siteServer `
+                        -SourceScriptLabel 'Everything\Deploy-Application.ps1' `
+                        -LogPrefix 'Everything' `
+                        -UseInformationLogs))
+            {
+                return
+            }
+
+            # ----------------------------------------------------------------
+            # Step 2 - Copy V3 template to Everything package directory
+            # ----------------------------------------------------------------
+            Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v3Dir -PackageDir $script:everythingPackageDir -LogPrefix 'Everything' -UseInformationLogs
+
+            # ----------------------------------------------------------------
+            # Step 3 - Replace Deploy-Application.ps1 with Everything version
+            # ----------------------------------------------------------------
+            $destScript = Update-PSADTPackageDeployScript `
+                -PackageDir $script:everythingPackageDir `
+                -SourceScript $script:everythingSourceScript `
+                -ExpectedContentPattern 'Everything' `
+                -LogPrefix 'Everything' `
+                -UseInformationLogs
+
+            # ----------------------------------------------------------------
+            # Step 4 - Copy Everything EXE into Files folder
+            # ----------------------------------------------------------------
+            $exeSource = 'C:\Tools\Intune\Everything-1.4.1.1032.x64-Setup.exe'
+            Copy-PSADTPackageInstallerToFiles `
+                -DeployScriptPath $destScript.FullName `
+                -InstallerSource $exeSource `
+                -InstallerLabel 'EXE' `
+                -LogPrefix 'Everything' `
+                -UseInformationLogs `
+                -ExpectedFileName 'Everything-1.4.1.1032.x64-Setup.exe'
+
+            # ----------------------------------------------------------------
+            # Step 5 - Verify SMB content share and directories exist
+            # ----------------------------------------------------------------
+            if (-not (Assert-PSADTContentPathReady `
+                        -CmModulePath $script:cmModulePath `
+                        -PackageDir $script:everythingPackageDir `
+                        -ContentUNC $script:everythingContentUNC `
+                        -LogPrefix 'Everything' `
+                        -UseInformationLogs))
+            {
+                return
+            }
+
+            # ----------------------------------------------------------------
+            # Step 6 - Import application into SCCM
+            # ----------------------------------------------------------------
+            Write-Verbose '[Everything] Step 6: Importing Everything application into SCCM...'
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                Write-Information '::info::[Everything] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
+                $detectScript = @'
+$uninstallRoots = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+$app = foreach ($root in $uninstallRoots)
+{
+    if (Test-Path $root)
+    {
+        Get-ChildItem -Path $root |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like '*Everything*' -and $_.DisplayVersion -like '1.4.1.1032*' }
+    }
+}
+if ($app) { Write-Host "Installed" }
+'@
+
+                New-PSADTApplicationWithDeploymentType `
+                    -AppName $script:everythingAppName `
+                    -Vendor $script:everythingAppVendor `
+                    -Version $script:everythingAppVersion `
+                    -DeploymentTypeName $script:everythingDTName `
+                    -ContentUNC $script:everythingContentUNC `
+                    -PackageDir $script:everythingPackageDir `
+                    -DetectScript $detectScript `
+                    -Description "PSADT v3 Everything template - Everything $script:everythingAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+
+                # ----------------------------------------------------------------
+                # Step 7 - Distribute content
+                # ----------------------------------------------------------------
+                Write-Verbose '[Everything] Step 7: Triggering content distribution...'
+                Start-PSADTContentDistributionAndAssert -AppName $script:everythingAppName -LogPrefix 'Everything'
+
+                # ----------------------------------------------------------------
+                # Step 7b - Deploy application to collection
+                # ----------------------------------------------------------------
+                Write-Verbose "[Everything] Step 7b: Deploying application to collection '$($script:targetCollection)'..."
+                New-PSADTRequiredDeployment -AppName $script:everythingAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'Everything'
+
+                # ----------------------------------------------------------------
+                # Step 8 - Poll application deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[Everything] Step 8: Polling application deployment status...' -InformationAction Continue
+                $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:everythingAppName -SiteCode $script:siteCode -Label 'Deployment'
+                Write-Information $deploymentSummary -InformationAction Continue
+                $script:everythingInstallDeploySucceeded = $true
+            }
+        }
+
+        It '[MCM:Everything_Uninstall] Uninstall Everything via SCCM application deployment' {
+            if (-not $script:everythingInstallDeploySucceeded)
+            {
+                Set-ItResult -Skipped -Because "Prerequisite test 'Installs Everything via SCCM application deployment' did not complete successfully"
+                return
+            }
+
+            if (-not $script:cmModulePath)
+            {
+                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
+                return
+            }
+
+            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
+                return
+            }
+
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                $app = Get-CMApplication -Name $script:everythingAppName -ErrorAction SilentlyContinue
+                $app | Should -Not -BeNullOrEmpty -Because 'Everything application must exist before creating uninstall deployment'
+
+                New-PSADTRequiredDeployment -AppName $script:everythingAppName -TargetCollection $script:targetCollection -DeployAction Uninstall -LogPrefix 'Everything'
+
+                # ----------------------------------------------------------------
+                # Step 9 - Poll uninstall deployment status
+                # ----------------------------------------------------------------
+                Write-Information '[Everything] Step 9: Polling uninstall deployment status...' -InformationAction Continue
+                [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:everythingAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
             }
         }
     }
