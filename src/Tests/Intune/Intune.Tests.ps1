@@ -18,7 +18,7 @@ BeforeAll {
     $script:_tfScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
 
     # Load shared helper functions.
-    . (Join-Path $script:_tfScriptRoot 'Private\IntuneTestHelpers.ps1')
+    . (Join-Path $script:_tfScriptRoot 'IntuneTestHelpers.ps1')
 
     # Load TerraForge helper script at script scope so exported functions
     # remain available in later Pester blocks (BeforeEach/AfterEach).
@@ -142,18 +142,19 @@ Describe 'Intune Tests' {
         Start-Sleep -Seconds 10 # brief pause to ensure registry changes are committed before the next test starts
     }
 
-    Context 'Parallel Install - Batch Upload, Single Sync, Parallel Poll inatll and uninstall of multiple apps' {
+    Context 'Parallel Install - V3,V4 - Batch Upload, Single Sync, Parallel Poll inatll and uninstall of multiple apps' {
         BeforeAll {
             # Define all apps to install in parallel.
             $script:ParallelApps = @(
                 @{
-                    Name                 = 'VLC'
-                    TemplateName         = 'VLC'
-                    AppFolderName        = 'VLC'
-                    InstallerSourceDir   = 'C:\Tools\Intune\vlc'
-                    RegDisplayName       = 'VLC media player'
-                    RegVersionValue      = '3.0.23'
-                    RegVersionName       = 'DisplayVersion'
+                    Name = 'VLC'
+                    TemplateName = 'VLC'
+                    TemplateVersion = 'V4'
+                    AppFolderName = 'VLC'
+                    #InstallerSourceDir = 'C:\Tools\Intune\vlc'
+                    RegDisplayName = 'VLC media player'
+                    RegVersionValue = '3.0.23'
+                    RegVersionName = 'DisplayVersion'
                     DetectionRuleBuilder = {
                         New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                             -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
@@ -161,13 +162,14 @@ Describe 'Intune Tests' {
                     }
                 }
                 @{
-                    Name                 = 'WinSCP'
-                    TemplateName         = 'WinSCP'
-                    AppFolderName        = 'WinSCP'
-                    InstallerSourceDir   = 'C:\Tools\Intune\WinSCP'
-                    RegDisplayName       = 'WinSCP'
-                    RegVersionValue      = '6.5.6'
-                    RegVersionName       = 'DisplayVersion'
+                    Name = 'WinSCP'
+                    TemplateName = 'WinSCP'
+                    TemplateVersion = 'V4'
+                    AppFolderName = 'WinSCP'
+                    #InstallerSourceDir = 'C:\Tools\Intune\WinSCP'
+                    RegDisplayName = 'WinSCP'
+                    RegVersionValue = '6.5.6'
+                    RegVersionName = 'DisplayVersion'
                     DetectionRuleBuilder = {
                         param($FilesDir)
                         $msiFile = Get-ChildItem -Path $FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -177,15 +179,16 @@ Describe 'Intune Tests' {
                     }
                 }
                 @{
-                    Name                 = 'Notepad++'
-                    SkipUninstall        = $true
-                    TemplateName         = 'Notepad++'
-                    AppFolderName        = 'Notepad++'
-                    InstallerSourceDir   = 'C:\Tools\Intune\Notepad6.6.4'
-                    RegDisplayName       = 'Notepad++'
-                    RegVersionValue      = '6.6.4'
-                    RegVersionName       = 'DisplayVersion'
-                    PreInstallScript     = {
+                    Name = 'Notepad++'
+                    SkipUninstall = $true
+                    TemplateName = 'Notepad++'
+                    TemplateVersion = 'V4'
+                    AppFolderName = 'Notepad++'
+                    #InstallerSourceDir = 'C:\Tools\Intune\Notepad6.6.4'
+                    RegDisplayName = 'Notepad++'
+                    RegVersionValue = '6.6.4'
+                    RegVersionName = 'DisplayVersion'
+                    PreInstallScript = {
                         # Install lower version as prerequisite for upgrade test.
                         $installerDir = 'C:\Tools\Intune\Notepad6.2.3'
                         $installerPath = Join-Path $installerDir 'npp.6.2.3.Installer.exe'
@@ -218,7 +221,7 @@ Describe 'Intune Tests' {
                         $templateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
                         Copy-Item -Path $newPath -Destination $templateExpectedInstallerPath -Force
                     }
-                    PostInstallScript    = {
+                    PostInstallScript = {
                         $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
                         if (Test-Path $notepadExePath)
                         {
@@ -244,6 +247,38 @@ Describe 'Intune Tests' {
                             -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '6.6.4'
                     }
                 }
+                @{
+                    Name = 'Digiexam'
+                    TemplateName = 'Digiexam'
+                    TemplateVersion = 'V3'
+                    AppFolderName = 'Digiexam'
+                    InstallerSourceFile = 'C:\Tools\Intune\Digiexam_26.1.24_x64_en-US.msi'
+                    RegDisplayName = 'Digiexam'
+                    RegVersionValue = '26.1.24'
+                    RegVersionName = 'DisplayVersion'
+                    DetectionRuleBuilder = {
+                        param($FilesDir)
+                        $msiFile = Get-ChildItem -Path $FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
+                        if (-not $msiFile) { throw 'No MSI file found for Digiexam detection rule' }
+                        $productCode = Get-MsiProductCode -MsiPath $msiFile.FullName
+                        New-IntuneWin32AppDetectionRuleMSI -ProductCode $productCode
+                    }
+                }
+                @{
+                    Name = 'Everything'
+                    TemplateName = 'Everything'
+                    TemplateVersion = 'V3'
+                    AppFolderName = 'Everything'
+                    InstallerSourceFile = 'C:\Tools\Intune\Everything-1.4.1.1032.x64-Setup.exe'
+                    RegDisplayName = 'Everything 1.4.1.1032'
+                    RegVersionValue = '1.4.1.1032'
+                    RegVersionName = 'DisplayVersion'
+                    DetectionRuleBuilder = {
+                        New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
+                            -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Everything' `
+                            -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '1.4.1.1032'
+                    }
+                }
             )
             $script:ParallelInstallResults = @{}
         }
@@ -262,20 +297,42 @@ Describe 'Intune Tests' {
                 }
 
                 # Prepare working directory.
-                $templateParamsPath = Join-Path $PSScriptRoot "..\V4\$($app.TemplateName)\New-ADTTemplate.params.ps1"
-                $env = New-IntuneTestWorkDir `
-                    -AppFolderName      $app.AppFolderName `
-                    -BasePath           $script:BasePath `
-                    -TemplateParamsPath $templateParamsPath
+                if ( $app.TemplateVersion -eq 'V3')
+                {
+                    $runnerScript = Join-Path $PSScriptRoot "$($app.AppFolderName)\Deploy-Application.ps1"
+                    $env = New-IntuneTestWorkDirV3 `
+                        -AppFolderName       $app.AppFolderName `
+                        -BasePath            $script:BasePath `
+                        -InstallerSourceFile $app.InstallerSourceFile `
+                        -RunnerScriptPath    $runnerScript
+                }
+                else
+                {
+                    $templateParamsPath = Join-Path $PSScriptRoot "..\V4\$($app.TemplateName)\New-ADTTemplate.params.ps1"
+                    $env = New-IntuneTestWorkDirV4 `
+                        -AppFolderName      $app.AppFolderName `
+                        -BasePath           $script:BasePath `
+                        -TemplateParamsPath $templateParamsPath
+                }
 
                 # Wrap into .intunewin package.
-                $package = New-IntuneWinPackage `
-                    -WorkDir              $env.WorkDir `
-                    -IntuneWinAppUtilPath $script:IntuneWinAppUtil
+                if ($app.TemplateVersion -eq 'V3')
+                {
+                    $package = New-IntuneWinPackage `
+                        -WorkDir              $env.WorkDir `
+                        -IntuneWinAppUtilPath $script:IntuneWinAppUtil `
+                        -SetupFileName "Deploy-Application.exe"
+                }
+                else
+                {
+                    $package = New-IntuneWinPackageV4 `
+                        -WorkDir              $env.WorkDir `
+                        -IntuneWinAppUtilPath $script:IntuneWinAppUtil
+                }
                 $package.IntuneWinPath | Should -Not -BeNullOrEmpty
 
                 # Build detection rule.
-                $DetectionRule = if ($app.Name -eq 'WinSCP')
+                $DetectionRule = if ($app.Name -eq 'WinSCP' -or $app.Name -eq 'Digiexam')
                 {
                     & $app.DetectionRuleBuilder $env.FilesDir
                 }
@@ -297,11 +354,11 @@ Describe 'Intune Tests' {
                     -Intent 'required' -Notification 'showAll' -Verbose
 
                 $script:UploadedApps[$app.Name] = @{
-                    Win32AppId      = $win32App.id
-                    DisplayName     = $intuneDisplayName
-                    RegDisplayName  = $app.RegDisplayName
+                    Win32AppId = $win32App.id
+                    DisplayName = $intuneDisplayName
+                    RegDisplayName = $app.RegDisplayName
                     RegVersionValue = $app.RegVersionValue
-                    RegVersionName  = $app.RegVersionName
+                    RegVersionName = $app.RegVersionName
                 }
                 Write-Information "[$($app.Name)] Uploaded and assigned successfully." -InformationAction Continue
             }
@@ -327,7 +384,7 @@ Describe 'Intune Tests' {
                     param($DisplayName, $ValueName, $ExpectedValue, $HelperPath)
                     . $HelperPath
                     Wait-AppInstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
-                } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'Private\IntuneTestHelpers.ps1')
+                } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1')
             }
 
             Write-Information "Waiting for $($jobs.Count) parallel installation polls..." -InformationAction Continue
@@ -356,7 +413,7 @@ Describe 'Intune Tests' {
                             param($DisplayName, $ValueName, $ExpectedValue, $HelperPath)
                             . $HelperPath
                             Wait-AppInstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
-                        } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'Private\IntuneTestHelpers.ps1')
+                        } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1')
                     }
 
                     Write-Information "Waiting for $($retryJobs.Count) retry installation polls..." -InformationAction Continue
@@ -454,7 +511,7 @@ Describe 'Intune Tests' {
                     param($DisplayName, $ValueName, $ExpectedValue, $HelperPath)
                     . $HelperPath
                     Wait-AppUninstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
-                } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'Private\IntuneTestHelpers.ps1')
+                } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1')
             }
 
             Write-Information "Waiting for $($jobs.Count) parallel uninstallation polls..." -InformationAction Continue
@@ -483,7 +540,7 @@ Describe 'Intune Tests' {
                             param($DisplayName, $ValueName, $ExpectedValue, $HelperPath)
                             . $HelperPath
                             Wait-AppUninstallation -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
-                        } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'Private\IntuneTestHelpers.ps1')
+                        } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, (Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1')
                     }
 
                     Write-Information "Waiting for $($retryJobs.Count) retry uninstallation polls..." -InformationAction Continue

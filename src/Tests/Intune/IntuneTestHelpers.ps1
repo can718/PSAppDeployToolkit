@@ -177,10 +177,72 @@ function Invoke-TFUpdateTestCase
 }
 
 # ---------------------------------------------------------------------------
-# Region: Package Preparation
+# Region: V3 Template Package Preparation
+# ---------------------------------------------------------------------------
+function New-IntuneTestWorkDirV3
+{
+    <#
+    .SYNOPSIS
+        Prepares a working directory for an app by copying the PSADT template,
+        the installer files, and the runner script.
+    .OUTPUTS
+        [hashtable] with keys: WorkDir, FilesDir.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$AppFolderName,
+
+        [Parameter(Mandatory)]
+        [string]$BasePath,
+
+        [Parameter(Mandatory)]
+        [string]$InstallerSourceFile,
+
+        [Parameter(Mandatory)]
+        [string]$RunnerScriptPath
+    )
+
+    $workDir = Join-Path $BasePath $AppFolderName
+    New-Item -Path $workDir -ItemType Directory -Force | Out-Null
+
+    # Step 1: Copy PSADT v3 template
+    $v3Path = $env:PSADT_TEMPLATE_V3_DIR
+    if (-not (Test-Path $v3Path))
+    {
+        throw "PSADT v3 template folder missing: $v3Path"
+    }
+    Copy-Item -Path (Join-Path $v3Path '*') -Destination $workDir -Recurse -Force
+    Write-Information "[$AppFolderName] Copied PSADT template from '$v3Path' to '$workDir'." -InformationAction Continue
+
+    # Step 2: Copy installer files
+    $filesDir = Join-Path $workDir 'Files'
+    if (-not (Test-Path $filesDir))
+    {
+        New-Item -Path $filesDir -ItemType Directory -Force | Out-Null
+    }
+    if (-not (Test-Path $InstallerSourceFile))
+    {
+        throw "Installer file not found: '$InstallerSourceFile'."
+    }
+    Copy-Item -Path $InstallerSourceFile -Destination $filesDir -Force
+    Write-Information "[$AppFolderName] Copied installer '$([System.IO.Path]::GetFileName($InstallerSourceFile))' to '$filesDir'." -InformationAction Continue
+
+    # Step 3: Copy Invoke-AppDeployToolkit.ps1 runner script
+    $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
+    Copy-Item -Path $RunnerScriptPath -Destination $targetScript -Force
+    Write-Information "[$AppFolderName] Copied runner script to '$targetScript'." -InformationAction Continue
+
+    return @{
+        WorkDir = $workDir
+        FilesDir = $filesDir
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Region: V4 Template Package Preparation
 # ---------------------------------------------------------------------------
 
-function New-IntuneTestWorkDir
+function New-IntuneTestWorkDirV4
 {
     <#
     .SYNOPSIS
@@ -353,7 +415,8 @@ function New-IntuneWinPackage
 
     # Wrap with IntuneWinAppUtil
     & $IntuneWinAppUtilPath -c $WorkDir -s $SetupFileName -o $WorkDir
-    $intunewinFile = Join-Path $WorkDir 'Invoke-AppDeployToolkit.intunewin'
+    $setupBaseName = [System.IO.Path]::GetFileNameWithoutExtension($SetupFileName)
+    $intunewinFile = Join-Path $WorkDir "$setupBaseName.intunewin"
     if (-not (Test-Path $intunewinFile))
     {
         throw "IntuneWinAppUtil did not produce expected output: $intunewinFile"
