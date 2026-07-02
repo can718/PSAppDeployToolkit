@@ -47,8 +47,6 @@ $NewADTTemplateParameters = @{
     }
 
     PostInstallScriptBlock   = {
-        Stop-AdditionalTestRecording
-
         Remove-ADTFile -Path "$envCommonDesktop\WinSCP.lnk"
         Invoke-ADTAllUsersRegistryAction {
             Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface' -Name 'CollectUsage' -Value 0 -Type DWord -SID $_.SID
@@ -57,6 +55,7 @@ $NewADTTemplateParameters = @{
             Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'ShowOnStartup' -Value 0 -Type DWord -SID $_.SID
         }
         Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait -Timeout 5
+        Stop-AdditionalTestRecording
     }
 
     PreUninstallScriptBlock  = {

@@ -262,12 +262,13 @@ function StopRecord
                 -TimeoutSeconds     $UploadFileReadyTimeoutSeconds `
                 -PollSeconds        $UploadFileReadyPollSeconds
         }
+        $BlobPathBase = "testruns/{0}" -f $TestRunId
 
         Copy-ResultsToAzureBlobStorage `
             -ApiBaseUrl  $ApiBaseUrl `
             -AccessToken $AccessToken `
-            -TestRunId   $TestRunId `
-            -Files       $Files
+            -Files       $Files `
+            -BlobPathBase $BlobPathBase
     }
 }
 
@@ -1268,11 +1269,15 @@ function Copy-ResultsToAzureBlobStorage
         [Parameter(Mandatory)]
         [string]$AccessToken,
 
+        # The base path for Azure Blob Storage (for example: "testruns/{TestRunId}").
         [Parameter(Mandatory)]
-        [string]$TestRunId,
+        [string]$BlobPathBase,
 
         [Parameter()]
-        [string[]]$Files
+        [string[]]$Files,
+
+        [Parameter()]
+        [string]$ContainerName = "tfp-shares"
     )
 
     # Retrieve storage account access key via TerraForge API
@@ -1308,6 +1313,14 @@ function Copy-ResultsToAzureBlobStorage
     }
 
     $ctx = New-AzStorageContext -StorageAccountName 'tfpfsstorage' -StorageAccountKey $TFPFSStorageAccountAccessKey
+    if ([string]::IsNullOrWhiteSpace($BlobPathBase))
+    {
+        throw "BlobPathBase must be specified."
+    }
+    else
+    {
+        $BlobPathBase = $BlobPathBase.TrimEnd('/')
+    }
 
     # Upload each file
     if ($Files -and $Files.Count -gt 0)
@@ -1317,10 +1330,10 @@ function Copy-ResultsToAzureBlobStorage
             if (Test-Path $file)
             {
                 $fileName = Split-Path $file -Leaf
-                $blobPath = "testruns/{0}/{1}" -f $TestRunId, $fileName
+                $blobPath = "{0}/{1}" -f $BlobPathBase, $fileName
                 Write-Host "Uploading '$fileName' to Azure Blob Storage: $blobPath"
                 $null = Set-AzStorageBlobContent -File $file `
-                    -Container 'tfp-shares' `
+                    -Container $ContainerName `
                     -Blob $blobPath `
                     -Context $ctx `
                     -Force
@@ -1353,7 +1366,10 @@ function Get-AzureBlobStorageFolderToLocal
         [string]$BlobFolderPath,
 
         [Parameter(Mandatory)]
-        [string]$LocalDestinationDir
+        [string]$LocalDestinationDir,
+
+        [Parameter()]
+        [string]$ContainerName = "tfp-shares"
     )
 
     # Retrieve storage account access key via TerraForge API
@@ -1398,7 +1414,7 @@ function Get-AzureBlobStorageFolderToLocal
     $ctx = New-AzStorageContext -StorageAccountName 'tfpfsstorage' -StorageAccountKey $TFPFSStorageAccountAccessKey
 
     # List all blobs under the specified folder prefix
-    $blobs = Get-AzStorageBlob -Container 'tfp-shares' -Prefix $BlobFolderPath -Context $ctx
+    $blobs = Get-AzStorageBlob -Container $ContainerName -Prefix $BlobFolderPath -Context $ctx
 
     if (-not $blobs -or $blobs.Count -eq 0)
     {
@@ -1883,8 +1899,12 @@ function Invoke-TFUploadTestResults
         [Parameter()]
         [string]$ApiBaseUrl = $env:TERRAFORGE_API_BASE_URL,
 
+        # The base path for Azure Blob Storage (for example: "testruns/{TestRunId}").
+        [Parameter(Mandatory)]
+        [string]$BlobPathBase,
+
         [Parameter()]
-        [string]$TestRunId = $env:TEST_RUN_ID,
+        [string]$ContainerName = "tfp-shares",
 
         [Parameter()]
         [string[]]$TestResultXmlPath = @("$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"),
@@ -1906,11 +1926,16 @@ function Invoke-TFUploadTestResults
         -ApiKeySecretName        $ApiKeySecretName
 
     Write-Host "==> Uploading test results to Azure Blob Storage ..."
+    if ([string]::IsNullOrWhiteSpace($BlobPathBase))
+    {
+        throw "BlobPathBase must be specified."
+    }
     Copy-ResultsToAzureBlobStorage `
         -ApiBaseUrl  $ApiBaseUrl `
         -AccessToken $accessToken `
-        -TestRunId   $TestRunId `
-        -Files       $TestResultXmlPath
+        -Files       $TestResultXmlPath `
+        -BlobPathBase $BlobPathBase `
+        -ContainerName $ContainerName
     Write-Host "Test results copied to Azure Blob Storage."
 }
 

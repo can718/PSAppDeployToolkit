@@ -49,6 +49,7 @@ jobs:
       pester_skipped: ${{ steps.run-pester.outputs.pester_skipped || '0' }}
       pester_notrun:  ${{ steps.run-pester.outputs.pester_notrun || '0' }}
       cases_json:     ${{ steps.collect-cases.outputs.cases_json || '{}' }}
+      recording_urls_json: ${{ steps.upload-to-blob.outputs.public_recording_urls_json || '[]' }}
       result_summary_payload: ${{ steps.result-summary-collect.outputs.result_summary_payload || '{}' }}
       result_summary_console: ${{ steps.result-summary-collect.outputs.result_summary_console || '' }}
       result_summary_markdown: ${{ steps.result-summary-collect.outputs.result_summary_markdown || '' }}
@@ -358,13 +359,6 @@ jobs:
         Write-Host "V3 contents: $((Get-ChildItem $v3Dest | Select-Object -ExpandProperty Name) -join ', ')"
         Write-Host "V4 contents: $((Get-ChildItem $v4Dest | Select-Object -ExpandProperty Name) -join ', ')"
 
-        # # Remove only the ReadOnly flag from all copied items.
-        # foreach ($dest in @($v3Dest, $v4Dest)) {
-        #   Get-ChildItem -LiteralPath $dest -Recurse -Force | ForEach-Object {
-        #     $_.Attributes = ($_.Attributes -band (-bnot [System.IO.FileAttributes]::ReadOnly))
-        #   }
-        # }
-
         "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         
@@ -440,7 +434,7 @@ jobs:
         }
 
         # 2) Run the SCCM package suites in parallel after validation succeeds.
-        $tagsToRun = @('WinSCP', 'VLC', 'Notepad++')
+        $tagsToRun = @('WinSCP', 'VLC', 'Notepad++','DigiExam','Everything')
         $indexedTags = for ($i = 0; $i -lt $tagsToRun.Count; $i++) {
           [pscustomobject]@{ Index = $i; Tag = $tagsToRun[$i] }
         }
@@ -479,7 +473,7 @@ jobs:
             FailedCount = $result.FailedCount
             SkippedCount = $result.SkippedCount
           }
-        } -ThrottleLimit 3
+        } -ThrottleLimit 8
 
         $allResults = @($validationResult) + @($parallelResults)
         $passed = ($allResults | Measure-Object -Property PassedCount -Sum).Sum
@@ -640,16 +634,36 @@ jobs:
           throw "TerraForge helper script not found: $tfHelper"
         }
         . $tfHelper
-        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml'
+        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml' -BlobPathBase "testruns/$env:TEST_RUN_ID"
+
+        $publicRecordingEntries = @()
          
         $recordFile = Get-RegistryValue -Name 'RecordingUploadNotRequested'
         if ($recordFile) {
           Write-Host "Uploading recording file(s) to blob storage: $recordFile"
           $recordFiles = $recordFile -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "testruns/$env:TEST_RUN_ID"
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "psadt/$env:TEST_RUN_ID" -ContainerName "tfp-public"
+
+          foreach ($recordPath in $recordFiles) {
+            $recordName = [System.IO.Path]::GetFileName([string]$recordPath)
+            if ([string]::IsNullOrWhiteSpace($recordName)) {
+              continue
+            }
+
+            $encodedName = [System.Uri]::EscapeDataString($recordName)
+            $publicUrl = "https://tfpfsstorage.blob.core.windows.net/tfp-public/psadt/$env:TEST_RUN_ID/$encodedName"
+            $publicRecordingEntries += [ordered]@{
+              Name = $recordName
+              Url  = $publicUrl
+            }
+          }
         } else {
           Write-Host "No recording file found for upload."
         }
+
+        $publicRecordingJson = @($publicRecordingEntries) | ConvertTo-Json -Compress
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "public_recording_urls_json=$publicRecordingJson`n", [System.Text.Encoding]::UTF8)
 
     - name: Clear TerraForge machine environment
       id: clear-terraforge-machine-env
@@ -819,6 +833,8 @@ jobs:
         PESTER_NOTRUN: ${{ steps.run-pester.outputs.pester_notrun || '0' }}
         STEPS_JSON: ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
         CASES_JSON: ${{ steps.collect-cases.outputs.cases_json || '{}' }}
+        RECORDING_URLS_JSON: ${{ steps.upload-to-blob.outputs.public_recording_urls_json || '[]' }}
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
         NOTIFICATION_SOURCE: SCCM Tests
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         BRANCH: ${{ github.ref_name }}
@@ -854,6 +870,128 @@ jobs:
         function Escape-MarkdownCell {
           param([string]$Value)
           return ([string]$Value).Replace('|', '\|').Replace("`r", ' ').Replace("`n", ' ')
+        }
+
+        function Get-NormalizedTokens {
+          param([string]$Text)
+
+          $raw = ([string]$Text).ToLowerInvariant()
+          $raw = $raw -replace '\+', ' plus '
+          $parts = $raw -split '[^a-z0-9]+'
+          return @($parts | Where-Object { $_.Length -ge 3 } | Select-Object -Unique)
+        }
+
+        function Expand-TokenAliases {
+          param([string[]]$Tokens)
+
+          $expanded = New-Object System.Collections.Generic.HashSet[string]
+          foreach ($token in @($Tokens)) {
+            if ([string]::IsNullOrWhiteSpace($token)) {
+              continue
+            }
+
+            $null = $expanded.Add($token)
+            switch ($token) {
+              'notepad' { $null = $expanded.Add('notepadplusplus') }
+              'plusplus' { $null = $expanded.Add('notepadplusplus') }
+              'notepadplusplus' {
+                $null = $expanded.Add('notepad')
+                $null = $expanded.Add('plusplus')
+              }
+              'vlc' { $null = $expanded.Add('mediaplayer') }
+              'media' { $null = $expanded.Add('mediaplayer') }
+              'player' { $null = $expanded.Add('mediaplayer') }
+              'mediaplayer' {
+                $null = $expanded.Add('vlc')
+                $null = $expanded.Add('media')
+                $null = $expanded.Add('player')
+              }
+            }
+          }
+
+          return @($expanded)
+        }
+
+        function Parse-RecordingNameMetadata {
+          param([string]$RecordingFileName)
+
+          $stem = [System.IO.Path]::GetFileNameWithoutExtension([string]$RecordingFileName)
+          if ([string]::IsNullOrWhiteSpace($stem)) {
+            return $null
+          }
+
+          $appPart = $stem
+          $deploymentType = $null
+
+          if ($stem -match '^(?<app>.+?)_(?<action>Install|Uninstall|Repair)_\d{8}_\d{6}$') {
+            $appPart = [string]$matches['app']
+            $deploymentType = ([string]$matches['action']).ToLowerInvariant()
+          }
+
+          $baseTokens = Get-NormalizedTokens -Text $appPart
+          $tokens = Expand-TokenAliases -Tokens $baseTokens
+
+          return [pscustomobject]@{
+            Name           = [string]$RecordingFileName
+            AppNameRaw     = $appPart
+            AppTokens      = @($tokens)
+            DeploymentType = $deploymentType
+          }
+        }
+
+        function Parse-CaseRecordingHint {
+          param([string]$CaseName)
+
+          if ([string]::IsNullOrWhiteSpace($CaseName)) {
+            return $null
+          }
+
+          # Supported case hint format: [MCM:App_Action], e.g. [MCM:WinSCP_Install]
+          if ($CaseName -notmatch '\[MCM:(?<app>[A-Za-z0-9_+\- ]+?)_(?<action>Install|Uninstall|Repair)\]') {
+            return $null
+          }
+
+          $hintApp = [string]$matches['app']
+          $hintAction = ([string]$matches['action']).ToLowerInvariant()
+          $hintTokens = Expand-TokenAliases -Tokens (Get-NormalizedTokens -Text $hintApp)
+
+          return [pscustomobject]@{
+            AppTokens      = @($hintTokens)
+            DeploymentType = $hintAction
+          }
+        }
+
+        function Find-CaseRecordingLinks {
+          param(
+            [string]$CaseName,
+            [array]$RecordingEntries
+          )
+
+          if (-not $RecordingEntries -or $RecordingEntries.Count -eq 0) {
+            return @()
+          }
+
+          $caseHint = Parse-CaseRecordingHint -CaseName $CaseName
+          if (-not $caseHint) {
+            return @()
+          }
+
+          $matched = foreach ($entry in $RecordingEntries) {
+            $recordingMeta = Parse-RecordingNameMetadata -RecordingFileName ([string]$entry.Name)
+            if (-not $recordingMeta -or $recordingMeta.AppTokens.Count -eq 0) {
+              continue
+            }
+
+            $hintOverlap = @($caseHint.AppTokens | Where-Object { $recordingMeta.AppTokens -contains $_ })
+            if ($hintOverlap.Count -gt 0 -and $recordingMeta.DeploymentType -and $recordingMeta.DeploymentType -eq $caseHint.DeploymentType) {
+              [pscustomobject]@{
+                Name  = [string]$entry.Name
+                Url   = [string]$entry.Url
+              }
+            }
+          }
+
+          return @($matched | Sort-Object -Property Name -Descending | Select-Object -First 1)
         }
 
         function Get-IntFromEnv {
@@ -901,6 +1039,24 @@ jobs:
           Write-Warning "Failed to parse CASES_JSON: $($_.Exception.Message)"
         }
 
+        $recordingEntries = @()
+        try {
+          $rawRecordingUrls = if ([string]::IsNullOrWhiteSpace($env:RECORDING_URLS_JSON)) { '[]' } else { $env:RECORDING_URLS_JSON }
+          $parsedRecordingUrls = $rawRecordingUrls | ConvertFrom-Json -ErrorAction Stop
+          if ($parsedRecordingUrls) {
+            foreach ($item in @($parsedRecordingUrls)) {
+              $name = [string]$item.Name
+              $url = [string]$item.Url
+              if (-not [string]::IsNullOrWhiteSpace($name) -and -not [string]::IsNullOrWhiteSpace($url)) {
+                $recordingEntries += [pscustomobject]@{ Name = $name; Url = $url }
+              }
+            }
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse RECORDING_URLS_JSON: $($_.Exception.Message)"
+        }
+
         $consoleLines = New-Object System.Collections.Generic.List[string]
         $consoleLines.Add("Source:           $env:NOTIFICATION_SOURCE") | Out-Null
         $consoleLines.Add("Job status:       $jobStatusIcon $jobStatus") | Out-Null
@@ -935,7 +1091,17 @@ jobs:
           foreach ($caseName in $visibleCaseNames) {
             $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
             $icon = Get-StatusIcon -Status $outcome
-            $consoleLines.Add(("  - {0}: {1} {2} | {3}" -f $caseName, $icon, $outcome, $duration)) | Out-Null
+            $matchedRecordings = @(Find-CaseRecordingLinks -CaseName $caseName -RecordingEntries $recordingEntries)
+            $recordingText = if ($matchedRecordings.Count -gt 0) {
+              ($matchedRecordings | ForEach-Object { $_.Name }) -join ', '
+            }
+            elseif ($recordingEntries.Count -gt 0) {
+              'Folder only'
+            }
+            else {
+              '-'
+            }
+            $consoleLines.Add(("  - {0}: {1} {2} | {3} | Recording: {4}" -f $caseName, $icon, $outcome, $duration, $recordingText)) | Out-Null
           }
           if ($sortedCaseNames.Count -gt $maxCaseLogCount) {
             $consoleLines.Add(("  ... and {0} more test case(s)." -f ($sortedCaseNames.Count - $maxCaseLogCount))) | Out-Null
@@ -978,15 +1144,28 @@ jobs:
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add("### Test Cases (Top $($visibleCaseNames.Count) / $($sortedCaseNames.Count))") | Out-Null
           $summaryLines.Add('') | Out-Null
-          $summaryLines.Add('| Test Case | Status | Duration |') | Out-Null
-          $summaryLines.Add('|---|---|---|') | Out-Null
+          $summaryLines.Add('| Test Case | Status | Duration | Recording |') | Out-Null
+          $summaryLines.Add('|---|---|---|---|') | Out-Null
 
           foreach ($caseName in $visibleCaseNames) {
             $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
             $icon = Get-StatusIcon -Status $outcome
             $safeCase = Escape-MarkdownCell -Value ([string]$caseName)
             $safeDuration = Escape-MarkdownCell -Value $duration
-            $summaryLines.Add("| $safeCase | $icon $outcome | $safeDuration |") | Out-Null
+            $matchedRecordings = @(Find-CaseRecordingLinks -CaseName $caseName -RecordingEntries $recordingEntries)
+            $recordingCell = if ($matchedRecordings.Count -gt 0) {
+              ($matchedRecordings | ForEach-Object {
+                $safeName = Escape-MarkdownCell -Value ([string]$_.Name)
+                "[$safeName]($($_.Url))"
+              }) -join '<br/>'
+            }
+            elseif ($recordingEntries.Count -gt 0) {
+              "[Open folder](https://tfpfsstorage.blob.core.windows.net/tfp-public/psadt/$env:TEST_RUN_ID)"
+            }
+            else {
+              '-'
+            }
+            $summaryLines.Add("| $safeCase | $icon $outcome | $safeDuration | $recordingCell |") | Out-Null
           }
 
           if ($sortedCaseNames.Count -gt $maxCases) {
