@@ -481,13 +481,14 @@ jobs:
           throw "TerraForge helper script not found: $tfHelper"
         }
         . $tfHelper
-        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml'
+        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml' -BlobPathBase "testruns/$env:TEST_RUN_ID"
 
         $recordFile = Get-RegistryValue -Name 'RecordingUploadNotRequested'
         if ($recordFile) {
           Write-Host "Uploading recording file(s) to blob storage: $recordFile"
           $recordFiles = $recordFile -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "testruns/$env:TEST_RUN_ID"
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "psadt/$env:TEST_RUN_ID" -ContainerName "tfp-public"
         } else {
           Write-Host "No recording file found for upload."
         }

@@ -344,7 +344,7 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It 'Install winSCP via SCCM application deployment' {
+        It '[MCM:WinSCP_Install] Install winSCP via SCCM application deployment' {
             Write-Information "::info::[winSCP] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -463,7 +463,7 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It 'Uninstall winSCP via SCCM application deployment' {
+        It '[MCM:WinSCP_Uninstall] Uninstall winSCP via SCCM application deployment' {
             if (-not $script:winscpInstallDeploySucceeded)
             {
                 Set-ItResult -Skipped -Because "Prerequisite test 'Installs winSCP via SCCM application deployment' did not complete successfully"
@@ -549,7 +549,7 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It 'Install VLC via SCCM application deployment' {
+        It '[MCM:VLC_media_player_Install] Install VLC via SCCM application deployment' {
             if (-not (Test-PSADTTemplateValidationGate))
             {
                 Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
@@ -663,7 +663,7 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It 'Uninstall VLC via SCCM application deployment' {
+        It '[MCM:VLC_media_player_Uninstall] Uninstall VLC via SCCM application deployment' {
             if (-not $script:vlcInstallDeploySucceeded)
             {
                 Set-ItResult -Skipped -Because "Prerequisite test 'Installs VLC via SCCM application deployment' did not complete successfully"
@@ -747,7 +747,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It 'Install Notepad++ via SCCM application deployment' {
+        It '[MCM:Notepad++_Install] Install Notepad++ via SCCM application deployment' {
             Write-Information '::info::[Notepad++] Step 0: Verifying template validation gate...'
             if (-not (Test-PSADTTemplateValidationGate))
             {
