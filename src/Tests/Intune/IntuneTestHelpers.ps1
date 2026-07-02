@@ -268,7 +268,7 @@ function New-IntuneTestWorkDirV4
         Remove-Item -Path $workDir -Recurse -Force
     }
 
-    $templateRunnerPath = Join-Path $PSScriptRoot '..\..\_Shared\Invoke-ADTTemplateRunner.ps1'
+    $templateRunnerPath = Join-Path $PSScriptRoot '..\_Shared\Invoke-ADTTemplateRunner.ps1'
     if (-not (Test-Path -LiteralPath $templateRunnerPath -PathType Leaf))
     {
         throw "Template runner file not found: $templateRunnerPath"
