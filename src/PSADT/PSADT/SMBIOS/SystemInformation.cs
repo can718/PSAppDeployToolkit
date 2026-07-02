@@ -26,7 +26,8 @@ namespace PSADT.SMBIOS
     /// <summary>
     /// Immutable representation of SMBIOS System Information (Type 1) structure.
     /// </summary>
-    public sealed record SystemInformation : ISmbiosStructure
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0104:Do not create a type with a name from the BCL", Justification = "This is named as per the SMBIOS specification.")]
+    public sealed record class SystemInformation : ISmbiosStructure
     {
         /// <summary>
         /// Reads the SMBIOS System Information (Type 1) structure.
@@ -83,11 +84,11 @@ namespace PSADT.SMBIOS
             for (int i = 0; i < 16; i++)
             {
                 byte b = raw16[i];
-                if (b != 0x00)
+                if (b is not 0x00)
                 {
                     allZero = false;
                 }
-                if (b != 0xFF)
+                if (b is not 0xFF)
                 {
                     allFF = false;
                 }

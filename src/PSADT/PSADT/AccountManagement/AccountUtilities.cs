@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Security.Principal;
 using PSADT.Foundation;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using PSADT.ProcessManagement;
 using PSADT.Security;
@@ -26,7 +25,6 @@ namespace PSADT.AccountManagement
         /// </summary>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1810:Initialize reference type static fields inline", Justification = "The static constructor is very much needed here.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1065:Do not raise exceptions in unexpected locations", Justification = "This exception will never be thrown during operation.")]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "There's no async support during static construction.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0301:Simplify collection initialization", Justification = "The collection expression won't compile for net8.0...")]
         static AccountUtilities()
         {
@@ -44,7 +42,8 @@ namespace PSADT.AccountManagement
             _ = NativeMethods.ProcessIdToSessionId(CallerProcessId = PInvoke.GetCurrentProcessId(), out CallerSessionId);
 
             // Retrieve the local account domain SID.
-            _ = NativeMethods.LsaOpenPolicy(new() { Length = (uint)Unsafe.SizeOf<LSA_OBJECT_ATTRIBUTES>() }, LSA_POLICY_ACCESS.POLICY_VIEW_LOCAL_INFORMATION, out LsaCloseSafeHandle hPolicy);
+            LSA_OBJECT_ATTRIBUTES objectAttributes = new() { Length = (uint)Unsafe.SizeOf<LSA_OBJECT_ATTRIBUTES>() };
+            _ = NativeMethods.LsaOpenPolicy(in objectAttributes, LSA_POLICY_ACCESS.POLICY_VIEW_LOCAL_INFORMATION, out LsaCloseSafeHandle hPolicy);
             using (hPolicy)
             {
                 _ = NativeMethods.LsaQueryInformationPolicy(hPolicy, POLICY_INFORMATION_CLASS.PolicyAccountDomainInformation, out SafeLsaFreeMemoryHandle buf);
@@ -68,7 +67,7 @@ namespace PSADT.AccountManagement
                 }
                 try
                 {
-                    return ProcessVersionInfo.GetVersionInfo(p).InternalName?.Equals("ServiceUI", StringComparison.OrdinalIgnoreCase) == true;
+                    return (ProcessVersionInfo.GetVersionInfo(p).InternalName?.Equals("ServiceUI", StringComparison.OrdinalIgnoreCase)) is true;
                 }
                 catch (UnauthorizedAccessException)
                 {
@@ -204,7 +203,8 @@ namespace PSADT.AccountManagement
             /// <summary>
             /// Represents the active user context for the current session, encapsulated as a nullable <see cref="RunAsActiveUser"/> instance.
             /// </summary>
-            internal static readonly RunAsActiveUser? Session = SessionInfo.GetAsync(CallerSessionId).AsTask().ConfigureAwait(false).GetAwaiter().GetResult()?.ToRunAsActiveUser();
+            [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
+            internal static readonly RunAsActiveUser? Session = SessionInfo.GetAsync(CallerSessionId).ConfigureAwait(false).GetAwaiter().GetResult()?.ToRunAsActiveUser();
         }
     }
 }

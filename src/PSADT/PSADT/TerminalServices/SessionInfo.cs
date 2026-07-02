@@ -11,7 +11,6 @@ using Microsoft.Win32.SafeHandles;
 using PSADT.AccountManagement;
 using PSADT.Foundation;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using PSADT.ProcessManagement;
 using PSADT.Security;
@@ -24,7 +23,7 @@ namespace PSADT.TerminalServices
     /// <summary>
     /// A class to hold all information for a given WTS session.
     /// </summary>
-    public sealed record SessionInfo
+    public sealed record class SessionInfo
     {
         /// <summary>
         /// Retrieves a read-only collection containing information about all active sessions on the current server.
@@ -36,7 +35,7 @@ namespace PSADT.TerminalServices
         /// The list is empty if no active sessions are found.</returns>
         public static async ValueTask<IReadOnlyList<SessionInfo>> GetAsync()
         {
-            return new ReadOnlyCollection<SessionInfo>(await GetAllAsync().ToListAsync().ConfigureAwait(false));
+            return new ReadOnlyCollection<SessionInfo>(await GetAllAsync().ToListAsync(default).ConfigureAwait(false));
         }
 
         /// <summary>
@@ -47,7 +46,7 @@ namespace PSADT.TerminalServices
         /// langword="null"/>.</returns>
         public static ValueTask<SessionInfo?> GetAsync(uint sessionId)
         {
-            return GetAllAsync(sessionId).FirstOrDefaultAsync();
+            return GetAllAsync(sessionId).FirstOrDefaultAsync(default);
         }
 
         /// <summary>
@@ -72,7 +71,7 @@ namespace PSADT.TerminalServices
                     for (int i = 0; i < objCount; i++)
                     {
                         ref readonly WTS_SESSION_INFO_1W wtsSessionInfo = ref pSessionInfoPtr.AsReadOnlyStructure<WTS_SESSION_INFO_1W>(objLength * i);
-                        if (sessionId?.Equals(wtsSessionInfo.SessionId) != false && await GetAsync(wtsSessionInfo).ConfigureAwait(false) is SessionInfo sessionInfo)
+                        if ((sessionId?.Equals(wtsSessionInfo.SessionId)) is not false && await GetAsync(wtsSessionInfo).ConfigureAwait(false) is SessionInfo sessionInfo)
                         {
                             yield return sessionInfo;
                         }
@@ -150,8 +149,8 @@ namespace PSADT.TerminalServices
             // Set up the remaining session information values.
             bool isCurrentSession = session.SessionId == AccountUtilities.CallerSessionId;
             bool isConsoleSession = session.SessionId == PInvoke.WTSGetActiveConsoleSessionId();
-            bool isActiveUserSession = session.State == Windows.Win32.System.RemoteDesktop.WTS_CONNECTSTATE_CLASS.WTSActive;
-            bool isValidUserSession = isActiveUserSession || session.State == Windows.Win32.System.RemoteDesktop.WTS_CONNECTSTATE_CLASS.WTSDisconnected;
+            bool isActiveUserSession = session.State is Windows.Win32.System.RemoteDesktop.WTS_CONNECTSTATE_CLASS.WTSActive;
+            bool isValidUserSession = isActiveUserSession || session.State is Windows.Win32.System.RemoteDesktop.WTS_CONNECTSTATE_CLASS.WTSDisconnected;
             ushort clientProtocolType = GetValue<ushort>(session.SessionId, WTS_INFO_CLASS.WTSClientProtocolType);
             string? clientName = GetString(session.SessionId, WTS_INFO_CLASS.WTSClientName);
             string? pWinStationName = session.pSessionName.ToString();
@@ -186,8 +185,8 @@ namespace PSADT.TerminalServices
                 {
                     try
                     {
-                        RunAsActiveUser user = new(ntAccount, sid, session.SessionId, isLocalAdmin); await ClientServerPermissions.Remediate(user).ConfigureAwait(false);
-                        using ProcessResult result = await ClientServerUtilities.StartClientOperation(["/GetLastInputTime"], user).ConfigureAwait(false);
+                        RunAsActiveUser user = new(ntAccount, sid, session.SessionId, isLocalAdmin); await ClientServerPermissions.RemediateAsync(user).ConfigureAwait(false);
+                        using ProcessResult result = await ClientServerUtilities.StartClientOperationAsync(["/GetLastInputTime"], user).ConfigureAwait(false);
                         idleTime = new(long.Parse(result.StdOut[0], CultureInfo.InvariantCulture));
                     }
                     catch (Exception ex) when (ex.Message is not null)
@@ -211,7 +210,7 @@ namespace PSADT.TerminalServices
                 isActiveUserSession,
                 isValidUserSession,
                 pWinStationName is not "Services" and not "RDP-Tcp",
-                clientProtocolType != 0,
+                clientProtocolType is not 0,
                 isLocalAdmin,
                 logonTime,
                 idleTime,

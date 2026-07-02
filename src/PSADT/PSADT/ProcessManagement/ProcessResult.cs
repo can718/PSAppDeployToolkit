@@ -10,8 +10,9 @@ namespace PSADT.ProcessManagement
     /// <summary>
     /// Represents the result of a process execution, including exit code and standard output/error.
     /// </summary>
+    /// <param name="ExitCode">The exit code of the process.</param>
     [DataContract]
-    public sealed record ProcessResult : IDisposable
+    public sealed record class ProcessResult(int ExitCode) : IDisposable
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="ProcessResult"/> struct.
@@ -46,19 +47,6 @@ namespace PSADT.ProcessManagement
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ProcessResult"/> struct.
-        /// This is only here as sometimes we need to falsify a result in the module.
-        /// </summary>
-        /// <param name="exitCode">The exit code of the process.</param>
-        public ProcessResult(int exitCode)
-        {
-            Interleaved = new ReadOnlyCollection<string>([]);
-            StdOut = new ReadOnlyCollection<string>([]);
-            StdErr = new ReadOnlyCollection<string>([]);
-            ExitCode = exitCode;
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ProcessResult"/> struct.
         /// </summary>
         /// <param name="exitCode">The exit code of the process.</param>
         /// <param name="stdOut">The standard output of the process.</param>
@@ -87,7 +75,10 @@ namespace PSADT.ProcessManagement
         /// held by the associated process. After calling Dispose, the instance should not be used.</remarks>
         public void Dispose()
         {
-            Process?.Dispose();
+            using (Process)
+            {
+                return;
+            }
         }
 
         /// <summary>
@@ -112,24 +103,24 @@ namespace PSADT.ProcessManagement
         /// Gets the exit code of the process, if the process had exited.
         /// </summary>
         [DataMember]
-        public readonly int ExitCode;
+        public readonly int ExitCode = ExitCode;
 
         /// <summary>
         /// Gets the standard output of the process.
         /// </summary>
         [DataMember]
-        public readonly IReadOnlyList<string> StdOut;
+        public readonly IReadOnlyList<string> StdOut = new ReadOnlyCollection<string>([]);
 
         /// <summary>
         /// Gets the standard error output of the process.
         /// </summary>
         [DataMember]
-        public readonly IReadOnlyList<string> StdErr;
+        public readonly IReadOnlyList<string> StdErr = new ReadOnlyCollection<string>([]);
 
         /// <summary>
         /// Gets the combined standard output and error of the process.
         /// </summary>
         [DataMember]
-        public readonly IReadOnlyList<string> Interleaved;
+        public readonly IReadOnlyList<string> Interleaved = new ReadOnlyCollection<string>([]);
     }
 }

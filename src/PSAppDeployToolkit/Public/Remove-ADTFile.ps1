@@ -59,6 +59,9 @@ function Remove-ADTFile
 
     .LINK
         https://psappdeploytoolkit.com/docs/reference/functions/Remove-ADTFile
+
+    .LINK
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Remove-ADTFile.ps1
     #>
 
     [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'LiteralPath', Justification = "This parameter is used within delegates that PSScriptAnalyzer has no visibility of. See https://github.com/PowerShell/PSScriptAnalyzer/issues/1472 for more details.")]
@@ -97,39 +100,37 @@ function Remove-ADTFile
         # Grab and cache all directories.
         $files = if (!$PSCmdlet.ParameterSetName.Equals('InputObject'))
         {
-            foreach ($path in $PSBoundParameters[$PSCmdlet.ParameterSetName])
-            {
-                try
+            $PSBoundParameters[$PSCmdlet.ParameterSetName] | & {
+                process
                 {
                     try
                     {
-                        $giParams = @{ $PSCmdlet.ParameterSetName = $path }
-                        if (!($items = Get-Item @giParams -Force | Select-Object -ExpandProperty FullName))
+                        try
                         {
-                            Write-ADTLogEntry -Message "Unable to resolve the path [$path] because it does not exist." -Severity Warning
-                            continue
+                            $giParams = @{ $PSCmdlet.ParameterSetName = $_ }
+                            if ($items = Get-Item @giParams -Force | Select-Object -ExpandProperty FullName)
+                            {
+                                return $items
+                            }
+                            Write-ADTLogEntry -Message "Unable to resolve the path [$_] because it does not exist." -Severity Warning
                         }
-                        return $items
-                    }
-                    catch [System.Management.Automation.ItemNotFoundException]
-                    {
-                        Write-ADTLogEntry -Message "Unable to resolve the path [$path] because it does not exist." -Severity Warning
-                        continue
-                    }
-                    catch [System.Management.Automation.DriveNotFoundException]
-                    {
-                        Write-ADTLogEntry -Message "Unable to resolve the path [$path] because the drive does not exist." -Severity Warning
-                        continue
+                        catch [System.Management.Automation.ItemNotFoundException]
+                        {
+                            Write-ADTLogEntry -Message "Unable to resolve the path [$_] because it does not exist." -Severity Warning
+                        }
+                        catch [System.Management.Automation.DriveNotFoundException]
+                        {
+                            Write-ADTLogEntry -Message "Unable to resolve the path [$_] because the drive does not exist." -Severity Warning
+                        }
+                        catch
+                        {
+                            Write-Error -ErrorRecord $_
+                        }
                     }
                     catch
                     {
-                        Write-Error -ErrorRecord $_
+                        Invoke-ADTFunctionErrorHandler -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState -ErrorRecord $_ -LogMessage "Failed to resolve the path for deletion [$_]."
                     }
-                }
-                catch
-                {
-                    Invoke-ADTFunctionErrorHandler -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState -ErrorRecord $_ -LogMessage "Failed to resolve the path for deletion [$path]."
-                    continue
                 }
             }
         }

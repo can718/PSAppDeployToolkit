@@ -62,6 +62,9 @@ function Show-ADTDialogBox
 
     .LINK
         https://psappdeploytoolkit.com/docs/reference/functions/Show-ADTDialogBox
+
+    .LINK
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Show-ADTDialogBox.ps1
     #>
 
     [CmdletBinding()]
@@ -181,7 +184,6 @@ function Show-ADTDialogBox
                     DialogDefaultButton = $DefaultButton
                     DialogTopMost = !$NotTopMost
                     DialogExpiryDuration = [System.UInt32]($Timeout * 1000)
-                    DialogIcon = $Icon
                 }
                 if ($PSBoundParameters.ContainsKey('Icon'))
                 {

@@ -24,7 +24,6 @@ using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -468,13 +467,13 @@ namespace PSADT.ShortcutManagement
                     };
                     propertyStorage.ReadMultiple([propertySpec], propertyValues);
                     VARENUM vt = propertyValues[0].Anonymous.Anonymous.vt;
-                    return vt == VARENUM.VT_BOOL
+                    return vt is VARENUM.VT_BOOL
                         ? propertyValues[0].Anonymous.Anonymous.Anonymous.boolVal != 0
-                        : vt == VARENUM.VT_I4
-                        ? propertyValues[0].Anonymous.Anonymous.Anonymous.lVal != 0
-                        : vt == VARENUM.VT_UI4
+                        : vt is VARENUM.VT_I4
+                        ? propertyValues[0].Anonymous.Anonymous.Anonymous.lVal is not 0
+                        : vt is VARENUM.VT_UI4
                         ? propertyValues[0].Anonymous.Anonymous.Anonymous.ulVal != 0
-                        : vt != VARENUM.VT_EMPTY
+                        : vt is not VARENUM.VT_EMPTY
                         ? throw new FileFormatException($"Property has unexpected type {vt}, expected VT_BOOL, VT_I4, or VT_UI4.")
                         : null;
                 }
@@ -502,7 +501,7 @@ namespace PSADT.ShortcutManagement
                 PROPVARIANT[] propertyValues = [default];
                 try
                 {
-                    if (value.HasValue)
+                    if (value is not null)
                     {
                         propertyValues[0].Anonymous.Anonymous.vt = VARENUM.VT_BOOL;
                         propertyValues[0].Anonymous.Anonymous.Anonymous.boolVal = value.Value ? (VARIANT_BOOL)(-1) : (VARIANT_BOOL)0;
@@ -551,11 +550,11 @@ namespace PSADT.ShortcutManagement
                     };
                     propertyStorage.ReadMultiple([propertySpec], propertyValues);
                     VARENUM vt = propertyValues[0].Anonymous.Anonymous.vt;
-                    if (vt == VARENUM.VT_EMPTY)
+                    if (vt is VARENUM.VT_EMPTY)
                     {
                         return null;
                     }
-                    if (vt == VARENUM.VT_BSTR)
+                    if (vt is VARENUM.VT_BSTR)
                     {
                         nint bstrVal;
                         unsafe
@@ -569,7 +568,7 @@ namespace PSADT.ShortcutManagement
                         string bstrValStr = Marshal.PtrToStringBSTR(bstrVal);
                         return !string.IsNullOrWhiteSpace(bstrValStr) ? bstrValStr : null;
                     }
-                    if (vt != VARENUM.VT_LPWSTR)
+                    if (vt is not VARENUM.VT_LPWSTR)
                     {
                         throw new FileFormatException($"Property has unexpected type {vt}, expected VT_LPWSTR or VT_BSTR.");
                     }
@@ -657,11 +656,11 @@ namespace PSADT.ShortcutManagement
                     };
                     propertyStorage.ReadMultiple([propertySpec], propertyValues);
                     VARENUM vt = propertyValues[0].Anonymous.Anonymous.vt;
-                    return vt == VARENUM.VT_I4
+                    return vt is VARENUM.VT_I4
                         ? propertyValues[0].Anonymous.Anonymous.Anonymous.lVal
-                        : vt == VARENUM.VT_UI4
+                        : vt is VARENUM.VT_UI4
                         ? (int)propertyValues[0].Anonymous.Anonymous.Anonymous.ulVal
-                        : vt != VARENUM.VT_EMPTY
+                        : vt is not VARENUM.VT_EMPTY
                         ? throw new FileFormatException($"Property has unexpected type {vt}, expected VT_I4 or VT_UI4.")
                         : null;
                 }
@@ -697,27 +696,27 @@ namespace PSADT.ShortcutManagement
                     };
                     propertyStorage.ReadMultiple([propertySpec], propertyValues);
                     VARENUM vt = propertyValues[0].Anonymous.Anonymous.vt;
-                    if (vt == VARENUM.VT_EMPTY)
+                    if (vt is VARENUM.VT_EMPTY)
                     {
                         return null;
                     }
-                    if (vt == VARENUM.VT_UI2)
+                    if (vt is VARENUM.VT_UI2)
                     {
                         return propertyValues[0].Anonymous.Anonymous.Anonymous.uiVal;
                     }
-                    if (vt == VARENUM.VT_I2)
+                    if (vt is VARENUM.VT_I2)
                     {
                         short value = propertyValues[0].Anonymous.Anonymous.Anonymous.iVal;
                         return value >= 0 ? (ushort)value : throw new FileFormatException("Property has a negative VT_I2 value, expected an unsigned 16-bit value.");
                     }
-                    if (vt == VARENUM.VT_I4)
+                    if (vt is VARENUM.VT_I4)
                     {
                         int value = propertyValues[0].Anonymous.Anonymous.Anonymous.lVal;
                         return value is >= ushort.MinValue and <= ushort.MaxValue
                             ? (ushort)value
                             : throw new FileFormatException($"Property value {value.ToString(CultureInfo.InvariantCulture)} is outside the UInt16 range.");
                     }
-                    if (vt == VARENUM.VT_UI4)
+                    if (vt is VARENUM.VT_UI4)
                     {
                         uint value = propertyValues[0].Anonymous.Anonymous.Anonymous.ulVal;
                         return value <= ushort.MaxValue
@@ -831,7 +830,7 @@ namespace PSADT.ShortcutManagement
         }
 
         /// <summary>
-        /// Releases the unmanaged resources used by the <see cref="InternetShortcutFile"/> and optionally releases the managed resources.
+        /// Releases all resources used by the <see cref="InternetShortcutFile"/>.
         /// </summary>
         public void Dispose()
         {
@@ -856,7 +855,7 @@ namespace PSADT.ShortcutManagement
         /// <summary>
         /// Gets a value indicating whether the current storage mode is read-only, preventing any write operations.
         /// </summary>
-        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) == Interop.STGM.STGM_DIRECT;
+        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) is Interop.STGM.STGM_DIRECT;
 
         /// <summary>
         /// Indicates whether the object has been disposed.
@@ -872,6 +871,5 @@ namespace PSADT.ShortcutManagement
         /// The storage mode used when loading the shortcut file.
         /// </summary>
         private readonly Interop.STGM? _storageMode;
-
     }
 }

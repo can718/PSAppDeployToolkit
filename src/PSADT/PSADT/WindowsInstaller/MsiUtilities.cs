@@ -8,9 +8,7 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text.RegularExpressions;
 using System.Xml;
-using PSADT.Extensions;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Utilities;
 using Windows.Win32;
 using Windows.Win32.System.ApplicationInstallationAndServicing;
@@ -509,9 +507,11 @@ namespace PSADT.WindowsInstaller
             }
             catch (Exception ex) when (ex.Message is not null)
             {
-                hDatabase.Dispose();
-                ExceptionDispatchInfo.Capture(ex).Throw();
-                throw;
+                using (hDatabase)
+                {
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    throw;
+                }
             }
         }
 
@@ -570,7 +570,7 @@ namespace PSADT.WindowsInstaller
         internal static int? GetSummaryInfoIntProperty(MsiCloseHandleSafeHandle hSummaryInfo, MSI_PROPERTY_ID propertyId)
         {
             _ = NativeMethods.MsiSummaryInfoGetProperty(hSummaryInfo, propertyId, out VARENUM puiDataType, out int piValue, out _, szValueBuf: null, out _);
-            return puiDataType is VARENUM.VT_I2 or VARENUM.VT_I4 && piValue != 0 ? piValue : null;
+            return puiDataType is VARENUM.VT_I2 or VARENUM.VT_I4 && piValue is not 0 ? piValue : null;
         }
 
         /// <summary>

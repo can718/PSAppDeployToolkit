@@ -12,7 +12,6 @@ using PSADT.AccountManagement;
 using PSADT.FileSystem;
 using PSADT.Foundation;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using PSADT.Security;
 using PSADT.Utilities;
@@ -25,7 +24,7 @@ namespace PSADT.ProcessManagement
     /// Provides options for launching a managed process.
     /// </summary>
     [DataContract]
-    public sealed record ProcessLaunchInfo
+    public sealed record class ProcessLaunchInfo
     {
         /// <summary>
         /// Initializes a new instance of the ProcessLaunchInfo class with the specified process launch parameters.
@@ -99,7 +98,8 @@ namespace PSADT.ProcessManagement
         /// <param name="noTerminateOnTimeout">true to prevent the process from being terminated when a timeout occurs; otherwise, false.</param>
         /// <exception cref="ArgumentNullException">Thrown if filePath is null.</exception>
         /// <exception cref="DriveNotFoundException">Thrown if filePath is not a fully qualified path when required.</exception>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "There's no async support during construction.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "Synchronous wait is necessary for constructor initialization.")]
         internal ProcessLaunchInfo(string filePath, IEnumerable<string>? argumentList = null, string? workingDirectory = null, RunAsActiveUser? runAsActiveUser = null, bool inheritEnvironmentVariables = false, bool expandEnvironmentVariables = false, bool denyUserTermination = false, ElevatedTokenType? elevatedTokenType = null, bool runAsInvoker = false, bool uiAccess = false, bool bypassIfeo = false, IReadOnlyList<string>? standardInput = null, IReadOnlyList<nint>? handlesToInherit = null, bool useShellExecute = false, string? verb = null, bool createNoWindow = false, bool waitForChildProcesses = false, bool killChildProcessesWithParent = false, Encoding? streamEncoding = null, ProcessWindowStyle? windowStyle = null, ProcessPriorityClass? priorityClass = null, CancellationToken? cancellationToken = null, bool noTerminateOnTimeout = false)
         {
             // Validate all string parameters are properly set up.
@@ -113,11 +113,11 @@ namespace PSADT.ProcessManagement
             // Confirm we're not using incompatible options.
             if (useShellExecute)
             {
-                if (runAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser) == false)
+                if ((runAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser)) is false)
                 {
                     throw new NotSupportedException("Cannot specify UseShellExecute while specifying a RunAsActiveUser.");
                 }
-                if (elevatedTokenType?.Equals(Security.ElevatedTokenType.None) == false)
+                if ((elevatedTokenType?.Equals(Security.ElevatedTokenType.None)) is false)
                 {
                     throw new NotSupportedException("Cannot specify ElevatedTokenType while specifying a RunAsActiveUser.");
                 }
@@ -136,7 +136,7 @@ namespace PSADT.ProcessManagement
             FilePath = filePath.TrimStart('"').TrimEnd('"');
 
             // Set up all token-related variables. Allow useLinkedAdminToken to clobber useHighestAvailableToken.
-            if (elevatedTokenType.HasValue)
+            if (elevatedTokenType is not null)
             {
                 ElevatedTokenType = elevatedTokenType.Value;
             }
@@ -148,7 +148,7 @@ namespace PSADT.ProcessManagement
             // Expand out environment variables for FilePath/ArgumentList as required.
             if (ExpandEnvironmentVariables = expandEnvironmentVariables)
             {
-                if (RunAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser) == false)
+                if ((RunAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser)) is false)
                 {
                     if (!TokenManager.CanGetUserPrimaryToken)
                     {
@@ -447,7 +447,7 @@ namespace PSADT.ProcessManagement
         /// </summary>
         internal bool IsCliApplication()
         {
-            return ImageSubsystem != IMAGE_SUBSYSTEM.IMAGE_SUBSYSTEM_WINDOWS_GUI;
+            return ImageSubsystem is not IMAGE_SUBSYSTEM.IMAGE_SUBSYSTEM_WINDOWS_GUI;
         }
 
         /// <summary>

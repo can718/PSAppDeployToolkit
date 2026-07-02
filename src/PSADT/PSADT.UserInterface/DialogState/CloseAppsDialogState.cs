@@ -14,7 +14,7 @@ namespace PSADT.UserInterface.DialogState
     /// provides functionality for tracking running processes and managing countdown operations related to process
     /// closure.</remarks>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0182: Avoid unused internal types.", Justification = "This is used across InternalsVisibleTo boundaries.")]
-    internal sealed record CloseAppsDialogState : BaseDialogState, IAsyncDisposable
+    internal sealed record class CloseAppsDialogState : BaseDialogState, IAsyncDisposable
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="CloseAppsDialogState"/> class with the specified processes to close.
@@ -22,7 +22,7 @@ namespace PSADT.UserInterface.DialogState
         /// <param name="closeProcesses">An array of <see cref="ProcessDefinition"/> objects representing the processes to be managed for closure. If
         /// the array is null or empty, no processes will be managed.</param>
         /// <param name="logAction">An optional delegate for logging messages with severity. If null, logging is disabled.</param>
-        internal CloseAppsDialogState(ReadOnlyCollection<ProcessDefinition>? closeProcesses, Action<string, LogSeverity, string> logAction)
+        internal CloseAppsDialogState(ReadOnlyCollection<ProcessDefinition>? closeProcesses, Func<string, LogSeverity, string, ValueTask> logAction)
         {
             // Only initialise these variables if they're not null.
             if (closeProcesses?.Count > 0)
@@ -57,7 +57,7 @@ namespace PSADT.UserInterface.DialogState
         /// </summary>
         /// <remarks>This delegate is intended for internal use only.When invoked, it writes the
         /// provided message with the specified severity to the configured logging destination.</remarks>
-        internal readonly Action<string, LogSeverity> LogAction;
+        internal readonly Func<string, LogSeverity, ValueTask> LogAction;
 
         /// <summary>
         /// Disposes of the resources used by the <see cref="CloseAppsDialogState"/> record.
@@ -68,11 +68,15 @@ namespace PSADT.UserInterface.DialogState
             {
                 return;
             }
-            if (RunningProcessService is not null)
+            if (RunningProcessService is null)
             {
-                await RunningProcessService.DisposeAsync().ConfigureAwait(false);
+                _disposed = true;
+                return;
             }
-            _disposed = true;
+            await using (RunningProcessService.ConfigureAwait(false))
+            {
+                _disposed = true;
+            }
         }
     }
 }

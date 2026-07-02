@@ -34,7 +34,7 @@ namespace PSAppDeployToolkit.Foundation
     /// useful for deployment automation, diagnostics, and scripts that need to adapt their behavior based on the
     /// current environment. All properties are read-only and reflect the state of the environment at the time the
     /// instance is created.</remarks>
-    public sealed record EnvironmentTable
+    public sealed record class EnvironmentTable
     {
         /// <summary>
         /// Initializes a new instance of the EnvironmentTable class, providing access to various environment-related
@@ -47,6 +47,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <param name="psVersionTable">A hashtable containing version information for the PowerShell environment. This parameter cannot be null.</param>
         /// <param name="psVersion">The version of PowerShell being used, represented as a Version object.</param>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="cmdlet"/> or <paramref name="psVersionTable"/> is null.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "There's no async support during construction.")]
         public EnvironmentTable(PSCmdlet cmdlet, Hashtable psVersionTable, Version psVersion)
         {
@@ -69,7 +70,7 @@ namespace PSAppDeployToolkit.Foundation
 
             // Domain membership.
             DomainStatus domainStatus = DeviceUtilities.GetDomainStatus();
-            if (IsMachinePartOfDomain = domainStatus.JoinStatus == NETSETUP_JOIN_STATUS.NetSetupDomainName)
+            if (IsMachinePartOfDomain = domainStatus.JoinStatus is NETSETUP_JOIN_STATUS.NetSetupDomainName)
             {
                 // Set the domain name.
                 if (domainStatus.DomainOrWorkgroupName is string domainName)
@@ -104,7 +105,7 @@ namespace PSAppDeployToolkit.Foundation
                 {
                     EnvLogonServer = (string?)Registry.GetValue("HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Group Policy\\History", "DCName", defaultValue: null);
                 }
-                if (EnvLogonServer?.StartsWith('\\') == true)
+                if ((EnvLogonServer?.StartsWith('\\')) is true)
                 {
                     EnvLogonServer = EnvLogonServer.TrimStart('\\');
                 }
@@ -192,12 +193,12 @@ namespace PSAppDeployToolkit.Foundation
             EnvPSVersion = psVersion;
 
             // Logged on user information.
-            if ((LoggedOnUserSessions = SessionInfo.GetAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult()).Count > 0)
+            if ((LoggedOnUserSessions = SessionInfo.GetAsync().ConfigureAwait(false).GetAwaiter().GetResult()).Count > 0)
             {
                 UsersLoggedOn = new ReadOnlyCollection<NTAccount>([.. LoggedOnUserSessions.Select(static s => s.NTAccount)]);
                 CurrentLoggedOnUserSession = LoggedOnUserSessions.FirstOrDefault(static s => s.IsCurrentSession);
                 CurrentConsoleUserSession = LoggedOnUserSessions.FirstOrDefault(static s => s.IsConsoleSession);
-                RunAsActiveUser = RunAsActiveUser.GetAsync(LoggedOnUserSessions).AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+                RunAsActiveUser = RunAsActiveUser.GetAsync(LoggedOnUserSessions).ConfigureAwait(false).GetAwaiter().GetResult();
                 if (RunAsActiveUser is not null)
                 {
                     RunAsActiveUserLocale = Registry.GetValue($@"HKEY_USERS\{RunAsActiveUser.SID}\Control Panel\International", "LocaleName", defaultValue: null) is string localeName && !string.IsNullOrWhiteSpace(localeName) ? new(localeName) : null;
@@ -779,7 +780,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <remarks>This property returns <see langword="true"/> if the environment's operating system is
         /// identified as a server version based on its product type. Use this property to distinguish between server
         /// and client operating systems when conditional logic is required.</remarks>
-        public bool IsServerOS => EnvOSProductType == 3;
+        public bool IsServerOS => EnvOSProductType is 3;
 
         /// <summary>
         /// Gets a value indicating whether the operating system is configured as a domain controller.
@@ -787,7 +788,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <remarks>This property determines if the current operating system is functioning as a domain
         /// controller by evaluating its product type. Use this property to check for domain controller-specific
         /// behavior or requirements in your application.</remarks>
-        public bool IsDomainControllerOS => EnvOSProductType == 2;
+        public bool IsDomainControllerOS => EnvOSProductType is 2;
 
         /// <summary>
         /// Gets a value indicating whether the operating system is a workstation edition.
@@ -795,7 +796,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <remarks>This property can be used to distinguish between workstation and server operating
         /// system environments. It is useful for scenarios where application behavior should differ based on the OS
         /// type.</remarks>
-        public bool IsWorkstationOS => EnvOSProductType == 1;
+        public bool IsWorkstationOS => EnvOSProductType is 1;
 
         /// <summary>
         /// Gets a value indicating whether the current environment is a terminal server.

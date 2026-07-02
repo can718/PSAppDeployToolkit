@@ -15,14 +15,15 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 using PSADT.AccountManagement;
-using PSADT.Extensions;
 using PSADT.Foundation;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using PSADT.SafeHandles;
 using PSADT.Security;
+using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Security;
+using Windows.Win32.Security.Authorization;
 using Windows.Win32.System.JobObjects;
 using Windows.Win32.System.Threading;
 
@@ -70,15 +71,16 @@ namespace PSADT.ProcessManagement
         /// state and standard streams as configured.</returns>
         /// <exception cref="InvalidOperationException">Thrown if the process cannot be started.</exception>
         /// <exception cref="NotSupportedException">Thrown if the specified user context is not supported for process creation.</exception>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "This function must remain synchronous for now.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "We cannot refactor this method to be async at this stage.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0099:Use Explicit enum value instead of 0", Justification = "There is no zero value for the enums in question.")]
         private static ProcessHandle LaunchWithCreateProcessAsync(ProcessLaunchInfo launchInfo)
         {
             // Perform initial setup and get started with the process creation.
             ProcessReadStream? stdOutHandle = null, stdErrHandle = null; ProcessWriteStream? stdInHandle = null;
             AnonymousPipeServerStream? stdOutStream = null, stdErrStream = null, stdInStream = null;
-            ReadOnlyCollection<SE_PRIVILEGE> callerPrivileges = PrivilegeManager.GetPrivileges();
             Span<char> commandSpan = launchInfo.MakeCommandLine(nullTerminated: true).ToCharArray();
+            ReadOnlyCollection<SE_PRIVILEGE> callerPrivileges = PrivilegeManager.GetPrivileges();
             SafeProcessHandle hProcess; SafeThreadHandle hThread; uint processId;
             ConcurrentQueue<string> interleavedData = [];
             try
@@ -136,7 +138,7 @@ namespace PSADT.ProcessManagement
                 }
 
                 // Attempt to launch the process with the specified user's token if the necessary information was provided, otherwise just directly create the process.
-                if (launchInfo.RunAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser) == false)
+                if ((launchInfo.RunAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser)) is false)
                 {
                     // Start the process with the user's token. Without creating an environment block, the process will take on the environment of the SYSTEM account.
                     if (!TokenManager.CanGetUserPrimaryToken)
@@ -157,7 +159,7 @@ namespace PSADT.ProcessManagement
                         }
                     }
                 }
-                else if (AccountUtilities.CallerIsAdmin && (launchInfo.ElevatedTokenType == ElevatedTokenType.None || (launchInfo.UIAccess && AccountUtilities.CallerIsLoggedOnUser && TokenManager.CanGetUserPrimaryToken && ((!hasExternalHandles && CanUseCreateProcessWithToken(isCallerToken: true, callerPrivileges, commandSpan) == CreateProcessUsingTokenStatus.OK) || CanUseCreateProcessAsUser(isCallerToken: true, callerPrivileges) == CreateProcessUsingTokenStatus.OK))))
+                else if (AccountUtilities.CallerIsAdmin && (launchInfo.ElevatedTokenType is ElevatedTokenType.None || (launchInfo.UIAccess && AccountUtilities.CallerIsLoggedOnUser && TokenManager.CanGetUserPrimaryToken && ((!hasExternalHandles && CanUseCreateProcessWithToken(isCallerToken: true, callerPrivileges, commandSpan) is CreateProcessUsingTokenStatus.OK) || CanUseCreateProcessAsUser(isCallerToken: true, callerPrivileges) is CreateProcessUsingTokenStatus.OK))))
                 {
                     // We're running elevated but have been asked to de-elevate.
                     if (!AccountUtilities.CallerIsLoggedOnUser)
@@ -194,14 +196,13 @@ namespace PSADT.ProcessManagement
             }
             catch (Exception ex) when (ex.Message is not null)
             {
-                stdOutHandle?.Dispose();
-                stdOutStream?.Dispose();
-                stdErrHandle?.Dispose();
-                stdErrStream?.Dispose();
-                stdInHandle?.Dispose();
-                stdInStream?.Dispose();
-                ExceptionDispatchInfo.Capture(ex).Throw();
-                throw;
+                using (stdOutStream)
+                using (stdErrStream)
+                using (stdInStream)
+                {
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    throw;
+                }
             }
             finally
             {
@@ -213,45 +214,39 @@ namespace PSADT.ProcessManagement
             // Finalise the process creation and return the handle to the caller.
             try
             {
+                if (launchInfo.DenyUserTermination)
+                {
+                    DenyProcessTermination(launchInfo, hProcess, callerPrivileges);
+                }
                 Process process = Process.GetProcessById((int)processId);
                 try
                 {
-                    if (stdOutHandle is not null && stdErrHandle is not null)
-                    {
-                        stdOutHandle.Task.Start(TaskScheduler.Default);
-                        stdErrHandle.Task.Start(TaskScheduler.Default);
-                        using (hThread)
-                        {
-                            _ = NativeMethods.ResumeThread(hThread);
-                        }
-                        stdInHandle?.Task.Start(TaskScheduler.Default);
-                        return new(new(launchInfo, process, processId, hProcess, commandSpan.ToString(), callerPrivileges, stdOutHandle, stdErrHandle, interleavedData, stdInHandle));
-                    }
                     using (hThread)
                     {
                         _ = NativeMethods.ResumeThread(hThread);
                     }
-                    return new(new(launchInfo, process, processId, hProcess, commandSpan.ToString(), callerPrivileges));
+                    return new(launchInfo, process, processId, hProcess, commandSpan.ToString(), stdOutHandle, stdErrHandle, interleavedData, stdInHandle);
                 }
                 catch (Exception ex) when (ex.Message is not null)
                 {
-                    process.Dispose();
-                    ExceptionDispatchInfo.Capture(ex).Throw();
-                    throw;
+                    using (process)
+                    {
+                        ExceptionDispatchInfo.Capture(ex).Throw();
+                        throw;
+                    }
                 }
             }
             catch (Exception ex) when (ex.Message is not null)
             {
-                stdOutHandle?.Dispose();
-                stdOutStream?.Dispose();
-                stdErrHandle?.Dispose();
-                stdErrStream?.Dispose();
-                stdInHandle?.Dispose();
-                stdInStream?.Dispose();
-                hProcess.Dispose();
-                hThread.Dispose();
-                ExceptionDispatchInfo.Capture(ex).Throw();
-                throw;
+                using (stdOutStream)
+                using (stdErrStream)
+                using (stdInStream)
+                using (hProcess)
+                using (hThread)
+                {
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    throw;
+                }
             }
         }
 
@@ -313,14 +308,15 @@ namespace PSADT.ProcessManagement
             }
             catch (Exception ex) when (ex.Message is not null)
             {
-                process.Dispose();
-                ExceptionDispatchInfo.Capture(ex).Throw();
-                throw;
+                using (process)
+                {
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    throw;
+                }
             }
 
             // Try to get the process's handle and process Id. For a pure
             // shell action, the calls will throw so just return null here.
-            ClientServerUtilities.SetOperationSuccessFlag();
             SafeProcessHandle hProcess;
             try
             {
@@ -328,26 +324,116 @@ namespace PSADT.ProcessManagement
             }
             catch
             {
-                process.Dispose();
-                return null;
-                throw;
+                using (process)
+                {
+                    ClientServerUtilities.SetOperationSuccessFlag();
+                    return null;
+                    throw;
+                }
             }
 
             // If this wasn't a pure shell action, assign the handle to our job and set the priority class.
             try
             {
+                if (launchInfo.DenyUserTermination)
+                {
+                    DenyProcessTermination(launchInfo, hProcess);
+                }
                 if (launchInfo.PriorityClass is not null)
                 {
                     process.PriorityClass = launchInfo.PriorityClass.Value;
                 }
-                return new(new(launchInfo, process));
+                return new(launchInfo, process);
             }
             catch (Exception ex) when (ex.Message is not null)
             {
-                hProcess.Dispose();
-                process.Dispose();
-                ExceptionDispatchInfo.Capture(ex).Throw();
-                throw;
+                using (hProcess)
+                using (process)
+                {
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Modifies the access control list (ACL) of the specified process to deny termination and other dangerous operations.
+        /// </summary>
+        /// <param name="launchInfo">The launch configuration and metadata used to start the process.</param>
+        /// <param name="processHandle">A safe handle to the process, used for resource management and native operations.</param>
+        /// <param name="callerPrivileges">The caller's privileges as per the PrivilegeManager class.</param>
+        private static void DenyProcessTermination(ProcessLaunchInfo launchInfo, SafeProcessHandle processHandle, ReadOnlyCollection<SE_PRIVILEGE>? callerPrivileges = null)
+        {
+            // If the client/server process isn't ours, we'll want to change the owner to ourselves if we can.
+            RunAsActiveUser runAsActiveUser = launchInfo.RunAsActiveUser ?? AccountUtilities.CallerRunAsActiveUser; bool changeOwner = false;
+            if (runAsActiveUser.SID != AccountUtilities.CallerSid && (callerPrivileges ??= PrivilegeManager.GetPrivileges()).Contains(SE_PRIVILEGE.SeSecurityPrivilege) && callerPrivileges.Contains(SE_PRIVILEGE.SeTakeOwnershipPrivilege))
+            {
+                PrivilegeManager.EnablePrivilegeIfDisabled(SE_PRIVILEGE.SeSecurityPrivilege);
+                PrivilegeManager.EnablePrivilegeIfDisabled(SE_PRIVILEGE.SeTakeOwnershipPrivilege);
+                changeOwner = true;
+            }
+
+            // Create a restricted access control list (ACL) for the client process so the user can't terminate it.
+            using SafePinnedGCHandle pinnedUserSid = SafePinnedGCHandle.Alloc(runAsActiveUser.SID.GetBinaryForm());
+            bool pinnedUserSidAddRef = false;
+            try
+            {
+                // Generate an explicit access control entry (ACE) for the user SID.
+                pinnedUserSid.DangerousAddRef(ref pinnedUserSidAddRef);
+                TRUSTEE_W aceTrustee = new()
+                {
+                    TrusteeForm = TRUSTEE_FORM.TRUSTEE_IS_SID,
+                    ptstrName = new(pinnedUserSid.DangerousGetHandle()),
+                };
+
+                // Create a DENY ACE for dangerous permissions that could be used for code injection or process manipulation.
+                EXPLICIT_ACCESS_W denyAce = new()
+                {
+                    grfAccessPermissions = (uint)(
+                        PROCESS_ACCESS_RIGHTS.PROCESS_TERMINATE |                    // Prevent termination
+                        PROCESS_ACCESS_RIGHTS.PROCESS_VM_WRITE |                     // Prevent memory writes (code injection)
+                        PROCESS_ACCESS_RIGHTS.PROCESS_VM_OPERATION |                 // Prevent memory operations
+                        PROCESS_ACCESS_RIGHTS.PROCESS_CREATE_THREAD |                // Prevent remote thread creation
+                        PROCESS_ACCESS_RIGHTS.PROCESS_DUP_HANDLE |                   // Prevent handle duplication attacks
+                        PROCESS_ACCESS_RIGHTS.PROCESS_SET_INFORMATION |              // Prevent process info modification
+                        PROCESS_ACCESS_RIGHTS.PROCESS_SUSPEND_RESUME),               // Prevent suspend/resume manipulation
+                    grfAccessMode = ACCESS_MODE.DENY_ACCESS,
+                    grfInheritance = ACE_FLAGS.NO_INHERITANCE,
+                    Trustee = aceTrustee,
+                };
+
+                // Create a GRANT ACE for limited permissions (query and synchronize only).
+                EXPLICIT_ACCESS_W grantAce = new()
+                {
+                    grfAccessPermissions = (uint)(
+                        PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION |    // Allow querying limited info
+                        PROCESS_ACCESS_RIGHTS.PROCESS_SYNCHRONIZE),                  // Allow synchronization
+                    grfAccessMode = ACCESS_MODE.GRANT_ACCESS,
+                    grfInheritance = ACE_FLAGS.NO_INHERITANCE,
+                    Trustee = aceTrustee,
+                };
+
+                // Apply the ACL and potentially change the owner of the client process. DENY ACEs are processed before GRANT ACEs by Windows.
+                _ = NativeMethods.SetEntriesInAcl([denyAce, grantAce], out LocalFreeSafeHandle pAcl);
+                using (pAcl)
+                {
+                    if (changeOwner)
+                    {
+                        using SafePinnedGCHandle pinnedCallerSid = SafePinnedGCHandle.Alloc(AccountUtilities.CallerSid.GetBinaryForm());
+                        _ = NativeMethods.SetSecurityInfo(processHandle, SE_OBJECT_TYPE.SE_KERNEL_OBJECT, OBJECT_SECURITY_INFORMATION.OWNER_SECURITY_INFORMATION | OBJECT_SECURITY_INFORMATION.DACL_SECURITY_INFORMATION, pinnedCallerSid, psidGroup: null, pAcl, pSacl: null);
+                    }
+                    else
+                    {
+                        _ = NativeMethods.SetSecurityInfo(processHandle, SE_OBJECT_TYPE.SE_KERNEL_OBJECT, OBJECT_SECURITY_INFORMATION.DACL_SECURITY_INFORMATION, psidOwner: null, psidGroup: null, pAcl, pSacl: null);
+                    }
+                }
+            }
+            finally
+            {
+                if (pinnedUserSidAddRef)
+                {
+                    pinnedUserSid.DangerousRelease();
+                }
             }
         }
 
@@ -361,25 +447,29 @@ namespace PSADT.ProcessManagement
         {
             AnonymousPipeServerStream stream = new(PipeDirection.In, HandleInheritability.Inheritable);
             List<string> output = [];
+            async Task ReadToEndAsync()
+            {
+                using (stream)
+                {
+                    using StreamReader reader = new(stream, encoding);
+                    while ((await reader.ReadLineAsync(default).ConfigureAwait(false))?.TrimEnd() is string line)
+                    {
+                        interleaved.Enqueue(line);
+                        output.Add(line);
+                    }
+                }
+            }
             try
             {
-                return (stream, (HANDLE)stream.ClientSafePipeHandle.DangerousGetHandle(), new(output, new(() =>
-                {
-                    using (stream)
-                    {
-                        using StreamReader reader = new(stream, encoding);
-                        while (reader.ReadLine()?.TrimEnd() is string line)
-                        {
-                            interleaved.Enqueue(line); output.Add(line);
-                        }
-                    }
-                })));
+                return (stream, (HANDLE)stream.ClientSafePipeHandle.DangerousGetHandle(), new(output, ReadToEndAsync()));
             }
             catch (Exception ex) when (ex.Message is not null)
             {
-                stream.Dispose();
-                ExceptionDispatchInfo.Capture(ex).Throw();
-                throw;
+                using (stream)
+                {
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    throw;
+                }
             }
         }
 
@@ -392,33 +482,36 @@ namespace PSADT.ProcessManagement
         private static (AnonymousPipeServerStream stream, HANDLE pipe, ProcessWriteStream handle) CreateWritePipe(IReadOnlyList<string> input, Encoding encoding)
         {
             AnonymousPipeServerStream stream = new(PipeDirection.Out, HandleInheritability.Inheritable);
-            try
+            async Task WriteToEndAsync()
             {
-                return (stream, (HANDLE)stream.ClientSafePipeHandle.DangerousGetHandle(), new(new(() =>
+                using (stream)
                 {
-                    using (stream)
+                    try
                     {
-                        try
+                        using StreamWriter writer = new(stream, encoding);
+                        foreach (string line in input)
                         {
-                            using StreamWriter writer = new(stream, encoding);
-                            foreach (string line in input)
-                            {
-                                writer.WriteLine(line);
-                            }
-                        }
-                        catch (IOException)
-                        {
-                            // The child process didn't read all input before exiting.
-                            return;
+                            await writer.WriteLineAsync(line).ConfigureAwait(false);
                         }
                     }
-                })));
+                    catch (IOException)
+                    {
+                        // The child process didn't read all input before exiting.
+                        return;
+                    }
+                }
+            }
+            try
+            {
+                return (stream, (HANDLE)stream.ClientSafePipeHandle.DangerousGetHandle(), new(WriteToEndAsync()));
             }
             catch (Exception ex) when (ex.Message is not null)
             {
-                stream.Dispose();
-                ExceptionDispatchInfo.Capture(ex).Throw();
-                throw;
+                using (stream)
+                {
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    throw;
+                }
             }
         }
 
@@ -475,7 +568,7 @@ namespace PSADT.ProcessManagement
             using ServiceController serviceController = new("seclogon");
             try
             {
-                if (serviceController.StartType == ServiceStartMode.Disabled)
+                if (serviceController.StartType is ServiceStartMode.Disabled)
                 {
                     return CreateProcessUsingTokenStatus.SecLogonServiceDisabled;
                 }
@@ -568,8 +661,8 @@ namespace PSADT.ProcessManagement
             // When the caller provides handles to inherit, we need to use CreateProcessAsUser() since it has bInheritHandles.
             bool isCallerToken = TokenUtilities.GetTokenSid(hPrimaryToken) == AccountUtilities.CallerSid;
             CreateProcessUsingTokenStatus createProcessAsUserAbility = CanUseCreateProcessAsUser(isCallerToken, callerPrivilges);
-            bool forceBreakaway = createProcessAsUserAbility == CreateProcessUsingTokenStatus.JobBreakawayNotPermitted;
-            if (createProcessAsUserAbility == CreateProcessUsingTokenStatus.OK || forceBreakaway || runAsInvoker)
+            bool forceBreakaway = createProcessAsUserAbility is CreateProcessUsingTokenStatus.JobBreakawayNotPermitted;
+            if (createProcessAsUserAbility is CreateProcessUsingTokenStatus.OK || forceBreakaway || runAsInvoker)
             {
                 // Use STARTUPINFOEX when we need to specify handle inheritance or force breakaway.
                 if (forceBreakaway || runAsInvoker || handlesToInherit.Count > 0)
@@ -599,7 +692,7 @@ namespace PSADT.ProcessManagement
 
             // Using CreateProcessAsUser() is not possible, so fall back to CreateProcessWithToken().
             CreateProcessUsingTokenStatus createProcessWithTokenAbility = CanUseCreateProcessWithToken(isCallerToken, callerPrivilges, commandLine);
-            if (createProcessWithTokenAbility != CreateProcessUsingTokenStatus.OK)
+            if (createProcessWithTokenAbility is not CreateProcessUsingTokenStatus.OK)
             {
                 throw new InvalidOperationException($"Unable to create a new process using CreateProcessWithToken(): {createProcessWithTokenAbility.GetDescription()}");
             }
@@ -692,16 +785,20 @@ namespace PSADT.ProcessManagement
                 }
                 catch (Exception ex) when (ex.Message is not null)
                 {
-                    pinnedHandles?.Dispose();
-                    ExceptionDispatchInfo.Capture(ex).Throw();
-                    throw;
+                    using (pinnedHandles)
+                    {
+                        ExceptionDispatchInfo.Capture(ex).Throw();
+                        throw;
+                    }
                 }
             }
             catch (Exception ex) when (ex.Message is not null)
             {
-                hAttributeList.Dispose();
-                ExceptionDispatchInfo.Capture(ex).Throw();
-                throw;
+                using (hAttributeList)
+                {
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    throw;
+                }
             }
         }
 

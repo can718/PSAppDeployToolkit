@@ -9,10 +9,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
-using PSADT.Extensions;
 using PSADT.FileSystem;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Security;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -33,7 +31,7 @@ namespace PSADT.ProcessManagement
     /// such as the file description, internal name, and whether the file is a debug or special build. This class is
     /// particularly useful for applications that need to inspect or display version information of running
     /// processes.</remarks>
-    public sealed record ProcessVersionInfo
+    public sealed record class ProcessVersionInfo
     {
         /// <summary>
         /// Retrieves version information for the specified process.
@@ -105,18 +103,19 @@ namespace PSADT.ProcessManagement
             }
             PrivilegeManager.EnablePrivilegeIfDisabled(SE_PRIVILEGE.SeDebugPrivilege);
 
-            // Get the main module base address and read the version resource from memory.
-            if (filePath is not null)
+            // Set the FileName property before trying to read memory.
+            if (filePath is null)
+            {
+                FileName = process.GetFilePath(ntPathLookupTable ?? FileSystemUtilities.MakeNtPathLookupTable());
+            }
+            else
             {
                 ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
                 FileName = new(filePath);
             }
-            else
-            {
-                FileName = process.GetFilePath(ntPathLookupTable ?? FileSystemUtilities.MakeNtPathLookupTable());
-            }
-            ReadOnlySpan<byte> versionResource;
-            using (SafeFileHandle processHandle = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ, bInheritHandle: false, (uint)process.Id))
+
+            // Get the main module base address and read the version resource from memory.
+            byte[] versionResource; using (SafeFileHandle processHandle = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ, bInheritHandle: false, (uint)process.Id))
             {
                 try
                 {
@@ -153,11 +152,10 @@ namespace PSADT.ProcessManagement
             IsSpecialBuild = fixedFileInfo.dwFileFlags.HasFlag(VS_FIXEDFILEINFO_FILE_FLAGS.VS_FF_SPECIALBUILD);
 
             // Read the version resource strings.
-            ReadOnlyCollection<string> codepageTable = GetTranslationTableCombinations(versionResource);
-            Language = GetFileVersionLanguage(codepageTable[0]); bool success = false;
-            foreach (string codepage in codepageTable)
+            bool success = false; foreach (string codepage in GetTranslationTableCombinations(versionResource))
             {
                 // Exit loop if we successfully retrieved at least one string.
+                Language ??= GetFileVersionLanguage(codepage);
                 Comments = GetFileVersionString(versionResource, codepage, "Comments", ref success);
                 CompanyName = GetFileVersionString(versionResource, codepage, "CompanyName", ref success);
                 FileDescription = GetFileVersionString(versionResource, codepage, "FileDescription", ref success);
@@ -230,7 +228,7 @@ namespace PSADT.ProcessManagement
 
             // Determine the resource directory RVA and size based on the optional header magic number.
             uint resourceRva, resourceSize;
-            if (magic == IMAGE_OPTIONAL_HEADER_MAGIC.IMAGE_NT_OPTIONAL_HDR32_MAGIC) // PE32
+            if (magic is IMAGE_OPTIONAL_HEADER_MAGIC.IMAGE_NT_OPTIONAL_HDR32_MAGIC) // PE32
             {
                 Span<byte> optionalHeader32Buf = stackalloc byte[Unsafe.SizeOf<IMAGE_OPTIONAL_HEADER32>()];
                 _ = NativeMethods.ReadProcessMemory(processHandle, ntOptionalHeadersAddress, optionalHeader32Buf, out _);
@@ -242,7 +240,7 @@ namespace PSADT.ProcessManagement
                 resourceRva = optionalHeader32.DataDirectory._2.VirtualAddress;  // INDEX_RESOURCE = 2
                 resourceSize = optionalHeader32.DataDirectory._2.Size;
             }
-            else if (magic == IMAGE_OPTIONAL_HEADER_MAGIC.IMAGE_NT_OPTIONAL_HDR64_MAGIC) // PE32+
+            else if (magic is IMAGE_OPTIONAL_HEADER_MAGIC.IMAGE_NT_OPTIONAL_HDR64_MAGIC) // PE32+
             {
                 Span<byte> optionalHeader64Buf = stackalloc byte[Unsafe.SizeOf<IMAGE_OPTIONAL_HEADER64>()];
                 _ = NativeMethods.ReadProcessMemory(processHandle, ntOptionalHeadersAddress, optionalHeader64Buf, out _);
@@ -340,26 +338,29 @@ namespace PSADT.ProcessManagement
         /// <summary>
         /// Gets language/codepage combinations from the Translation table.
         /// </summary>
-        /// <param name="versionResource">A span containing the version resource data.</param>
+        /// <param name="versionResource">A byte array containing the version resource data.</param>
         /// <returns>A read-only collection of language/codepage combinations.</returns>
-        private static ReadOnlyCollection<string> GetTranslationTableCombinations(ReadOnlySpan<byte> versionResource)
+        private static IEnumerable<string> GetTranslationTableCombinations(byte[] versionResource)
         {
-            // Return any translation pairs found in the version resource.
-            List<string> translationCombinations = [];
-            _ = NativeMethods.VerQueryValue(versionResource, @"\VarFileInfo\Translation", out nint translationPtr, out uint translationLength);
-            int langAndCodepageSize = Unsafe.SizeOf<LANGANDCODEPAGE>();
-            for (int i = 0; i < translationLength / langAndCodepageSize; i++)
+            // Internal implementation to yield a list of language/codepage combinations from the version resource.
+            static IEnumerable<string> GetTranslationTableCombinationsImpl(byte[] versionResource)
             {
-                ref readonly LANGANDCODEPAGE langAndCodePage = ref (translationPtr + (i * langAndCodepageSize)).AsReadOnlyStructure<LANGANDCODEPAGE>();
-                translationCombinations.Add(langAndCodePage.ToString());
-            }
+                // Return any translation pairs found in the version resource.
+                _ = NativeMethods.VerQueryValue(versionResource, @"\VarFileInfo\Translation", out nint translationPtr, out uint translationLength);
+                int langAndCodepageSize = Unsafe.SizeOf<LANGANDCODEPAGE>();
+                for (int i = 0; i < translationLength / langAndCodepageSize; i++)
+                {
+                    ref readonly LANGANDCODEPAGE langAndCodePage = ref (translationPtr + (i * langAndCodepageSize)).AsReadOnlyStructure<LANGANDCODEPAGE>();
+                    yield return langAndCodePage.ToString();
+                }
 
-            // Add some common fallback combinations that are known to work in many cases.
-            // These are based on common language/codepage pairs used in version resources.
-            translationCombinations.Add("040904B0");
-            translationCombinations.Add("040904E4");
-            translationCombinations.Add("04090000");
-            return new([.. translationCombinations.Distinct(StringComparer.OrdinalIgnoreCase)]);
+                // Add some common fallback combinations that are known to work in many cases.
+                // These are based on common language/codepage pairs used in version resources.
+                yield return "040904B0";
+                yield return "040904E4";
+                yield return "04090000";
+            }
+            return GetTranslationTableCombinationsImpl(versionResource).Distinct(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>

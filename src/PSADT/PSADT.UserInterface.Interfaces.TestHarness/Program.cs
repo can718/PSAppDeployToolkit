@@ -115,7 +115,7 @@ namespace PSADT.UserInterface.TestHarness
             const string inputDialogButtonRightText = "Cancel";
 
             // Set up options for the dialogs
-            CloseAppsDialogState closeAppsDialogState = new(appsToClose, (_, _, _) => { });
+            CloseAppsDialogState closeAppsDialogState = new(appsToClose, (_, _, _) => default);
             await using (closeAppsDialogState.ConfigureAwait(false))
             {
                 Hashtable closeAppsDialogOptions = new()
@@ -280,14 +280,14 @@ namespace PSADT.UserInterface.TestHarness
 
                 await DialogManager.ShowProgressDialogAsync(dialogStyle, progressDialogOptions).ConfigureAwait(false);
 
-                await Task.Delay(3000).ConfigureAwait(false); // Simulate some work being done
+                await Task.Delay(3000, default).ConfigureAwait(false); // Simulate some work being done
 
                 // Simulate a process with progress updates.
                 for (int i = 0; i <= 100; i += 10)
                 {
                     // Update progress
                     await DialogManager.UpdateProgressDialogAsync($"Installation progress: {i.ToString(CultureInfo.InvariantCulture)}%", $"Step {(i / 10).ToString(CultureInfo.InvariantCulture)} of 10", i).ConfigureAwait(false);
-                    await Task.Delay(250).ConfigureAwait(false);  // Simulate work being done
+                    await Task.Delay(250, default).ConfigureAwait(false);  // Simulate work being done
                 }
 
                 // Close Progress Dialog
@@ -310,7 +310,7 @@ namespace PSADT.UserInterface.TestHarness
 
                 string custom2Result = await DialogManager.ShowCustomDialogAsync(dialogStyle, customDialog2Options).ConfigureAwait(false);
 
-                if (customResult.Equals(customDialogButtonRightText, StringComparison.Ordinal))
+                if (custom2Result.Equals(customDialogButtonRightText, StringComparison.Ordinal))
                 {
                     return;
                 }
@@ -319,7 +319,7 @@ namespace PSADT.UserInterface.TestHarness
 
                 // Show Custom3 Dialog
 
-                string custom3Result = await DialogManager.ShowCustomDialogAsync(dialogStyle, customDialog3Options).ConfigureAwait(false);
+                _ = await DialogManager.ShowCustomDialogAsync(dialogStyle, customDialog3Options).ConfigureAwait(false);
 
                 // This dialog only has one button, so we don't need to bother checking the result.
 
@@ -402,7 +402,7 @@ namespace PSADT.UserInterface.TestHarness
         /// <returns><see langword="true" /> when a matching ancestor is found; otherwise, <see langword="false" />.</returns>
         private static bool TryFindAncestor(Ast ast, Func<InvokeMemberExpressionAst, bool> predicate, [NotNullWhen(true)] out InvokeMemberExpressionAst? invokeMemberExpressionAst)
         {
-            for (Ast current = ast; current != null; current = current.Parent)
+            for (Ast current = ast; current is not null; current = current.Parent)
             {
                 if (current is InvokeMemberExpressionAst currentInvokeMemberExpressionAst && predicate(currentInvokeMemberExpressionAst))
                 {

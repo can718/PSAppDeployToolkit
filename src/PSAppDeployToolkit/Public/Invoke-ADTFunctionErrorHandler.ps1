@@ -67,6 +67,9 @@ function Invoke-ADTFunctionErrorHandler
 
     .LINK
         https://psappdeploytoolkit.com/docs/reference/functions/Invoke-ADTFunctionErrorHandler
+
+    .LINK
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Invoke-ADTFunctionErrorHandler.ps1
     #>
 
     [CmdletBinding(DefaultParameterSetName = 'None')]
@@ -109,9 +112,6 @@ function Invoke-ADTFunctionErrorHandler
         [System.Management.Automation.SwitchParameter]$Silent
     )
 
-    # Store out the caller's original ErrorAction for some checks and balances.
-    $OriginalErrorAction = $SessionState.PSVariable.Get('OriginalErrorAction').Value
-
     # Recover true ErrorActionPreference the caller may have set,
     # unless an ErrorAction was specifically provided to this function.
     $ErrorActionPreference = if ($PSBoundParameters.ContainsKey('ErrorAction'))
@@ -120,12 +120,15 @@ function Invoke-ADTFunctionErrorHandler
     }
     elseif ($SessionState.Equals($ExecutionContext.SessionState))
     {
-        Get-Variable -Name OriginalErrorAction -Scope 1 -ValueOnly
+        Get-Variable -Name OriginalErrorAction -ValueOnly
     }
     else
     {
-        $OriginalErrorAction
+        $SessionState.PSVariable.Get('OriginalErrorAction').Value
     }
+
+    # Store out the caller's original ErrorAction for some checks and balances.
+    $OriginalErrorAction = $SessionState.PSVariable.Get('OriginalErrorAction').Value
 
     # If the caller hasn't specified a LogMessage, use the ErrorRecord's message.
     if ([System.String]::IsNullOrWhiteSpace($LogMessage))

@@ -60,7 +60,7 @@ namespace PSADT.DeviceManagement
                                 try
                                 {
                                     sessionControl.GetState(out AudioSessionState state);
-                                    if (state == AudioSessionState.AudioSessionStateActive)
+                                    if (state is AudioSessionState.AudioSessionStateActive)
                                     {
                                         return true;
                                     }
@@ -113,7 +113,7 @@ namespace PSADT.DeviceManagement
         /// <exception cref="InvalidProgramException">Thrown if the 'Environment.Exit()' method does not terminate the process as expected.</exception>
         [SuppressMessage("Blocker Code Smell", "S1147:Exit methods should not be called", Justification = "This code deliberately short circuits to exit.")]
         [DoesNotReturn]
-        internal static async ValueTask RestartComputer(string? shutdownReasonText)
+        internal static async ValueTask RestartComputerAsync(string? shutdownReasonText)
         {
             List<string> argumentList = ["/r", "/f", "/t", "0"];
             if (shutdownReasonText is not null)
@@ -123,7 +123,7 @@ namespace PSADT.DeviceManagement
             }
             using (ProcessResult result = await (ProcessManager.LaunchAsync(new(Path.Join(Environment.SystemDirectory, "shutdown.exe"), argumentList, Environment.SystemDirectory, denyUserTermination: true, createNoWindow: true)) ?? throw new InvalidOperationException("Failed to launch shutdown.exe to restart the computer.")).ConfigureAwait(false))
             {
-                if (result.ExitCode != 0)
+                if (result.ExitCode is not 0)
                 {
                     throw new InvalidOperationException("Failed to restart the computer. Shutdown.exe returned a non-zero exit code.");
                 }

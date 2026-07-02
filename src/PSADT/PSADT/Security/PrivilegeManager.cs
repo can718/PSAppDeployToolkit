@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
 using Microsoft.Win32.SafeHandles;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using Windows.Win32.Foundation;
 using Windows.Win32.Security;
 
@@ -15,6 +14,75 @@ namespace PSADT.Security
     /// </summary>
 	internal static class PrivilegeManager
     {
+        /// <summary>
+        /// Retrieves a read-only collection of privileges associated with the current process.
+        /// </summary>
+        /// <remarks>This method queries the current process's token to determine its associated
+        /// privileges. The returned collection is immutable and reflects the privileges at the time of the
+        /// query.</remarks>
+        /// <param name="attributes">Optional attributes used to filter the privileges. If specified, only privileges matching the given <see
+        /// cref="TOKEN_PRIVILEGES_ATTRIBUTES"/> will be included in the result.</param>
+        /// <returns>A <see cref="ReadOnlyCollection{T}"/> containing the privileges of the current process. If no privileges are
+        /// available, the collection will be empty.</returns>
+        internal static ReadOnlyCollection<SE_PRIVILEGE> GetPrivileges(TOKEN_PRIVILEGES_ATTRIBUTES? attributes = null)
+        {
+            using SafeFileHandle hToken = TokenManager.GetCurrentProcessToken(TOKEN_ACCESS_MASK.TOKEN_QUERY);
+            return GetPrivileges(hToken, attributes);
+        }
+
+        /// <summary>
+        /// Determines whether the current caller possesses the specified privilege.
+        /// </summary>
+        /// <remarks>Use this method to verify that the executing account has a particular privilege
+        /// before performing operations that require elevated permissions.</remarks>
+        /// <param name="privilege">The privilege to check for in the current caller's set of privileges.</param>
+        /// <returns>true if the current caller has the specified privilege; otherwise, false.</returns>
+        internal static bool HasPrivilege(SE_PRIVILEGE privilege)
+        {
+            using SafeFileHandle hToken = TokenManager.GetCurrentProcessToken(TOKEN_ACCESS_MASK.TOKEN_QUERY);
+            return HasPrivilege(hToken, privilege);
+        }
+
+        /// <summary>
+        /// Determines whether the specified privilege is enabled for the current process.
+        /// </summary>
+        /// <remarks>This method requires the calling process to have the necessary permissions to query
+        /// the process token. It uses the current process's token to check the privilege status.</remarks>
+        /// <param name="privilege">The privilege to check for its enabled status in the current process.</param>
+        /// <returns>true if the specified privilege is enabled; otherwise, false.</returns>
+        internal static bool IsPrivilegeEnabled(SE_PRIVILEGE privilege)
+        {
+            using SafeFileHandle hToken = TokenManager.GetCurrentProcessToken(TOKEN_ACCESS_MASK.TOKEN_QUERY);
+            return HasPrivilege(hToken, privilege, TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED);
+        }
+
+        /// <summary>
+        /// Enables the specified system privilege for the current process.
+        /// </summary>
+        /// <remarks>This method requires the calling process to have permission to adjust its own
+        /// privileges. Enabling certain privileges may be necessary to perform operations that require elevated rights,
+        /// such as accessing system resources or modifying security settings.</remarks>
+        /// <param name="privilege">The privilege to enable, specified as a value of the SE_PRIVILEGE enumeration.</param>
+        internal static void EnablePrivilege(SE_PRIVILEGE privilege)
+        {
+            using SafeFileHandle hToken = TokenManager.GetCurrentProcessToken(TOKEN_ACCESS_MASK.TOKEN_QUERY | TOKEN_ACCESS_MASK.TOKEN_ADJUST_PRIVILEGES);
+            EnablePrivilege(hToken, privilege);
+        }
+
+        /// <summary>
+        /// Enables the specified privilege for the current process if it is not already enabled.
+        /// </summary>
+        /// <remarks>This method checks whether the given privilege is enabled for the current process and
+        /// enables it if it is not. The caller must have appropriate access rights to adjust process privileges. This
+        /// operation may require administrative permissions depending on the privilege being enabled.</remarks>
+        /// <param name="privilege">The privilege to enable for the current process. This value specifies which system privilege should be
+        /// checked and enabled if necessary.</param>
+        internal static void EnablePrivilegeIfDisabled(SE_PRIVILEGE privilege)
+        {
+            using SafeFileHandle hToken = TokenManager.GetCurrentProcessToken(TOKEN_ACCESS_MASK.TOKEN_QUERY | TOKEN_ACCESS_MASK.TOKEN_ADJUST_PRIVILEGES);
+            EnablePrivilegeIfDisabled(hToken, privilege);
+        }
+
         /// <summary>
         /// Retrieves a read-only collection of privileges associated with the specified token.
         /// </summary>
@@ -31,7 +99,7 @@ namespace PSADT.Security
             // Internal worker function to retrieve the privilege name from the token attributes.
             static SE_PRIVILEGE GetPrivilege(in LUID_AND_ATTRIBUTES attr, Span<char> buffer)
             {
-                _ = NativeMethods.LookupPrivilegeName(attr.Luid, buffer, out uint retLength);
+                _ = NativeMethods.LookupPrivilegeName(in attr.Luid, buffer, out uint retLength);
                 string privilegeName = buffer[..(int)retLength].Trim().ToString();
                 return !Enum.TryParse(privilegeName, ignoreCase: true, out SE_PRIVILEGE privilege)
                     ? throw new InvalidProgramException($"Failed to map privilege name [{privilegeName}] to a known SE_PRIVILEGE value.")
@@ -46,14 +114,14 @@ namespace PSADT.Security
             _ = NativeMethods.GetTokenInformation(token, TOKEN_INFORMATION_CLASS.TokenPrivileges, buffer, out _);
             ref readonly TOKEN_PRIVILEGES tokenPrivileges = ref buffer.AsReadOnlyStructure<TOKEN_PRIVILEGES>();
             const int bufferOffset = sizeof(uint); int increment = Unsafe.SizeOf<LUID_AND_ATTRIBUTES>();
-            Span<char> charSpan = stackalloc char[1024]; charSpan.Clear();
-            List<SE_PRIVILEGE> privileges = [];
+            List<SE_PRIVILEGE> privileges = new((int)tokenPrivileges.PrivilegeCount);
+            Span<char> charSpan = stackalloc char[1024];
             if (attributes is not null)
             {
                 for (int i = 0; i < tokenPrivileges.PrivilegeCount; i++)
                 {
                     ref readonly LUID_AND_ATTRIBUTES attr = ref buffer[(bufferOffset + (increment * i))..].AsReadOnlyStructure<LUID_AND_ATTRIBUTES>();
-                    if ((attr.Attributes & attributes) == attributes)
+                    if ((attr.Attributes & attributes.Value) == attributes.Value)
                     {
                         privileges.Add(GetPrivilege(in attr, charSpan));
                     }
@@ -71,26 +139,6 @@ namespace PSADT.Security
         }
 
         /// <summary>
-        /// Retrieves a read-only collection of privileges associated with the current process.
-        /// </summary>
-        /// <remarks>This method queries the current process's token to determine its associated
-        /// privileges. The returned collection is immutable and reflects the privileges at the time of the
-        /// query.</remarks>
-        /// <param name="attributes">Optional attributes used to filter the privileges. If specified, only privileges matching the given <see
-        /// cref="TOKEN_PRIVILEGES_ATTRIBUTES"/> will be included in the result.</param>
-        /// <returns>A <see cref="ReadOnlyCollection{T}"/> containing the privileges of the current process. If no privileges are
-        /// available, the collection will be empty.</returns>
-        internal static ReadOnlyCollection<SE_PRIVILEGE> GetPrivileges(TOKEN_PRIVILEGES_ATTRIBUTES? attributes = null)
-        {
-            using SafeProcessHandle hProcess = NativeMethods.GetCurrentProcess();
-            _ = NativeMethods.OpenProcessToken(hProcess, TOKEN_ACCESS_MASK.TOKEN_QUERY, out SafeFileHandle hToken);
-            using (hToken)
-            {
-                return GetPrivileges(hToken, attributes);
-            }
-        }
-
-        /// <summary>
         /// Determines whether the specified access token includes the given privilege.
         /// </summary>
         /// <remarks>Use this method to verify that an access token possesses a particular privilege
@@ -99,49 +147,48 @@ namespace PSADT.Security
         /// rights.</param>
         /// <param name="privilege">The privilege to check for in the access token. This should be a valid value of the SE_PRIVILEGE
         /// enumeration.</param>
+        /// <param name="attributes">Optional attributes to filter the privileges. If specified, only privileges matching these attributes will be considered.</param>
         /// <returns>true if the access token contains the specified privilege; otherwise, false.</returns>
-        private static bool HasPrivilege(SafeFileHandle token, SE_PRIVILEGE privilege)
+        /// <exception cref="InvalidProgramException">Thrown when the size of the LUID structure is unexpected.</exception>
+        private static bool HasPrivilege(SafeFileHandle token, SE_PRIVILEGE privilege, TOKEN_PRIVILEGES_ATTRIBUTES? attributes = null)
         {
-            return GetPrivileges(token).Contains(privilege);
-        }
+            // Internal worker function to perform LUID equality at a value level.
+            static bool PrivilegeValuesAreEqual(in LUID left, in LUID right)
+            {
+                return Unsafe.SizeOf<LUID>() == sizeof(ulong)
+                    ? Unsafe.As<LUID, ulong>(ref Unsafe.AsRef(in left)) == Unsafe.As<LUID, ulong>(ref Unsafe.AsRef(in right))
+                    : throw new InvalidProgramException("Unexpected LUID size; expected 8 bytes.");
+            }
 
-        /// <summary>
-        /// Determines whether the current caller possesses the specified privilege.
-        /// </summary>
-        /// <remarks>Use this method to verify that the executing account has a particular privilege
-        /// before performing operations that require elevated permissions.</remarks>
-        /// <param name="privilege">The privilege to check for in the current caller's set of privileges.</param>
-        /// <returns>true if the current caller has the specified privilege; otherwise, false.</returns>
-        internal static bool HasPrivilege(SE_PRIVILEGE privilege)
-        {
-            return GetPrivileges().Contains(privilege);
-        }
+            // Get the size of the buffer required to hold the token privileges.
+            _ = NativeMethods.LookupPrivilegeValue(privilege, out LUID luid);
+            _ = NativeMethods.GetTokenInformation(token, TOKEN_INFORMATION_CLASS.TokenPrivileges, TokenInformation: null, out uint returnLength);
+            Span<byte> buffer = stackalloc byte[(int)returnLength];
 
-        /// <summary>
-        /// Determines whether the specified privilege is enabled for the given access token.
-        /// </summary>
-        /// <remarks>This method examines the privileges associated with the provided access token and
-        /// checks if the specified privilege is currently enabled. Use this method to verify privilege status before
-        /// performing operations that require specific privileges.</remarks>
-        /// <param name="token">A safe handle to the access token to check. The token must be valid and opened with appropriate access
-        /// rights.</param>
-        /// <param name="privilege">The privilege to check for its enabled status within the specified access token.</param>
-        /// <returns>true if the specified privilege is enabled for the access token; otherwise, false.</returns>
-        private static bool IsPrivilegeEnabled(SafeFileHandle token, SE_PRIVILEGE privilege)
-        {
-            return GetPrivileges(token, TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED).Contains(privilege);
-        }
-
-        /// <summary>
-        /// Determines whether the specified privilege is enabled for the current process.
-        /// </summary>
-        /// <remarks>This method requires the calling process to have the necessary permissions to query
-        /// the process token. It uses the current process's token to check the privilege status.</remarks>
-        /// <param name="privilege">The privilege to check for its enabled status in the current process.</param>
-        /// <returns>true if the specified privilege is enabled; otherwise, false.</returns>
-        internal static bool IsPrivilegeEnabled(SE_PRIVILEGE privilege)
-        {
-            return GetPrivileges(TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED).Contains(privilege);
+            // Retrieve the token privileges and filter them based on the specified attributes before returning them.
+            _ = NativeMethods.GetTokenInformation(token, TOKEN_INFORMATION_CLASS.TokenPrivileges, buffer, out _);
+            ref readonly TOKEN_PRIVILEGES tokenPrivileges = ref buffer.AsReadOnlyStructure<TOKEN_PRIVILEGES>();
+            const int bufferOffset = sizeof(uint); int increment = Unsafe.SizeOf<LUID_AND_ATTRIBUTES>();
+            if (attributes is not null)
+            {
+                for (int i = 0; i < tokenPrivileges.PrivilegeCount; i++)
+                {
+                    ref readonly LUID_AND_ATTRIBUTES attr = ref buffer[(bufferOffset + (increment * i))..].AsReadOnlyStructure<LUID_AND_ATTRIBUTES>();
+                    if ((attr.Attributes & attributes.Value) == attributes.Value && PrivilegeValuesAreEqual(in attr.Luid, in luid))
+                    {
+                        return true;
+                    }
+                }
+            }
+            for (int i = 0; i < tokenPrivileges.PrivilegeCount; i++)
+            {
+                ref readonly LUID_AND_ATTRIBUTES attr = ref buffer[(bufferOffset + (increment * i))..].AsReadOnlyStructure<LUID_AND_ATTRIBUTES>();
+                if (PrivilegeValuesAreEqual(in attr.Luid, in luid))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>
@@ -165,30 +212,16 @@ namespace PSADT.Security
             TOKEN_PRIVILEGES tp = new()
             {
                 PrivilegeCount = 1,
+                Privileges = new()
+                {
+                    e0 = new()
+                    {
+                        Luid = luid,
+                        Attributes = TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED,
+                    },
+                },
             };
-            tp.Privileges[0] = new()
-            {
-                Luid = luid,
-                Attributes = TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED,
-            };
-            _ = NativeMethods.AdjustTokenPrivileges(token, tp);
-        }
-
-        /// <summary>
-        /// Enables the specified system privilege for the current process.
-        /// </summary>
-        /// <remarks>This method requires the calling process to have permission to adjust its own
-        /// privileges. Enabling certain privileges may be necessary to perform operations that require elevated rights,
-        /// such as accessing system resources or modifying security settings.</remarks>
-        /// <param name="privilege">The privilege to enable, specified as a value of the SE_PRIVILEGE enumeration.</param>
-        internal static void EnablePrivilege(SE_PRIVILEGE privilege)
-        {
-            using SafeProcessHandle hProcess = NativeMethods.GetCurrentProcess();
-            _ = NativeMethods.OpenProcessToken(hProcess, TOKEN_ACCESS_MASK.TOKEN_QUERY | TOKEN_ACCESS_MASK.TOKEN_ADJUST_PRIVILEGES, out SafeFileHandle hToken);
-            using (hToken)
-            {
-                EnablePrivilege(hToken, privilege);
-            }
+            _ = NativeMethods.AdjustTokenPrivileges(token, in tp);
         }
 
         /// <summary>
@@ -201,29 +234,11 @@ namespace PSADT.Security
         /// The token must have the specified privilege available and appropriate access rights to adjust privileges.</param>
         /// <param name="privilege">The privilege to enable for the current process. This value specifies which system privilege should be
         /// checked and enabled if necessary.</param>
-        internal static void EnablePrivilegeIfDisabled(SafeFileHandle token, SE_PRIVILEGE privilege)
+        private static void EnablePrivilegeIfDisabled(SafeFileHandle token, SE_PRIVILEGE privilege)
         {
-            if (!IsPrivilegeEnabled(token, privilege))
+            if (!HasPrivilege(token, privilege, TOKEN_PRIVILEGES_ATTRIBUTES.SE_PRIVILEGE_ENABLED))
             {
                 EnablePrivilege(token, privilege);
-            }
-        }
-
-        /// <summary>
-        /// Enables the specified privilege for the current process if it is not already enabled.
-        /// </summary>
-        /// <remarks>This method checks whether the given privilege is enabled for the current process and
-        /// enables it if it is not. The caller must have appropriate access rights to adjust process privileges. This
-        /// operation may require administrative permissions depending on the privilege being enabled.</remarks>
-        /// <param name="privilege">The privilege to enable for the current process. This value specifies which system privilege should be
-        /// checked and enabled if necessary.</param>
-        internal static void EnablePrivilegeIfDisabled(SE_PRIVILEGE privilege)
-        {
-            using SafeProcessHandle hProcess = NativeMethods.GetCurrentProcess();
-            _ = NativeMethods.OpenProcessToken(hProcess, TOKEN_ACCESS_MASK.TOKEN_QUERY | TOKEN_ACCESS_MASK.TOKEN_ADJUST_PRIVILEGES, out SafeFileHandle hToken);
-            using (hToken)
-            {
-                EnablePrivilegeIfDisabled(hToken, privilege);
             }
         }
     }

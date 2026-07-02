@@ -13,9 +13,7 @@ using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
-using PSADT.Extensions;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using PSADT.SafeHandles;
 using Windows.Win32;
@@ -193,7 +191,7 @@ namespace PSADT.FileSystem
             long totalBytes = 0; int pendingDirs = 1; int completed = 0;
             _ = Parallel.For(0, workerCount, __ =>
             {
-                foreach (string dir in queue.GetConsumingEnumerable())
+                foreach (string dir in queue.GetConsumingEnumerable(default))
                 {
                     try
                     {
@@ -207,8 +205,10 @@ namespace PSADT.FileSystem
                         }
                         if (hFind.IsInvalid)
                         {
-                            hFind.Dispose();
-                            continue;
+                            using (hFind)
+                            {
+                                continue;
+                            }
                         }
 
                         // Process the first result and then continue with FindNextFile in a loop until there are no more results. For each subdirectory, add it to the queue for processing.
@@ -236,7 +236,7 @@ namespace PSADT.FileSystem
                                     _ = Interlocked.Increment(ref pendingDirs);
                                     try
                                     {
-                                        queue.Add(dir + "\\" + name);
+                                        queue.Add(dir + "\\" + name, default);
                                     }
                                     catch (Exception ex) when (ex.Message is not null)
                                     {
@@ -259,7 +259,7 @@ namespace PSADT.FileSystem
                     }
                     finally
                     {
-                        if (Interlocked.Decrement(ref pendingDirs) == 0 && Interlocked.Exchange(ref completed, 1) == 0)
+                        if (Interlocked.Decrement(ref pendingDirs) is 0 && Interlocked.Exchange(ref completed, 1) is 0)
                         {
                             queue.CompleteAdding();
                         }
@@ -494,13 +494,14 @@ namespace PSADT.FileSystem
         internal static ReadOnlyDictionary<string, string> MakeNtPathLookupTable()
         {
             Dictionary<string, string> lookupTable = new(StringComparer.OrdinalIgnoreCase) { { @"\Device\Mup", @"\" } };
-            Span<char> targetPath = stackalloc char[1024]; targetPath.Clear();
-            foreach (string driveLetter in Environment.GetLogicalDrives().Select(static l => l.TrimEnd('\\')))
+            IEnumerable<string> drives = Environment.GetLogicalDrives().Select(static l => l.TrimEnd('\\'));
+            Span<char> targetPath = stackalloc char[1024];
+            foreach (string drive in drives)
             {
                 uint length;
                 try
                 {
-                    length = NativeMethods.QueryDosDevice(driveLetter, targetPath);
+                    length = NativeMethods.QueryDosDevice(drive, targetPath);
                 }
                 catch
                 {
@@ -509,9 +510,8 @@ namespace PSADT.FileSystem
                 }
                 foreach (string path in targetPath[..(int)length].ToString().Split(['\0'], StringSplitOptions.RemoveEmptyEntries).Where(path => path.Length > 0 && !lookupTable.ContainsKey(path)))
                 {
-                    lookupTable.Add(path, driveLetter);
+                    lookupTable.Add(path, drive);
                 }
-                targetPath.Clear();
             }
             return new(lookupTable);
         }
@@ -560,13 +560,15 @@ namespace PSADT.FileSystem
             }
             catch (UnauthorizedAccessException)
             {
-                ppSecurityDescriptor?.Dispose();
-                ppsidOwner?.Dispose();
-                ppsidGroup?.Dispose();
-                ppDacl?.Dispose();
-                ppSacl?.Dispose();
-                return 0;
-                throw;
+                using (ppSecurityDescriptor)
+                using (ppsidOwner)
+                using (ppsidGroup)
+                using (ppDacl)
+                using (ppSacl)
+                {
+                    return 0;
+                    throw;
+                }
             }
             using (ppSecurityDescriptor)
             using (ppsidOwner)

@@ -80,6 +80,9 @@ function Get-ADTLoggedOnUser
 
     .LINK
         https://psappdeploytoolkit.com/docs/reference/functions/Get-ADTLoggedOnUser
+
+    .LINK
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Get-ADTLoggedOnUser.ps1
     #>
 
     [CmdletBinding()]
@@ -100,7 +103,7 @@ function Get-ADTLoggedOnUser
         {
             try
             {
-                if (($sessionInfo = [PSADT.TerminalServices.SessionInfo]::GetAsync().AsTask().ConfigureAwait($false).GetAwaiter().GetResult()))
+                if (($sessionInfo = [PSADT.TerminalServices.SessionInfo]::GetAsync().ConfigureAwait($false).GetAwaiter().GetResult()))
                 {
                     return $sessionInfo
                 }

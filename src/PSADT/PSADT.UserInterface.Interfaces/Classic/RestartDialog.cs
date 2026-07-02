@@ -15,9 +15,10 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// <summary>
         /// Initializes a new instance of the <see cref="RestartDialog"/> class.
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0191:Do not use the null-forgiving operator", Justification = "This is necessary here.")]
         internal RestartDialog() : this(null!)
         {
-            if (LicenseManager.UsageMode == LicenseUsageMode.Runtime)
+            if (LicenseManager.UsageMode is LicenseUsageMode.Runtime)
             {
                 throw new NotSupportedException("This constructor cannot be used in runtime mode.");
             }
@@ -32,6 +33,7 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// flexible customization of the dialog's content and behavior based on the supplied options.</remarks>
         /// <param name="options">The options that configure the dialog's appearance and behavior, including title, custom messages, and
         /// countdown settings. Cannot be null.</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0191:Do not use the null-forgiving operator", Justification = "This is necessary here.")]
         internal RestartDialog(RestartDialogOptions options) : base(options, null!)
         {
             // Initialise the form and reset the control order.
@@ -84,6 +86,18 @@ namespace PSADT.UserInterface.Interfaces.Classic
                 buttonRestartNow.Text = StripFormattingTags(options.Strings.ButtonRestartNow);
                 buttonMinimize.Text = StripFormattingTags(options.Strings.ButtonRestartLater);
                 shutdownReasonText = options.ShutdownReasonText;
+
+                // Set up the Cancel button if cancellation is allowed, otherwise remove it.
+                if (options.AllowCancel)
+                {
+                    buttonCancel.Text = StripFormattingTags(options.Strings.ButtonCancel);
+                }
+                else
+                {
+                    // Drop the Cancel button and move the minimize button into the right-hand column.
+                    tableLayoutPanelButton.Controls.Remove(buttonCancel);
+                    tableLayoutPanelButton.SetColumn(buttonMinimize, 2);
+                }
             }
 
             // Resume the dialog now that we've applied any options.
@@ -141,10 +155,11 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// <param name="sender">The source of the event, typically the button that was clicked.</param>
         /// <param name="e">An object that contains the event data.</param>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD100:Avoid async void methods", Justification = "This is OK here.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0155:Do not use async void methods", Justification = "This is OK here.")]
         private protected override async void ButtonLeft_Click(object? sender, EventArgs e)
         {
             // Restart the computer immediately.
-            await DeviceUtilities.RestartComputer(shutdownReasonText);
+            await DeviceUtilities.RestartComputerAsync(shutdownReasonText);
             base.ButtonLeft_Click(sender, e);
         }
 

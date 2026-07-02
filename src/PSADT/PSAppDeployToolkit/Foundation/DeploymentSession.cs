@@ -259,7 +259,7 @@ namespace PSAppDeployToolkit.Foundation
                         LogName = (string)paramValue;
                     }
                 }
-                if (noExitOnClose == true)
+                if (noExitOnClose is true)
                 {
                     Settings |= DeploymentSettings.NoExitOnClose;
                 }
@@ -276,10 +276,10 @@ namespace PSAppDeployToolkit.Foundation
                     WriteInitialDivider(ref writtenDivider);
                     FileInfo wimFile = new(wimFiles[0].FullName);
                     WriteLogEntry($"Discovered Zero-Config WIM file [{wimFile}].");
-                    DirectoryInfo mountPath = new(Path.Join(DirFiles.FullName, Path.GetRandomFileName()));
-                    _ = ModuleDatabase.InvokeScript(ScriptBlock.Create("& $Script:CommandTable.'Mount-ADTWimFile' -ImagePath $args[0] -Path $args[1] -Index 1"), wimFile, mountPath);
-                    AddMountedWimFile(wimFile); DirFiles = mountPath;
-                    WriteLogEntry($"Successfully mounted WIM file to [{mountPath}].");
+                    DirWimMountPath = new(Path.Join(DirFiles.FullName, Path.GetRandomFileName()));
+                    ModuleDatabase.InvokeScript(ScriptBlock.Create("& $Script:CommandTable.'Mount-ADTWimFile' -ImagePath $args[0] -Path $args[1] -Index 1"), wimFile, DirWimMountPath);
+                    AddMountedWimFile(wimFile); DirFiles = DirWimMountPath;
+                    WriteLogEntry($"Successfully mounted WIM file to [{DirWimMountPath}].");
 
                     // Subst the new DirFiles path to eliminate any potential path length issues.
                     IReadOnlyList<DriveInfo> usedLetters = adtEnv.EnvLogicalDrives;
@@ -348,7 +348,7 @@ namespace PSAppDeployToolkit.Foundation
                         }
 
                         // Discover if there are zero-config MSP files. Name multiple MSP files in alphabetical order to control order in which they are installed.
-                        if (DefaultMspFiles.Count == 0)
+                        if (DefaultMspFiles.Count is 0)
                         {
                             if (DirFiles is not null)
                             {
@@ -367,7 +367,7 @@ namespace PSAppDeployToolkit.Foundation
                         // Generate list of MSI executables for use with Show-ADTInstallationWelcome.
                         if (!Settings.HasFlag(DeploymentSettings.DisableDefaultMsiProcessList))
                         {
-                            ProcessDefinition[] msiExecList = [.. (DefaultMstFile is not null ? MsiUtilities.GetMsiTableColumnValues(DefaultMsiFile.FullName, "File", 3, [DefaultMstFile.FullName]) : MsiUtilities.GetMsiTableColumnValues(DefaultMsiFile.FullName, "File", 3)).Where(static p => (p as string)?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true).Select(static p => new ProcessDefinition(Path.GetFileNameWithoutExtension(((string)p).Split(['|'], StringSplitOptions.RemoveEmptyEntries)[^1])))];
+                            ProcessDefinition[] msiExecList = [.. (DefaultMstFile is not null ? MsiUtilities.GetMsiTableColumnValues(DefaultMsiFile.FullName, "File", 3, [DefaultMstFile.FullName]) : MsiUtilities.GetMsiTableColumnValues(DefaultMsiFile.FullName, "File", 3)).Where(static p => ((p as string)?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) is true).Select(static p => new ProcessDefinition(Path.GetFileNameWithoutExtension(((string)p).Split(['|'], StringSplitOptions.RemoveEmptyEntries)[^1])))];
                             if (msiExecList.Length > 0)
                             {
                                 AppProcessesToClose = new ReadOnlyCollection<ProcessDefinition>([.. AppProcessesToClose.Concat(msiExecList).GroupBy(static p => p.Name, StringComparer.OrdinalIgnoreCase).Select(static g => g.First())]);
@@ -549,7 +549,7 @@ namespace PSAppDeployToolkit.Foundation
                 if (!DisableLogging && LogBuffer.Count > 0)
                 {
                     using StreamWriter logFileWriter = new(Path.Join(LogPath.FullName, LogName), append: true, LogUtilities.LogEncoding);
-                    foreach (string line in LogStyle == LogStyle.CMTrace ? LogBuffer.Select(static o => o.CMTraceLogLine) : LogBuffer.Select(static o => o.LegacyLogLine))
+                    foreach (string line in LogStyle is LogStyle.CMTrace ? LogBuffer.Select(static o => o.CMTraceLogLine) : LogBuffer.Select(static o => o.LegacyLogLine))
                     {
                         logFileWriter.WriteLine(line);
                     }
@@ -610,7 +610,7 @@ namespace PSAppDeployToolkit.Foundation
                 }
 
                 // Announce session instantiation mode.
-                if (compatibilityMode == true)
+                if (compatibilityMode is true)
                 {
                     WriteLogEntry([$"[{appDeployToolkitName}] session mode is [Compatibility]. This mode is for the transition of v3.x scripts and is not for new development.", "Information on how to migrate this script to Native mode is available at [https://psappdeploytoolkit.com/]."], LogSeverity.Warning);
                 }
@@ -728,7 +728,7 @@ namespace PSAppDeployToolkit.Foundation
                     {
                         WriteLogEntry($"Detected OOBE in progress but deployment has already been changed to [{DeployMode}]");
                     }
-                    if (DeployMode != DeployMode.Auto)
+                    if (DeployMode is not DeployMode.Auto)
                     {
                         WriteLogEntry($"Detected OOBE in progress but deployment mode was explicitly set to [{DeployMode}].");
                     }
@@ -759,7 +759,7 @@ namespace PSAppDeployToolkit.Foundation
                                     {
                                         WriteLogEntry($"The ESP User Account Setup phase is still in progress but deployment has already been changed to [{DeployMode}]");
                                     }
-                                    else if (DeployMode != DeployMode.Auto)
+                                    else if (DeployMode is not DeployMode.Auto)
                                     {
                                         WriteLogEntry($"The ESP User Account Setup phase is still in progress but deployment mode was explicitly set to [{DeployMode}].");
                                     }
@@ -805,7 +805,7 @@ namespace PSAppDeployToolkit.Foundation
                     {
                         WriteLogEntry($"Session 0 detected but deployment has already been changed to [{DeployMode}]");
                     }
-                    else if (DeployMode != DeployMode.Auto)
+                    else if (DeployMode is not DeployMode.Auto)
                     {
                         WriteLogEntry($"Session 0 detected but deployment mode was explicitly set to [{DeployMode}].");
                     }
@@ -852,13 +852,13 @@ namespace PSAppDeployToolkit.Foundation
                     {
                         WriteLogEntry($"The processes ['{string.Join("', '", AppProcessesToClose.Select(static p => p.Name))}'] were specified as requiring closure but deployment has already been changed to [{DeployMode}]");
                     }
-                    else if (DeployMode != DeployMode.Auto)
+                    else if (DeployMode is not DeployMode.Auto)
                     {
                         WriteLogEntry($"The processes ['{string.Join("', '", AppProcessesToClose.Select(static p => p.Name))}'] were specified as requiring closure but deployment mode was explicitly set to [{DeployMode}].");
                     }
                     else if (!Settings.HasFlag(DeploymentSettings.NoProcessDetection))
                     {
-                        if (AppProcessesToClose.Count == 0 || (RunningProcessInfo.Get(AppProcessesToClose) is var runningProcesses && (runningProcesses.Count == 0)))
+                        if (AppProcessesToClose.Count is 0 || (RunningProcessInfo.Get(AppProcessesToClose) is var runningProcesses && (runningProcesses.Count is 0)))
                         {
                             if (AppProcessesToClose.Count > 0 && !forceProcessDetection)
                             {
@@ -886,7 +886,7 @@ namespace PSAppDeployToolkit.Foundation
                     {
                         WriteLogEntry($"No processes were specified as requiring closure but deployment has already been changed to [{DeployMode}]");
                     }
-                    if (DeployMode != DeployMode.Auto)
+                    if (DeployMode is not DeployMode.Auto)
                     {
                         WriteLogEntry($"No processes were specified as requiring closure but deployment mode was explicitly set to [{DeployMode}].");
                     }
@@ -906,19 +906,19 @@ namespace PSAppDeployToolkit.Foundation
                 }
 
                 // If we're still in Auto mode, then set the deployment mode to Interactive.
-                if (DeployMode == DeployMode.Auto)
+                if (DeployMode is DeployMode.Auto)
                 {
                     DeployMode = DeployMode.Interactive;
                 }
 
                 // Set Deploy Mode switches.
                 WriteLogEntry($"Installation is running in [{DeployMode}] mode.");
-                if (DeployMode == DeployMode.Silent)
+                if (DeployMode is DeployMode.Silent)
                 {
                     Settings |= DeploymentSettings.NonInteractive;
                     Settings |= DeploymentSettings.Silent;
                 }
-                else if (DeployMode == DeployMode.NonInteractive)
+                else if (DeployMode is DeployMode.NonInteractive)
                 {
                     Settings |= DeploymentSettings.NonInteractive;
                 }
@@ -944,7 +944,7 @@ namespace PSAppDeployToolkit.Foundation
                 }
 
                 // Check if the caller explicitly wants interactivity but we can't do it.
-                if (DeployMode != DeployMode.Silent && runAsActiveUser is null && !isProcessUserInteractive)
+                if (DeployMode is not DeployMode.Silent && runAsActiveUser is null && !isProcessUserInteractive)
                 {
                     throw new NotSupportedException("This deployment explicitly requires interactivity, however there are no suitable logged on users available and this process is running non-interactively.");
                 }
@@ -963,12 +963,12 @@ namespace PSAppDeployToolkit.Foundation
                     }
                     else
                     {
-                        _ = ModuleDatabase.InvokeScript(ScriptBlock.Create("& $Script:CommandTable.'Enable-ADTTerminalServerInstallMode'"));
+                        ModuleDatabase.InvokeScript(ScriptBlock.Create("& $Script:CommandTable.'Enable-ADTTerminalServerInstallMode'"));
                     }
                 }
 
                 // Export session's public variables to the user's scope.
-                if (compatibilityMode == true)
+                if (compatibilityMode is true)
                 {
                     if (DeployAppScriptSessionState is not SessionState sessionState)
                     {
@@ -991,7 +991,6 @@ namespace PSAppDeployToolkit.Foundation
             catch (Exception ex) when (ex.Message is not null)
             {
                 WriteLogEntry(ex.Message, LogSeverity.Error);
-                RemoveSubstDrive(); DismountWimFiles();
                 SetExitCode(ex is NotSupportedException ? DeferExitCode : 60008);
                 Environment.ExitCode = Close();
                 throw new ApplicationException("Failure occurred while instantiating new deployment session.", ex);
@@ -1025,7 +1024,7 @@ namespace PSAppDeployToolkit.Foundation
             // If terminal server mode was specified, revert the installation mode to support it.
             if (TerminalServerMode)
             {
-                _ = ModuleDatabase.InvokeScript(ScriptBlock.Create("& $Script:CommandTable.'Disable-ADTTerminalServerInstallMode'"));
+                ModuleDatabase.InvokeScript(ScriptBlock.Create("& $Script:CommandTable.'Disable-ADTTerminalServerInstallMode'"));
             }
 
             // Process resulting exit code.
@@ -1034,33 +1033,41 @@ namespace PSAppDeployToolkit.Foundation
             switch (deploymentStatus)
             {
                 case DeploymentStatus.FastRetry:
-                    WriteLogEntry(string.Format(CultureInfo.InvariantCulture, deployString, "was deferred"), LogSeverity.Warning);
-                    break;
+                    {
+                        WriteLogEntry(string.Format(CultureInfo.InvariantCulture, deployString, "was deferred"), LogSeverity.Warning);
+                        break;
+                    }
+
                 case DeploymentStatus.Error:
-                    WriteLogEntry(string.Format(CultureInfo.InvariantCulture, deployString, "failed"), LogSeverity.Error);
-                    break;
+                    {
+                        WriteLogEntry(string.Format(CultureInfo.InvariantCulture, deployString, "failed"), LogSeverity.Error);
+                        break;
+                    }
+
                 case DeploymentStatus.RestartRequired:
                 case DeploymentStatus.Complete:
                 default:
-                    if (Settings.HasFlag(DeploymentSettings.ExitWithMsiCodes))
                     {
-                        ExitCode = deploymentStatus == DeploymentStatus.RestartRequired ? 3010 : 0;
+                        if (Settings.HasFlag(DeploymentSettings.ExitWithMsiCodes))
+                        {
+                            ExitCode = deploymentStatus is DeploymentStatus.RestartRequired ? 3010 : 0;
+                        }
+                        WriteLogEntry(string.Format(CultureInfo.InvariantCulture, deployString, "completed"), LogSeverity.Success);
+                        if (deploymentStatus is DeploymentStatus.RestartRequired && !SuppressRebootPassThru)
+                        {
+                            WriteLogEntry("A restart has been flagged as required.", LogSeverity.Warning);
+                        }
+                        else
+                        {
+                            ExitCode = 0;
+                        }
+                        ResetDeferHistory();
+                        break;
                     }
-                    WriteLogEntry(string.Format(CultureInfo.InvariantCulture, deployString, "completed"), LogSeverity.Success);
-                    if (deploymentStatus == DeploymentStatus.RestartRequired && !SuppressRebootPassThru)
-                    {
-                        WriteLogEntry("A restart has been flagged as required.", LogSeverity.Warning);
-                    }
-                    else
-                    {
-                        ExitCode = 0;
-                    }
-                    ResetDeferHistory();
-                    break;
             }
 
             // Update the module's last tracked exit code.
-            if (ExitCode != 0)
+            if (ExitCode is not 0)
             {
                 adtExitCode.Value = ExitCode;
             }
@@ -1416,7 +1423,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <returns>A value of type HostLogStreamType that indicates the log stream type to use: Console, Host, or None.</returns>
         private HostLogStreamType GetHostLogStreamTypeMode(bool? writeHost = null)
         {
-            return writeHost != false && LogWriteToHost
+            return writeHost is not false && LogWriteToHost
                 ? (LogHostOutputToStdStreams ? HostLogStreamType.Console : HostLogStreamType.Host)
                 : HostLogStreamType.None;
         }
@@ -1453,6 +1460,7 @@ namespace PSAppDeployToolkit.Foundation
             }
             WriteLogEntry($"Removing substitution drive [{DirFilesSubstDrive}].");
             _ = NativeMethods.DefineDosDevice(DEFINE_DOS_DEVICE_FLAGS.DDD_REMOVE_DEFINITION, DirFilesSubstDrive.Name, lpTargetPath: null);
+            DirFilesSubstDrive = null;
         }
 
         /// <summary>
@@ -1463,12 +1471,13 @@ namespace PSAppDeployToolkit.Foundation
         /// are complete.</remarks>
         private void DismountWimFiles()
         {
-            if (MountedWimFiles.Count == 0)
+            if (MountedWimFiles.Count is 0)
             {
                 return;
             }
-            MountedWimFiles.Reverse(); _ = ModuleDatabase.InvokeScript(ScriptBlock.Create("& $Script:CommandTable.'Dismount-ADTWimFile' -ImagePath $args[0]"), MountedWimFiles);
+            MountedWimFiles.Reverse(); ModuleDatabase.InvokeScript(ScriptBlock.Create("& $Script:CommandTable.'Dismount-ADTWimFile' -ImagePath $args[0]"), MountedWimFiles);
             MountedWimFiles.Clear();
+            DirWimMountPath = null;
         }
 
         /// <summary>
@@ -1477,7 +1486,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <param name="flag">The DeploymentSettings flag to check.</param>
         /// <param name="propertyName">The name of the property (auto-populated by CallerMemberName).</param>
         /// <returns>True if the flag is set; otherwise, false.</returns>
-        private bool GetFlagValue(DeploymentSettings flag, [CallerMemberName] string propertyName = null!)
+        private bool GetFlagValue(DeploymentSettings flag, [CallerMemberName] string? propertyName = null)
         {
             return Settings.HasFlag(DeploymentSettings.CompatibilityMode) && DeployAppScriptSessionState is SessionState sessionState
                 ? (bool)sessionState.PSVariable.GetValue(propertyName)
@@ -1491,7 +1500,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <param name="backingField">Read-only reference to the backing field.</param>
         /// <param name="propertyName">The name of the property (auto-populated by CallerMemberName).</param>
         /// <returns>The property value from either the backing field or PowerShell session state.</returns>
-        private T GetPropertyValue<T>(ref readonly T backingField, [CallerMemberName] string propertyName = null!)
+        private T GetPropertyValue<T>(ref readonly T backingField, [CallerMemberName] string? propertyName = null)
         {
             return Settings.HasFlag(DeploymentSettings.CompatibilityMode) && DeployAppScriptSessionState is SessionState sessionState
                 ? (T)sessionState.PSVariable.GetValue(propertyName)
@@ -1505,7 +1514,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <param name="backingField">Reference to the mutable backing field.</param>
         /// <param name="value">The value to set.</param>
         /// <param name="propertyName">The name of the property (auto-populated by CallerMemberName).</param>
-        private void SetPropertyValue<T>(ref T backingField, T value, [CallerMemberName] string propertyName = null!)
+        private void SetPropertyValue<T>(ref T backingField, T value, [CallerMemberName] string? propertyName = null)
         {
             if (Settings.HasFlag(DeploymentSettings.CompatibilityMode) && DeployAppScriptSessionState is SessionState sessionState)
             {
@@ -1665,6 +1674,11 @@ namespace PSAppDeployToolkit.Foundation
         public DirectoryInfo? DirSupportFiles { get => GetPropertyValue(in field); set => SetPropertyValue(ref field, value); }
 
         /// <summary>
+        /// Gets the specified or determined path to the WIM mount point folder.
+        /// </summary>
+        public DirectoryInfo? DirWimMountPath { get; private set; }
+
+        /// <summary>
         /// Gets an override to the deployment session's installation title.
         /// </summary>
         public string InstallTitle => GetPropertyValue(in field);
@@ -1713,6 +1727,11 @@ namespace PSAppDeployToolkit.Foundation
         #endregion Public properties.
         #region Private fields.
 
+
+        /// <summary>
+        /// Gets the drive letter used with subst during a Zero-Config WIM file mount operation.
+        /// </summary>
+        private DriveInfo? DirFilesSubstDrive;
 
         /// <summary>
         /// Bitfield with settings for this deployment.
@@ -1768,11 +1787,6 @@ namespace PSAppDeployToolkit.Foundation
         /// Gets the mounted WIM files within this session.
         /// </summary>
         private readonly List<FileInfo> MountedWimFiles = [];
-
-        /// <summary>
-        /// Gets the drive letter used with subst during a Zero-Config WIM file mount operation.
-        /// </summary>
-        private readonly DriveInfo? DirFilesSubstDrive;
 
         /// <summary>
         /// Gets the base registry path used for getting/setting deferral information.

@@ -6,7 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Security.Principal;
-using PSADT.Extensions;
 using PSADT.FileSystem;
 using PSADT.Interop;
 using PSADT.Security;
@@ -16,7 +15,7 @@ namespace PSADT.ProcessManagement
     /// <summary>
     /// Represents a running process.
     /// </summary>
-    public sealed record RunningProcessInfo
+    public sealed record class RunningProcessInfo
     {
         /// <summary>
         /// Retrieves a list of running processes that match the specified process definitions.
@@ -168,7 +167,7 @@ namespace PSADT.ProcessManagement
                         }
 
                         // If we couldn't get the command line, skip this process.
-                        if (argv.Length == 0)
+                        if (argv.Length is 0)
                         {
                             continue;
                         }

@@ -60,7 +60,7 @@ function Show-ADTInstallationWelcome
         The deadline date will be displayed to the user in the format of their culture.
 
     .PARAMETER DeferRunInterval
-        Specifies the time span that must elapse before prompting the user again if a process listed in 'CloseProcesses' is still running after a deferral.
+        Specifies the time span that must elapse before prompting the user again if a process specified via `-CloseProcesses` is still running after a deferral.
 
         This addresses the issue where Intune retries deployments shortly after a user defers, preventing multiple immediate prompts and improving the user experience.
 
@@ -155,14 +155,12 @@ function Show-ADTInstallationWelcome
     .EXAMPLE
         Show-ADTInstallationWelcome -CloseProcesses @{ Name = 'winword' }, @{ Name = 'excel' } -BlockExecution -AllowDefer -DeferTimes 10 -DeferDeadline '2013-08-25' -CloseProcessesCountdown 600
 
-        Close Word and Excel and prevent the user from launching the applications while the deployment is in progress.
-
-        Allow the user to defer the deployment a maximum of 10 times or until the deadline is reached, whichever happens first. When deferral expires, prompt the user to close the applications and automatically close them after 10 minutes.
+        Close Word and Excel and prevent the user from launching the applications while the deployment is in progress. Allow the user to defer the deployment a maximum of 10 times or until the deadline is reached, whichever happens first. When deferral expires, prompt the user to close the applications and automatically close them after 10 minutes.
 
     .NOTES
         An active ADT session is NOT required to use this function.
 
-        The process descriptions are retrieved via `Get-Process`, with a fall back on the process name if no description is available. Alternatively, you can specify the description yourself by instantiating the ProcessDefinition object with a description, e.g., `@{ Name = 'winword'; Description = 'Microsoft Word' }`
+        The process descriptions are retrieved via `Get-Process`, with a fallback on the process name if no description is available. Alternatively, you can specify the description yourself by instantiating the ProcessDefinition object with a description, e.g., `@{ Name = 'winword'; Description = 'Microsoft Word' }`
 
         The dialog box will timeout after the timeout specified in the `config.psd1` file (default 55 minutes) to prevent Intune/SCCM deployments from timing out and returning a failure code. When the dialog times out, the script will exit and return a 1618 code (SCCM fast retry code).
 
@@ -173,6 +171,9 @@ function Show-ADTInstallationWelcome
 
     .LINK
         https://psappdeploytoolkit.com/docs/reference/functions/Show-ADTInstallationWelcome
+
+    .LINK
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Show-ADTInstallationWelcome.ps1
     #>
 
     [CmdletBinding(DefaultParameterSetName = 'Interactive, with no modifying options.')]
@@ -714,7 +715,6 @@ function Show-ADTInstallationWelcome
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive, with processes to close, with deferral allowed only if the processes to close are open, with a close processes countdown irrespective of whether the user can defer or not, and a free disk space check.', HelpMessage = 'Specify whether to display a custom message specified in the [strings.psd1] file. Custom message must be populated for each language section in the [strings.psd1] file.')]
         [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
         [System.String]$CustomMessageText,
-
 
         [Parameter(Mandatory = $true, ParameterSetName = 'Interactive, and with a free disk space check.', HelpMessage = 'Specify whether to check if there is enough disk space for the deployment to proceed. If this parameter is specified without the [-RequiredDiskSpace] parameter, the required disk space is calculated automatically based on the size of the script source and associated files.')]
         [Parameter(Mandatory = $true, ParameterSetName = 'Interactive, with processes to close, and a free disk space check.', HelpMessage = 'Specify whether to check if there is enough disk space for the deployment to proceed. If this parameter is specified without the [-RequiredDiskSpace] parameter, the required disk space is calculated automatically based on the size of the script source and associated files.')]

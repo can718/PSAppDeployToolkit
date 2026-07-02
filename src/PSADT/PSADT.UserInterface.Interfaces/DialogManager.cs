@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -36,10 +35,11 @@ namespace PSADT.UserInterface.Interfaces
         /// Initializes the WPF application when the class is first accessed.
         /// </summary>
         [SuppressMessage("Design", "CA1065:Do not raise exceptions in unexpected locations", Justification = "These exceptions will never fire under normal, expected circumstances.")]
+        [SuppressMessage("Usage", "VSTHRD101:Avoid unsupported async delegates", Justification = "An exception throwing in this event is truly exceptional, so we want it to propagate.")]
         static DialogManager()
         {
             // Set up the required dispatcher exception handler first. If it's not present, the setup is wrong and we won't proceed.
-            unhandledExceptionHandler = (Action<Exception>?)AppDomain.CurrentDomain.GetData("PSADT.UserInterface.DialogManager.UnhandledExceptionHandler") ?? throw new InvalidProgramException("Failed to initialize DialogManager: Unhandled exception handler not found in AppDomain data.");
+            Action<Exception> unhandledExceptionHandler = (Action<Exception>?)AppDomain.CurrentDomain.GetData("PSADT.UserInterface.DialogManager.UnhandledExceptionHandler") ?? throw new InvalidProgramException("Failed to initialize DialogManager: Unhandled exception handler not found in AppDomain data.");
 
             // Register process exit handler to ensure WPF is properly shut down. This prevents ~2.5 second delays during shutdown.
             // Use Dispatcher.InvokeShutdown() instead of Application.Shutdown() to avoid a race with WPF's
@@ -48,26 +48,32 @@ namespace PSADT.UserInterface.Interfaces
             // ManagedWndProcTracker runs, causing an unhandled Win32Exception ("Invalid window handle") in
             // PostMessage. InvokeShutdown() stops the dispatcher pump without destroying windows, letting
             // ManagedWndProcTracker clean them up safely.
-            AppDomain.CurrentDomain.ProcessExit += static (_, _) => app?.Dispatcher.InvokeShutdown();
+            AppDomain.CurrentDomain.ProcessExit += static (_, _) => System.Windows.Application.Current?.Dispatcher.InvokeShutdown();
+
+            // Configure WinForms modernisations here the NotifyIcon can create a IWin32Window which will make this throw if called afterwards.
+            System.Windows.Forms.Application.EnableVisualStyles(); System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(defaultValue: false);
+
+            // Force all WPF dialogs into software mode for remoting apps (https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/issues/1762)
+            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
 
             // Create and start the WPF application thread.
             using ManualResetEvent dispatcherRunning = new(initialState: false);
-            System.Windows.Application? appLocal = null;
             Exception? appThreadException = null;
             Thread appThread = new(() =>
             {
                 try
                 {
                     // Create the application and start the message pump (this will set dispatcherRunning when fully instantiated).
-                    appLocal = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown, };
-                    appLocal.Dispatcher.UnhandledException += static (_, e) => unhandledExceptionHandler(e.Exception);
-                    appLocal.Startup += (_, _) =>
+                    System.Windows.Application app = new() { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown, };
+                    app.Dispatcher.UnhandledException += (_, e) => unhandledExceptionHandler(e.Exception);
+                    app.Startup += async (_, _) =>
                     {
-                        // Force the dialogs into software mode for remoting apps (https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/issues/1762)
-                        System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
-                        _ = appLocal.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Normal, dispatcherRunning.Set);
+                        if (!await app.Dispatcher.InvokeAsync(dispatcherRunning.Set, System.Windows.Threading.DispatcherPriority.Normal, default))
+                        {
+                            throw new InvalidProgramException("Failed to signal that the WPF dispatcher is running.");
+                        }
                     };
-                    _ = appLocal.Run();
+                    _ = app.Run();
                 }
                 catch (Exception exception) when (exception.Message is not null)
                 {
@@ -93,14 +99,13 @@ namespace PSADT.UserInterface.Interfaces
             {
                 throw new InvalidProgramException("Failed to initialize WPF application: Dispatcher threw an exception.", appThreadException);
             }
-            if (appLocal is null)
+            if (System.Windows.Application.Current is null)
             {
                 throw new InvalidProgramException("Failed to initialize WPF application: Application instance is null.");
             }
-            app = appLocal;
 
             // Refresh desktop icons to ensure any changes are reflected (https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/issues/1846).
-            _ = app.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Send, DesktopUtilities.RefreshDesktop);
+            _ = System.Windows.Application.Current.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Send, DesktopUtilities.RefreshDesktop);
         }
 
         /// <summary>
@@ -115,7 +120,7 @@ namespace PSADT.UserInterface.Interfaces
         {
             // Start the RunningProcessService if it is not already running.
             bool stopProcessService = false;
-            if (state.RunningProcessService?.IsRunning == false)
+            if ((state.RunningProcessService?.IsRunning) is false)
             {
                 state.RunningProcessService.Start();
                 stopProcessService = true;
@@ -125,12 +130,12 @@ namespace PSADT.UserInterface.Interfaces
             IReadOnlyList<ProcessToClose>? processesToClose = null;
             if (state.RunningProcessService is not null)
             {
-                if ((processesToClose = state.RunningProcessService.ProcessesToClose).Count == 0 && options.ContinueOnProcessClosure)
+                if ((processesToClose = state.RunningProcessService.ProcessesToClose).Count is 0 && options.ContinueOnProcessClosure)
                 {
                     // No processes are running and ContinueOnProcessClosure is set -> skip the dialog
                     // entirely. Avoids constructing a WPF window only to immediately close it (which
                     // also produced an InvalidOperationException prior to the CloseAppsDialog fix).
-                    state.LogAction("Previously detected running processes are no longer running.", LogSeverity.Info);
+                    await state.LogAction("Previously detected running processes are no longer running.", LogSeverity.Info).ConfigureAwait(false);
                     if (stopProcessService)
                     {
                         await state.RunningProcessService.StopAsync().ConfigureAwait(false);
@@ -139,7 +144,7 @@ namespace PSADT.UserInterface.Interfaces
                 }
                 if (processesToClose.Count > 0)
                 {
-                    state.LogAction($"Prompting the user to close application(s) ['{string.Join("', '", processesToClose.Select(static p => p.Description))}']...", LogSeverity.Info);
+                    await state.LogAction($"Prompting the user to close application(s) ['{string.Join("', '", processesToClose.Select(static p => p.Description))}']...", LogSeverity.Info).ConfigureAwait(false);
                 }
             }
 
@@ -153,11 +158,11 @@ namespace PSADT.UserInterface.Interfaces
                 }
                 if (processesToClose?.Count > 0)
                 {
-                    state.LogAction($"Close applications countdown has [{elapsed.Value.ToString(format: null, CultureInfo.InvariantCulture)}] seconds remaining.", LogSeverity.Info);
+                    await state.LogAction($"Close applications countdown has [{elapsed.Value.ToString(format: null, CultureInfo.InvariantCulture)}] seconds remaining.", LogSeverity.Info).ConfigureAwait(false);
                 }
                 else
                 {
-                    state.LogAction($"Countdown has [{elapsed.Value.ToString(format: null, CultureInfo.InvariantCulture)}] seconds remaining.", LogSeverity.Info);
+                    await state.LogAction($"Countdown has [{elapsed.Value.ToString(format: null, CultureInfo.InvariantCulture)}] seconds remaining.", LogSeverity.Info).ConfigureAwait(false);
                 }
             }
 
@@ -169,15 +174,15 @@ namespace PSADT.UserInterface.Interfaces
             {
                 if (result.Equals(CloseAppsDialogResult.Close))
                 {
-                    state.LogAction("Close application(s) countdown timer has elapsed. Force closing application(s).", LogSeverity.Info);
+                    await state.LogAction("Close application(s) countdown timer has elapsed. Force closing application(s).", LogSeverity.Info).ConfigureAwait(false);
                 }
                 else if (result.Equals(CloseAppsDialogResult.Defer))
                 {
-                    state.LogAction("Countdown timer has elapsed and deferrals remaining. Force deferral.", LogSeverity.Info);
+                    await state.LogAction("Countdown timer has elapsed and deferrals remaining. Force deferral.", LogSeverity.Info).ConfigureAwait(false);
                 }
                 else if (result.Equals(CloseAppsDialogResult.Continue))
                 {
-                    state.LogAction("Countdown timer has elapsed and no processes running. Force continue.", LogSeverity.Info);
+                    await state.LogAction("Countdown timer has elapsed and no processes running. Force continue.", LogSeverity.Info).ConfigureAwait(false);
                 }
             }
 
@@ -299,17 +304,24 @@ namespace PSADT.UserInterface.Interfaces
         {
             return progressDialog is not null ? throw new InvalidOperationException("Cannot show a progress dialog while one is already open.") : InvokeDialogActionAsync(() =>
             {
-                progressDialog = (IProgressDialog)dialogDispatcher[dialogStyle][DialogType.ProgressDialog](options, null);
+                progressDialog = dialogStyle switch
+                {
+                    DialogStyle.Classic => new Classic.ProgressDialog(options),
+                    DialogStyle.Fluent => new Fluent.ProgressDialog(options),
+                    _ => throw new NotSupportedException($"Dialog style '{dialogStyle}' is not supported for dialog type 'ProgressDialog'."),
+                };
                 try
                 {
                     progressDialog.Show();
                 }
                 catch (Exception ex) when (ex.Message is not null)
                 {
-                    progressDialog.Dispose();
-                    progressDialog = null;
-                    ExceptionDispatchInfo.Capture(ex).Throw();
-                    throw;
+                    using (progressDialog)
+                    {
+                        progressDialog = null;
+                        ExceptionDispatchInfo.Capture(ex).Throw();
+                        throw;
+                    }
                 }
             });
         }
@@ -359,11 +371,13 @@ namespace PSADT.UserInterface.Interfaces
             {
                 try
                 {
-                    progressDialog.CloseDialog();
+                    using (progressDialog)
+                    {
+                        progressDialog.CloseDialog();
+                    }
                 }
                 finally
                 {
-                    progressDialog.Dispose();
                     progressDialog = null;
                 }
             });
@@ -377,14 +391,14 @@ namespace PSADT.UserInterface.Interfaces
         internal static Task ShowNotifyIconAsync(NotifyIconOptions options)
         {
             // Ensure there's not already a notify icon open.
-            return notifyIcon is not null ? throw new InvalidOperationException("Cannot show a notify icon while one is already open.") : InvokeDialogActionAsync(() =>
+            return notifyIcon is not null ? throw new InvalidOperationException("Cannot show a notify icon while one is already open.") : InvokeDialogActionAsync(async () =>
             {
                 // Set the AUMID for this process so the Windows 10 toast has the correct title.
                 _ = NativeMethods.SetCurrentProcessExplicitAppUserModelID(options.AppTitle);
 
                 // Correct the registry data for the AUMID. This can reference stale info from a previous run.
                 string appIconPath = options.AppTaskbarIconImage ?? options.AppIconImage;
-                System.Drawing.Icon iconObj = Classic.ClassicDialog.GetIcon(appIconPath);
+                System.Drawing.Icon iconObj = await Classic.ClassicDialog.GetIconAsync(appIconPath).ConfigureAwait(true);
                 string regKey = $@"{(AccountUtilities.CallerIsAdmin ? "HKEY_CLASSES_ROOT" : @"HKEY_CURRENT_USER\Software\Classes")}\AppUserModelId\{options.AppTitle}";
                 Registry.SetValue(regKey, "DisplayName", options.AppTitle, RegistryValueKind.String);
                 if (MiscUtilities.GetBase64StringBytes(appIconPath) is not null)
@@ -459,9 +473,11 @@ namespace PSADT.UserInterface.Interfaces
         {
             return notifyIcon is null ? throw new InvalidOperationException("Cannot close a notify icon while one is not open.") : InvokeDialogActionAsync(() =>
             {
-                lastBalloonTip = null;
-                notifyIcon.Dispose();
-                notifyIcon = null;
+                using (notifyIcon)
+                {
+                    lastBalloonTip = null;
+                    notifyIcon = null;
+                }
             });
         }
 
@@ -480,13 +496,22 @@ namespace PSADT.UserInterface.Interfaces
         /// cref="DialogType.CloseAppsDialog"/>.</exception>
         private static Task<TResult> ShowModalDialogAsync<TResult>(DialogType dialogType, DialogStyle dialogStyle, BaseDialogOptions options, BaseDialogState? state = null)
         {
-            if (dialogType == DialogType.CloseAppsDialog)
-            {
-                ArgumentNullException.ThrowIfNull(state);
-            }
             return InvokeDialogActionAsync(() =>
             {
-                using IModalDialog dialog = (IModalDialog)dialogDispatcher[dialogStyle][dialogType](options, state);
+                using IModalDialog dialog = (dialogStyle, dialogType) switch
+                {
+                    (DialogStyle.Classic, DialogType.CloseAppsDialog) => new Classic.CloseAppsDialog((CloseAppsDialogOptions)options, (CloseAppsDialogState?)state ?? throw new ArgumentNullException(nameof(state))),
+                    (DialogStyle.Classic, DialogType.CustomDialog) => new Classic.CustomDialog((CustomDialogOptions)options),
+                    (DialogStyle.Classic, DialogType.InputDialog) => new Classic.InputDialog((InputDialogOptions)options),
+                    (DialogStyle.Classic, DialogType.ListSelectionDialog) => new Classic.ListSelectionDialog((ListSelectionDialogOptions)options),
+                    (DialogStyle.Classic, DialogType.RestartDialog) => new Classic.RestartDialog((RestartDialogOptions)options),
+                    (DialogStyle.Fluent, DialogType.CloseAppsDialog) => new Fluent.CloseAppsDialog((CloseAppsDialogOptions)options, (CloseAppsDialogState?)state ?? throw new ArgumentNullException(nameof(state))),
+                    (DialogStyle.Fluent, DialogType.CustomDialog) => new Fluent.CustomDialog((CustomDialogOptions)options),
+                    (DialogStyle.Fluent, DialogType.InputDialog) => new Fluent.InputDialog((InputDialogOptions)options),
+                    (DialogStyle.Fluent, DialogType.ListSelectionDialog) => new Fluent.ListSelectionDialog((ListSelectionDialogOptions)options),
+                    (DialogStyle.Fluent, DialogType.RestartDialog) => new Fluent.RestartDialog((RestartDialogOptions)options),
+                    _ => throw new NotSupportedException($"Dialog style '{dialogStyle}' is not supported for dialog type '{dialogType}'."),
+                };
                 dialog.ShowDialog(); return (TResult)dialog.DialogResult;
             });
         }
@@ -601,7 +626,17 @@ namespace PSADT.UserInterface.Interfaces
         /// <returns>A task that represents the asynchronous operation.</returns>
         private static Task InvokeDialogActionAsync(Action callback)
         {
-            return app.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal).Task;
+            return System.Windows.Application.Current.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal, default).Task;
+        }
+
+        /// <summary>
+        /// Invokes the specified asynchronous action on the WPF UI thread.
+        /// </summary>
+        /// <param name="callback">The asynchronous action to invoke on the WPF UI thread.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        private static Task InvokeDialogActionAsync(Func<Task> callback)
+        {
+            return System.Windows.Application.Current.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal, default).Task.Unwrap();
         }
 
         /// <summary>
@@ -612,7 +647,7 @@ namespace PSADT.UserInterface.Interfaces
         /// <returns>A task that represents the asynchronous operation, containing the result of the function.</returns>
         private static Task<TResult> InvokeDialogActionAsync<TResult>(Func<TResult> callback)
         {
-            return app.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal).Task;
+            return System.Windows.Application.Current.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal, default).Task;
         }
 
         /// <summary>
@@ -629,40 +664,5 @@ namespace PSADT.UserInterface.Interfaces
         /// A cached value of the last balloon tip options used.
         /// </summary>
         private static BalloonTipOptions? lastBalloonTip;
-
-        /// <summary>
-        /// Application instance for the WPF dialog.
-        /// </summary>
-        private static readonly System.Windows.Application app;
-
-        /// <summary>
-        /// Gets or sets the action to be invoked when an exception occurs in the dispatcher.
-        /// </summary>
-        private static readonly Action<Exception> unhandledExceptionHandler;
-
-        /// <summary>
-        /// Dialog lookup table for dispatching to the correct dialog based on the style and type.
-        /// </summary>
-        private static readonly FrozenDictionary<DialogStyle, FrozenDictionary<DialogType, Func<BaseDialogOptions, BaseDialogState?, IBaseDialog>>> dialogDispatcher = FrozenDictionary.ToFrozenDictionary(new Dictionary<DialogStyle, FrozenDictionary<DialogType, Func<BaseDialogOptions, BaseDialogState?, IBaseDialog>>>
-        {
-            { DialogStyle.Classic, FrozenDictionary.ToFrozenDictionary(new Dictionary<DialogType, Func<BaseDialogOptions, BaseDialogState?, IBaseDialog>>
-            {
-                { DialogType.CloseAppsDialog, static (options, state) => new Classic.CloseAppsDialog((CloseAppsDialogOptions)options, (CloseAppsDialogState?)state ?? throw new ArgumentNullException(nameof(state))) },
-                { DialogType.CustomDialog, static (options, _) => new Classic.CustomDialog((CustomDialogOptions)options) },
-                { DialogType.InputDialog, static (options, _) => new Classic.InputDialog((InputDialogOptions)options) },
-                { DialogType.ListSelectionDialog, static (options, _) => new Classic.ListSelectionDialog((ListSelectionDialogOptions)options) },
-                { DialogType.ProgressDialog, static (options, _) => new Classic.ProgressDialog((ProgressDialogOptions)options) },
-                { DialogType.RestartDialog, static (options, _) => new Classic.RestartDialog((RestartDialogOptions)options) },
-            })},
-            { DialogStyle.Fluent, FrozenDictionary.ToFrozenDictionary(new Dictionary<DialogType, Func<BaseDialogOptions, BaseDialogState?, IBaseDialog>>
-            {
-                { DialogType.CloseAppsDialog, static (options, state) => new Fluent.CloseAppsDialog((CloseAppsDialogOptions)options, (CloseAppsDialogState?)state ?? throw new ArgumentNullException(nameof(state))) },
-                { DialogType.CustomDialog, static (options, _) => new Fluent.CustomDialog((CustomDialogOptions)options) },
-                { DialogType.InputDialog, static (options, _) => new Fluent.InputDialog((InputDialogOptions)options) },
-                { DialogType.ListSelectionDialog, static (options, _) => new Fluent.ListSelectionDialog((ListSelectionDialogOptions)options) },
-                { DialogType.ProgressDialog, static (options, _) => new Fluent.ProgressDialog((ProgressDialogOptions)options) },
-                { DialogType.RestartDialog, static (options, _) => new Fluent.RestartDialog((RestartDialogOptions)options) },
-            })},
-        });
     }
 }

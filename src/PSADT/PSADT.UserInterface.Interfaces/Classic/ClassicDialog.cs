@@ -6,6 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using PSADT.DeviceManagement;
@@ -26,9 +27,10 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// <summary>
         /// Initializes a new instance of the <see cref="ClassicDialog"/> class.
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0191:Do not use the null-forgiving operator", Justification = "This is necessary here.")]
         internal ClassicDialog() : this(null!, null!)
         {
-            if (LicenseManager.UsageMode == LicenseUsageMode.Runtime)
+            if (LicenseManager.UsageMode is LicenseUsageMode.Runtime)
             {
                 throw new NotSupportedException("This constructor cannot be used in runtime mode.");
             }
@@ -43,6 +45,8 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// <param name="options">The options that configure the dialog's appearance and behavior. Must not be null.</param>
         /// <param name="dialogResult">An object representing the result of the dialog interaction, used to determine the outcome when the dialog
         /// is closed.</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "Synchronous wait is necessary for constructor initialization.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0056:Do not call overridable members in constructor", Justification = "This is OK here.")]
         private protected ClassicDialog(BaseDialogOptions options, IDialogResult dialogResult)
         {
@@ -55,7 +59,7 @@ namespace PSADT.UserInterface.Interfaces.Classic
                 // Base properties.
                 SuspendLayout();
                 Text = StripFormattingTags(options.AppTitle);
-                Icon = GetIcon(options.AppTaskbarIconImage ?? options.AppIconImage);
+                Icon = GetIconAsync(options.AppTaskbarIconImage ?? options.AppIconImage).ConfigureAwait(false).GetAwaiter().GetResult();
                 TopMost = options.DialogTopMost;
                 ActiveControl = buttonDefault;
                 FormClosing += Form_FormClosing;
@@ -98,7 +102,7 @@ namespace PSADT.UserInterface.Interfaces.Classic
                 // glyph, and expose the form in the taskbar so the user can restore a minimized
                 // dialog. This replaces the per-dialog wiring previously duplicated in
                 // CloseAppsDialog so every Classic dialog honors the same contract.
-                if (options.DialogAllowMinimize == true)
+                if (options.DialogAllowMinimize is true)
                 {
                     FormBorderStyle = FormBorderStyle.FixedSingle;
                     ControlBox = true;
@@ -270,7 +274,7 @@ namespace PSADT.UserInterface.Interfaces.Classic
         private void SystemEvents_UserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
         {
             // Taskbar moves / size changes often show up here.
-            if (!IsDisposed && IsHandleCreated && (e.Category == UserPreferenceCategory.General || e.Category == UserPreferenceCategory.Desktop || e.Category == UserPreferenceCategory.Window))
+            if (!IsDisposed && IsHandleCreated && (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Desktop or UserPreferenceCategory.Window))
             {
                 _ = BeginInvoke(PositionForm);
             }
@@ -407,61 +411,81 @@ namespace PSADT.UserInterface.Interfaces.Classic
             switch (dialogPosition)
             {
                 case DialogPosition.TopLeft:
-                    left = workingArea.Left;
-                    top = workingArea.Top;
-                    break;
+                    {
+                        left = workingArea.Left;
+                        top = workingArea.Top;
+                        break;
+                    }
 
                 case DialogPosition.Top:
-                    left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
-                    top = workingArea.Top;
-                    break;
+                    {
+                        left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
+                        top = workingArea.Top;
+                        break;
+                    }
 
                 case DialogPosition.TopRight:
-                    left = workingArea.Right - Width;
-                    top = workingArea.Top;
-                    break;
+                    {
+                        left = workingArea.Right - Width;
+                        top = workingArea.Top;
+                        break;
+                    }
 
                 case DialogPosition.TopCenter:
-                    left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
-                    top = workingArea.Top + ((workingArea.Height - Height) * (1.0 / 6.0));
-                    break;
+                    {
+                        left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
+                        top = workingArea.Top + ((workingArea.Height - Height) * (1.0 / 6.0));
+                        break;
+                    }
 
                 case DialogPosition.BottomLeft:
-                    left = workingArea.Left;
-                    top = workingArea.Bottom - Height;
-                    break;
+                    {
+                        left = workingArea.Left;
+                        top = workingArea.Bottom - Height;
+                        break;
+                    }
 
                 case DialogPosition.Bottom:
-                    left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
-                    top = workingArea.Bottom - Height;
-                    break;
+                    {
+                        left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
+                        top = workingArea.Bottom - Height;
+                        break;
+                    }
 
                 case DialogPosition.BottomCenter:
-                    left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
-                    top = workingArea.Top + ((workingArea.Height - Height) * (5.0 / 6.0));
-                    break;
+                    {
+                        left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
+                        top = workingArea.Top + ((workingArea.Height - Height) * (5.0 / 6.0));
+                        break;
+                    }
 
                 case DialogPosition.BottomRight:
-                    left = workingArea.Right - Width;
-                    top = workingArea.Bottom - Height;
-                    break;
+                    {
+                        left = workingArea.Right - Width;
+                        top = workingArea.Bottom - Height;
+                        break;
+                    }
 
                 case DialogPosition.Oobe:
-                    // Center vertically on full screen (compensating for non-existent taskbar in OOBE)
-                    // Calculate taskbar offset in pixels: difference between full screen and working area
-                    Rectangle screenBounds = screen.Bounds;
-                    int taskbarOffsetPixels = screenBounds.Height - workingArea.Height - (workingArea.Top - screenBounds.Top);
-                    double dpiScale = NativeMethods.GetDpiForWindow((HWND)Handle) / 96.0;
-                    left = workingArea.Left + ((workingArea.Width - Width) * 0.5) - (Width / dpiScale * 0.6 * dpiScale);
-                    top = workingArea.Top + ((workingArea.Height - Height) * 0.5) + (taskbarOffsetPixels * 0.5);
-                    break;
+                    {
+                        // Center vertically on full screen (compensating for non-existent taskbar in OOBE)
+                        // Calculate taskbar offset in pixels: difference between full screen and working area
+                        Rectangle screenBounds = screen.Bounds;
+                        int taskbarOffsetPixels = screenBounds.Height - workingArea.Height - (workingArea.Top - screenBounds.Top);
+                        double dpiScale = NativeMethods.GetDpiForWindow((HWND)Handle) / 96.0;
+                        left = workingArea.Left + ((workingArea.Width - Width) * 0.5) - (Width / dpiScale * 0.6 * dpiScale);
+                        top = workingArea.Top + ((workingArea.Height - Height) * 0.5) + (taskbarOffsetPixels * 0.5);
+                        break;
+                    }
 
                 case DialogPosition.Center:
                 case DialogPosition.Default:
                 default:
-                    left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
-                    top = workingArea.Top + ((workingArea.Height - Height) * 0.5);
-                    break;
+                    {
+                        left = workingArea.Left + ((workingArea.Width - Width) * 0.5);
+                        top = workingArea.Top + ((workingArea.Height - Height) * 0.5);
+                        break;
+                    }
             }
 
             // Clamp to working-area bounds
@@ -511,13 +535,13 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// string. The path must not be null or empty.</param>
         /// <returns>An <see cref="Icon"/> object representing the icon at the specified path. Returns a cached icon if it has
         /// been previously loaded.</returns>
-        internal static Icon GetIcon(string path)
+        internal static async ValueTask<Icon> GetIconAsync(string path)
         {
             // Use a cached icon if available, otherwise load and cache it before returning it.
             if (!iconCache.TryGetValue(path, out Icon? icon))
             {
                 using Stream stream = MiscUtilities.GetBase64StringBytes(path) is not byte[] bytes ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read) : new MemoryStream(bytes, writable: false);
-                if (!DrawingUtilities.IsStreamAnIcon(stream))
+                if (!await DrawingUtilities.IsStreamAnIconAsync(stream).ConfigureAwait(false))
                 {
                     using Bitmap image = new(stream, useIcm: true);
                     icon = DrawingUtilities.ConvertBitmapToIcon(image);

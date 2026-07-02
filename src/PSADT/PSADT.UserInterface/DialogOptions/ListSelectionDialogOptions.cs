@@ -11,7 +11,7 @@ namespace PSADT.UserInterface.DialogOptions
     /// Options for the ListSelectionDialog.
     /// </summary>
     [DataContract]
-    public sealed record ListSelectionDialogOptions : CustomDialogOptions
+    public sealed record class ListSelectionDialogOptions : CustomDialogOptions
     {
         /// <summary>
         /// Initializes a new instance of the ListSelectionDialogOptions class using the specified configuration
@@ -98,7 +98,7 @@ namespace PSADT.UserInterface.DialogOptions
             ArgumentNullException.ThrowIfNull(strings);
             ArgumentNullException.ThrowIfNull(listItems);
             ArgumentOutOfRangeException.ThrowIfZero(listItems.Count, nameof(listItems));
-            if (selectedIndex.HasValue && (selectedIndex.Value < 0 || selectedIndex.Value >= listItems.Count))
+            if (selectedIndex is not null && (selectedIndex.Value < 0 || selectedIndex.Value >= listItems.Count))
             {
                 throw new ArgumentOutOfRangeException(nameof(selectedIndex), selectedIndex, "SelectedIndex must be a valid index within ListItems.");
             }
@@ -130,7 +130,7 @@ namespace PSADT.UserInterface.DialogOptions
         /// </summary>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1034:Nested types should not be visible", Justification = "The nesting in this case is alright.")]
         [DataContract]
-        public sealed record ListSelectionDialogStrings
+        public sealed record class ListSelectionDialogStrings
         {
             /// <summary>
             /// Initializes a new instance of the ListSelectionDialogStrings class using the specified collection of

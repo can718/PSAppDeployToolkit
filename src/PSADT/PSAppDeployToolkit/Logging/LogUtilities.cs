@@ -11,9 +11,7 @@ using System.Management.Automation.Runspaces;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
-using PSAppDeployToolkit.Extensions;
 using PSAppDeployToolkit.Foundation;
-using PSAppDeployToolkit.Utilities;
 
 namespace PSAppDeployToolkit.Logging
 {
@@ -72,9 +70,9 @@ namespace PSAppDeployToolkit.Logging
             }
 
             // Get the caller's source and filename, factoring in whether we're running outside of PowerShell or not.
-            bool noRunspace = (Runspace.DefaultRunspace is null) || (Runspace.DefaultRunspace.RunspaceStateInfo.State != RunspaceState.Opened);
+            bool noRunspace = (Runspace.DefaultRunspace is null) || (Runspace.DefaultRunspace.RunspaceStateInfo.State is not RunspaceState.Opened);
             StackFrame[] stackFrames = [.. new StackTrace(fNeedFileInfo: true).GetFrames().Skip(1)]; string callerFileName, callerSource;
-            if (noRunspace || !stackFrames.Any(static f => f.GetMethod()?.DeclaringType?.Namespace?.StartsWith("System.Management.Automation", StringComparison.Ordinal) == true))
+            if (noRunspace || !stackFrames.Any(static f => (f.GetMethod()?.DeclaringType?.Namespace?.StartsWith("System.Management.Automation", StringComparison.Ordinal)) is true))
             {
                 // Get the right stack frame. We want the first one that's not ours. If it's invalid, get our last one.
                 StackFrame invoker = stackFrames.First(static f => f.GetMethod()?.DeclaringType?.FullName is string fullName && !DeclaringTypeRegex.IsMatch(fullName));
@@ -90,7 +88,7 @@ namespace PSAppDeployToolkit.Logging
             else
             {
                 // Get the first PowerShell stack frame that contains a valid command.
-                CallStackFrame invoker = ModuleDatabase.InvokeScript(ScriptBlock.Create("& $Script:CommandTable.'Get-PSCallStack'")).Skip(1).Select(PowerShellUtilities.GetBaseObject<CallStackFrame>).First(static f => f.GetCommand() is string command && !string.IsNullOrWhiteSpace(command) && (!CallerCommandRegex.IsMatch(command) || (CallerScriptBlockRegex.IsMatch(command) && CallerScriptLocationRegex.IsMatch(f.GetScriptLocation()))));
+                CallStackFrame invoker = ModuleDatabase.InvokeScript<CallStackFrame>(ScriptBlock.Create("& $Script:CommandTable.'Get-PSCallStack'")).Skip(1).First(static f => f.GetCommand() is string command && !string.IsNullOrWhiteSpace(command) && (!CallerCommandRegex.IsMatch(command) || (CallerScriptBlockRegex.IsMatch(command) && CallerScriptLocationRegex.IsMatch(f.GetScriptLocation()))));
                 callerFileName = !string.IsNullOrWhiteSpace(invoker.ScriptName) ? invoker.ScriptName : invoker.GetScriptLocation();
                 callerSource = invoker.GetCommand();
             }
@@ -106,10 +104,6 @@ namespace PSAppDeployToolkit.Logging
             }
 
             // Set up default values if not specified.
-            if (!logStyle.HasValue)
-            {
-                logStyle = Enum.TryParse(configToolkit?["LogStyle"] as string, out LogStyle styleEnum) ? styleEnum : LogStyle.CMTrace;
-            }
             if (source is null || string.IsNullOrWhiteSpace(source))
             {
                 source = callerSource;
@@ -118,11 +112,12 @@ namespace PSAppDeployToolkit.Logging
             {
                 _ = Directory.CreateDirectory(logFileDirectory);
             }
+            logStyle ??= Enum.TryParse(configToolkit?["LogStyle"] as string, out LogStyle styleEnum) ? styleEnum : LogStyle.CMTrace;
             severity ??= LogSeverity.Info;
 
             // Build out the log entries and confirm whether there's anything to log.
             ReadOnlyCollection<LogEntry> logEntries = new([.. message.Where(static msg => !string.IsNullOrWhiteSpace(msg)).Select(msg => new LogEntry(dateNow, msg, severity.Value, source, scriptSection, debugMessage, callerFileName, callerSource))]);
-            if (logEntries.Count == 0)
+            if (logEntries.Count is 0)
             {
                 throw new InvalidOperationException("No valid log messages were provided to log.");
             }
@@ -131,7 +126,7 @@ namespace PSAppDeployToolkit.Logging
             if (canLogToDisk)
             {
                 using StreamWriter logFileWriter = new(Path.Join(logFileDirectory, logFileName), append: true, LogEncoding);
-                if (logStyle.Value == LogStyle.CMTrace)
+                if (logStyle.Value is LogStyle.CMTrace)
                 {
                     foreach (LogEntry logEntry in logEntries)
                     {
@@ -148,18 +143,18 @@ namespace PSAppDeployToolkit.Logging
             }
 
             // Write out all messages to host if configured/permitted to do so.
-            if (hostLogStreamType != HostLogStreamType.None)
+            if (hostLogStreamType is not HostLogStreamType.None)
             {
-                if (hostLogStreamType == HostLogStreamType.Console || noRunspace)
+                if (hostLogStreamType is HostLogStreamType.Console || noRunspace)
                 {
                     // Writing straight to the console.
                     FrozenDictionary<string, ConsoleColor> sevCols = LogSeverityColors[(int)severity];
-                    bool colouredOutput = severity != LogSeverity.Info;
+                    bool colouredOutput = severity is not LogSeverity.Info;
                     if (colouredOutput)
                     {
                         Console.ForegroundColor = sevCols["ForegroundColor"];
                     }
-                    TextWriter stdStream = severity == LogSeverity.Error
+                    TextWriter stdStream = severity is LogSeverity.Error
                         ? Console.Error
                         : Console.Out;
                     foreach (LogEntry logEntry in logEntries)
@@ -171,17 +166,17 @@ namespace PSAppDeployToolkit.Logging
                         Console.ResetColor();
                     }
                 }
-                else if (hostLogStreamType != HostLogStreamType.Verbose)
+                else if (hostLogStreamType is not HostLogStreamType.Verbose)
                 {
                     // Write the host output to PowerShell's InformationStream.
                     string[] infoMessages = [.. logEntries.Select(static e => e.LegacyLogLine)];
-                    _ = ModuleDatabase.InvokeScript(WriteHostDelegate, infoMessages, LogSeverityColors[(int)severity]);
+                    ModuleDatabase.InvokeScript(WriteHostDelegate, infoMessages, LogSeverityColors[(int)severity]);
                 }
                 else
                 {
                     // Write the host output to PowerShell's VerboseStream.
                     string[] verboseMessages = [.. logEntries.Select(static e => e.Message)];
-                    _ = ModuleDatabase.InvokeScript(WriteVerboseDelegate, verboseMessages);
+                    ModuleDatabase.InvokeScript(WriteVerboseDelegate, verboseMessages);
                 }
             }
             return logEntries;

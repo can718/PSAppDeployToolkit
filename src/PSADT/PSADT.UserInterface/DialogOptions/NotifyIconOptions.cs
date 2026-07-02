@@ -13,7 +13,7 @@ namespace PSADT.UserInterface.DialogOptions
     /// cref="NotifyIconOptions(IDictionary)"/> constructor to initialize an instance with validated configuration
     /// values.</remarks>
     [DataContract]
-    public sealed record NotifyIconOptions : IDialogOptions
+    public sealed record class NotifyIconOptions : IDialogOptions
     {
         /// <summary>
         /// Initializes a new instance of the NotifyIconOptions class using the specified configuration options.
@@ -42,13 +42,15 @@ namespace PSADT.UserInterface.DialogOptions
         /// <param name="messageText">The title of the system tray application.</param>
         /// <exception cref="ArgumentNullException">Thrown if any required parameter is null, empty, or whitespace.</exception>
         /// <exception cref="FileNotFoundException">Thrown if the specified tray icon file does not exist.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "Synchronous wait is necessary for constructor initialization.")]
         private NotifyIconOptions(string appTitle, string appIconImage, string? appTaskbarIconImage, string messageText)
         {
             // Set initial string properties.
             ArgumentException.ThrowIfNullOrWhiteSpace(appTitle);
             ArgumentException.ThrowIfNullOrWhiteSpace(messageText);
             ArgumentException.ThrowIfNullOrWhiteSpace(appIconImage);
-            AppIconImage = BaseDialogOptions.ThrowIfImageIsInvalid(appIconImage, nameof(AppIconImage));
+            AppIconImage = BaseDialogOptions.ThrowIfImageIsInvalidAsync(appIconImage, nameof(AppIconImage)).ConfigureAwait(false).GetAwaiter().GetResult();
             MessageText = messageText;
             AppTitle = appTitle;
 
@@ -56,7 +58,7 @@ namespace PSADT.UserInterface.DialogOptions
             if (appTaskbarIconImage is not null)
             {
                 ArgumentException.ThrowIfNullOrWhiteSpace(appTaskbarIconImage);
-                AppTaskbarIconImage = BaseDialogOptions.ThrowIfImageIsInvalid(appTaskbarIconImage, nameof(AppTaskbarIconImage));
+                AppTaskbarIconImage = BaseDialogOptions.ThrowIfImageIsInvalidAsync(appTaskbarIconImage, nameof(AppTaskbarIconImage)).ConfigureAwait(false).GetAwaiter().GetResult();
             }
         }
 

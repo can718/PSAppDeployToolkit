@@ -35,7 +35,7 @@ namespace PSADT.SMBIOS
         /// <param name="rawType">The raw type identifier for the contained element.</param>
         /// <param name="rawMinimum">The minimum raw value supported by the contained element.</param>
         /// <param name="rawMaximum">The maximum raw value supported by the contained element.</param>
-        public SystemEnclosureContainedElement(byte rawType, byte rawMinimum, byte rawMaximum)
+        internal SystemEnclosureContainedElement(byte rawType, byte rawMinimum, byte rawMaximum)
         {
             RawType = rawType;
             RawMinimum = rawMinimum;
@@ -46,7 +46,7 @@ namespace PSADT.SMBIOS
         /// True when RawType encodes an SMBIOS structure type (bit 7 == 0).
         /// False when it encodes an SMBIOS Baseboard Type (bit 7 == 1).
         /// </summary>
-        public bool IsType => (RawType & 0x80) == 0;
+        public bool IsType => (RawType & 0x80) is 0;
 
         /// <summary>
         /// Lower7-bit type code (interpretation depends on IsType).
@@ -66,12 +66,12 @@ namespace PSADT.SMBIOS
         /// <summary>
         /// Normalized minimum (null when reserved value 0xFF is used).
         /// </summary>
-        public byte? Minimum => RawMinimum != 0xFF ? RawMinimum : null;
+        public byte? Minimum => RawMinimum is not 0xFF ? RawMinimum : null;
 
         /// <summary>
         /// Normalized maximum (null when reserved value 0 is used).
         /// </summary>
-        public byte? Maximum => RawMaximum != 0 ? RawMaximum : null;
+        public byte? Maximum => RawMaximum is not 0 ? RawMaximum : null;
 
         /// <summary>
         /// Returns true when Minimum/Maximum are within spec-defined ranges.

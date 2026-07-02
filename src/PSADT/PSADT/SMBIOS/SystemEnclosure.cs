@@ -27,7 +27,7 @@ namespace PSADT.SMBIOS
     /// <summary>
     /// Immutable representation of SMBIOS System Enclosure (Type 3) structure.
     /// </summary>
-    public sealed record SystemEnclosure : ISmbiosStructure
+    public sealed record class SystemEnclosure : ISmbiosStructure
     {
         /// <summary>
         /// Reads the SMBIOS System Enclosure (Type 3) structure.
@@ -75,7 +75,7 @@ namespace PSADT.SMBIOS
             if (structureLength >= 19)
             {
                 byte cordsRaw = buffer[structureOffset + 18];
-                if (cordsRaw != 0)
+                if (cordsRaw is not 0)
                 {
                     numberOfPowerCords = cordsRaw;
                 }
@@ -123,7 +123,7 @@ namespace PSADT.SMBIOS
             // SKU Number string index
             string? skuNumber = null;
             int stringTableOffset = structureOffset + structureLength;
-            bool canReadSku = !(containedElementCount > 0 && containedElementRecordLength == 0);
+            bool canReadSku = !(containedElementCount > 0 && containedElementRecordLength is 0);
             if (canReadSku && structureLength > afterRecordsOffset)
             {
                 skuNumber = SmbiosParsing.GetSmbiosString(buffer, stringTableOffset, buffer[structureOffset + afterRecordsOffset]);

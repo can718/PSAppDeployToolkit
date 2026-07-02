@@ -13,9 +13,10 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// <summary>
         /// Initializes a new instance of the <see cref="ListSelectionDialog"/> class.
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0191:Do not use the null-forgiving operator", Justification = "This is necessary here.")]
         internal ListSelectionDialog() : this(null!)
         {
-            if (LicenseManager.UsageMode == LicenseUsageMode.Runtime)
+            if (LicenseManager.UsageMode is LicenseUsageMode.Runtime)
             {
                 throw new NotSupportedException("This constructor cannot be used in runtime mode.");
             }
@@ -31,7 +32,7 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// the Fluent dialog type.</exception>
         internal ListSelectionDialog(ListSelectionDialogOptions options) : base(options, ListSelectionDialogResult.DefaultResult)
         {
-            if (LicenseManager.UsageMode == LicenseUsageMode.Runtime)
+            if (LicenseManager.UsageMode is LicenseUsageMode.Runtime)
             {
                 throw new NotSupportedException("The ListSelectionDialog is only implemented for the Fluent dialog type.");
             }

@@ -73,6 +73,9 @@ function Resolve-ADTErrorRecord
 
     .LINK
         https://psappdeploytoolkit.com/docs/reference/functions/Resolve-ADTErrorRecord
+
+    .LINK
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Resolve-ADTErrorRecord.ps1
     #>
 
     [CmdletBinding()]
@@ -170,7 +173,7 @@ function Resolve-ADTErrorRecord
                 {
                     $logErrorProperties.Add($propName, [System.String]::Join([System.Environment]::NewLine, [PSADT.Utilities.MiscUtilities]::TrimLeadingTrailingLines([System.String[]]($errorObject.$propName | Out-String -Width ([System.Int16]::MaxValue) -Stream))))
                 }
-                elseif ($propName -eq 'Exception')
+                elseif ($propName -match 'Exception$')
                 {
                     $logErrorProperties.Add($propName, [PSADT.Interop.Utilities.ExceptionUtilities]::CollapseInnerExceptionTraceMarkers($errorObject.$propName).Trim())
                 }

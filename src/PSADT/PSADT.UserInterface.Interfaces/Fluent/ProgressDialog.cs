@@ -17,10 +17,11 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// Instantiates a new ProgressDialog dialog.
         /// </summary>
         /// <param name="options">Mandatory options needed to construct the window.</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0191:Do not use the null-forgiving operator", Justification = "This is necessary here.")]
         internal ProgressDialog(ProgressDialogOptions options) : base(options, null!)
         {
             UpdateProgressImpl(options.ProgressMessageText, options.ProgressDetailMessageText, options.ProgressPercentage);
-            if (_dialogPosition != DialogPosition.Oobe || (!DeviceUtilities.IsOOBEComplete() && !_dialogAllowMove))
+            if (_dialogPosition is not DialogPosition.Oobe || (!DeviceUtilities.IsOOBEComplete() && !_dialogAllowMove))
             {
                 IsMinimizeButtonVisible = Visibility.Visible;
             }

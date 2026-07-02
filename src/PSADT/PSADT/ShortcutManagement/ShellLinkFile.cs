@@ -23,7 +23,6 @@ using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -185,6 +184,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <value>The path to the target file or folder that the shortcut points to.</value>
         /// <exception cref="COMException">Thrown when the COM operation fails.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0191:Do not use the null-forgiving operator", Justification = "This is deliberate.")]
         public string TargetPath
         {
             get
@@ -742,11 +742,11 @@ namespace PSADT.ShortcutManagement
             {
                 ((IPropertyStore)_shellLink).GetValue(in key, out propVariant);
                 VARENUM vt = propVariant.Anonymous.Anonymous.vt;
-                if (vt == VARENUM.VT_EMPTY)
+                if (vt is VARENUM.VT_EMPTY)
                 {
                     return null;
                 }
-                if (vt == VARENUM.VT_BSTR)
+                if (vt is VARENUM.VT_BSTR)
                 {
                     nint bstrVal;
                     unsafe
@@ -760,7 +760,7 @@ namespace PSADT.ShortcutManagement
                     string bstrValStr = Marshal.PtrToStringBSTR(bstrVal);
                     return !string.IsNullOrWhiteSpace(bstrValStr) ? bstrValStr : null;
                 }
-                if (vt == VARENUM.VT_LPWSTR)
+                if (vt is VARENUM.VT_LPWSTR)
                 {
                     PWSTR pwszVal = propVariant.Anonymous.Anonymous.Anonymous.pwszVal;
                     if (pwszVal.IsNull())
@@ -825,13 +825,13 @@ namespace PSADT.ShortcutManagement
             {
                 ((IPropertyStore)_shellLink).GetValue(in key, out propVariant);
                 VARENUM vt = propVariant.Anonymous.Anonymous.vt;
-                return vt == VARENUM.VT_BOOL
+                return vt is VARENUM.VT_BOOL
                     ? propVariant.Anonymous.Anonymous.Anonymous.boolVal != 0
-                    : vt == VARENUM.VT_I4
-                    ? propVariant.Anonymous.Anonymous.Anonymous.lVal != 0
-                    : vt == VARENUM.VT_UI4
+                    : vt is VARENUM.VT_I4
+                    ? propVariant.Anonymous.Anonymous.Anonymous.lVal is not 0
+                    : vt is VARENUM.VT_UI4
                     ? propVariant.Anonymous.Anonymous.Anonymous.ulVal != 0
-                    : vt != VARENUM.VT_EMPTY
+                    : vt is not VARENUM.VT_EMPTY
                     ? throw new FileFormatException($"Property has unexpected type {vt}, expected VT_BOOL, VT_I4, or VT_UI4.")
                     : null;
             }
@@ -852,7 +852,7 @@ namespace PSADT.ShortcutManagement
             PROPVARIANT propVariant = default;
             try
             {
-                if (value.HasValue)
+                if (value is not null)
                 {
                     propVariant.Anonymous.Anonymous.vt = VARENUM.VT_BOOL;
                     propVariant.Anonymous.Anonymous.Anonymous.boolVal = value.Value ? (VARIANT_BOOL)(-1) : (VARIANT_BOOL)0;
@@ -885,11 +885,11 @@ namespace PSADT.ShortcutManagement
             {
                 ((IPropertyStore)_shellLink).GetValue(in key, out propVariant);
                 VARENUM vt = propVariant.Anonymous.Anonymous.vt;
-                if (vt == VARENUM.VT_EMPTY)
+                if (vt is VARENUM.VT_EMPTY)
                 {
                     return null;
                 }
-                if (vt != VARENUM.VT_CLSID)
+                if (vt is not VARENUM.VT_CLSID)
                 {
                     throw new FileFormatException($"Property has unexpected type {vt}, expected VT_CLSID.");
                 }
@@ -919,7 +919,7 @@ namespace PSADT.ShortcutManagement
             PROPVARIANT propVariant = default;
             try
             {
-                if (value.HasValue)
+                if (value is not null)
                 {
                     unsafe
                     {
@@ -956,11 +956,11 @@ namespace PSADT.ShortcutManagement
             {
                 ((IPropertyStore)_shellLink).GetValue(in key, out propVariant);
                 VARENUM vt = propVariant.Anonymous.Anonymous.vt;
-                return vt == VARENUM.VT_I4 && propVariant.Anonymous.Anonymous.Anonymous.lVal < 0
+                return vt is VARENUM.VT_I4 && propVariant.Anonymous.Anonymous.Anonymous.lVal < 0
                     ? (uint)propVariant.Anonymous.Anonymous.Anonymous.lVal
-                    : vt == VARENUM.VT_UI4
+                    : vt is VARENUM.VT_UI4
                     ? propVariant.Anonymous.Anonymous.Anonymous.ulVal
-                    : vt != VARENUM.VT_EMPTY
+                    : vt is not VARENUM.VT_EMPTY
                     ? throw new FileFormatException($"Property has unexpected type {vt}, expected VT_UI4 or VT_I4.")
                     : null;
             }
@@ -981,7 +981,7 @@ namespace PSADT.ShortcutManagement
             PROPVARIANT propVariant = default;
             try
             {
-                if (value.HasValue)
+                if (value is not null)
                 {
                     propVariant.Anonymous.Anonymous.vt = VARENUM.VT_UI4;
                     propVariant.Anonymous.Anonymous.Anonymous.ulVal = value.Value;
@@ -1028,7 +1028,7 @@ namespace PSADT.ShortcutManagement
         /// <returns><see langword="true"/> if the flag is set; otherwise, <see langword="false"/>.</returns>
         private bool GetFlag(SHELL_LINK_DATA_FLAGS flag)
         {
-            return (GetFlags() & flag) != SHELL_LINK_DATA_FLAGS.SLDF_DEFAULT;
+            return (GetFlags() & flag) is not SHELL_LINK_DATA_FLAGS.SLDF_DEFAULT;
         }
 
         /// <summary>
@@ -1055,20 +1055,11 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         public void Dispose()
         {
-            Dispose(disposing: true);
-        }
-
-        /// <summary>
-        /// Releases the unmanaged resources used by the <see cref="ShellLinkFile"/> and optionally releases the managed resources.
-        /// </summary>
-        /// <param name="disposing"><see langword="true"/> to release both managed and unmanaged resources; <see langword="false"/> to release only unmanaged resources.</param>
-        private void Dispose(bool disposing)
-        {
             if (_disposed)
             {
                 return;
             }
-            if (disposing && _shellLink is not null)
+            if (_shellLink is not null)
             {
                 _ = Marshal.FinalReleaseComObject(_shellLink);
             }
@@ -1087,7 +1078,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <remarks>Use this property to determine if modifications to the storage are allowed. When <see
         /// langword="true"/>, attempts to write or update the storage will not be permitted.</remarks>
-        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) == Interop.STGM.STGM_DIRECT;
+        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) is Interop.STGM.STGM_DIRECT;
 
         /// <summary>
         /// Indicates whether the object has been disposed.

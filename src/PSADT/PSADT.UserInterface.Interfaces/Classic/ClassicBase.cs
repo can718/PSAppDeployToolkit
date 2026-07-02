@@ -24,11 +24,6 @@ namespace PSADT.UserInterface.Interfaces.Classic
             {
                 throw new NotSupportedException("The dialog style [Classic] is not supported on Windows Server Core.");
             }
-            if (LicenseManager.UsageMode == LicenseUsageMode.Runtime)
-            {
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(defaultValue: false);
-            }
         }
 
         /// <summary>
@@ -37,7 +32,7 @@ namespace PSADT.UserInterface.Interfaces.Classic
         private protected ClassicBase()
         {
             // Apply extras to the form if we have any (i.e. not in the designer).
-            if (LicenseManager.UsageMode == LicenseUsageMode.Runtime)
+            if (LicenseManager.UsageMode is LicenseUsageMode.Runtime)
             {
                 Shown += ClassicBase_Shown;
             }

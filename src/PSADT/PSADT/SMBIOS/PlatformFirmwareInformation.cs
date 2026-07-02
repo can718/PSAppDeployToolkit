@@ -27,7 +27,7 @@ namespace PSADT.SMBIOS
     /// <summary>
     /// Immutable representation of SMBIOS BIOS Information (Type 0) structure.
     /// </summary>
-    public sealed record PlatformFirmwareInformation : ISmbiosStructure
+    public sealed record class PlatformFirmwareInformation : ISmbiosStructure
     {
         /// <summary>
         /// Reads the SMBIOS BIOS Information (Type 0) structure.
@@ -54,8 +54,8 @@ namespace PSADT.SMBIOS
             BiosExtendedRomSize? extendedRomSize = null;
             byte romSize = buffer[structureOffset + 9];
             // Per spec: 0xFF is a sentinel indicating extended size. Do not treat as legacy 16MB.
-            uint? romSizeBytes = romSize != 0xFF ? (uint)(romSize + 1) * 64 * 1024 : null;
-            if (structureLength >= 26 && romSize == 0xFF)
+            uint? romSizeBytes = romSize is not 0xFF ? (uint)(romSize + 1) * 64 * 1024 : null;
+            if (structureLength >= 26 && romSize is 0xFF)
             {
                 // Bits 15:14 = unit (00b=MB, 01b=GB; others reserved), Bits 13:0 = size.
                 extendedRomSize = new(BinaryPrimitives.ReadUInt16LittleEndian(buffer.Slice(structureOffset + 24, 2)));
@@ -63,7 +63,7 @@ namespace PSADT.SMBIOS
 
             // Starting address segment (0 means not applicable per spec)
             ushort startingSegRaw = BinaryPrimitives.ReadUInt16LittleEndian(buffer.Slice(structureOffset + 6, 2));
-            ushort? startingSeg = startingSegRaw != 0 ? startingSegRaw : null;
+            ushort? startingSeg = startingSegRaw is not 0 ? startingSegRaw : null;
 
             // Return the information to the caller.
             int stringTableOffset = structureOffset + structureLength;
@@ -294,7 +294,7 @@ namespace PSADT.SMBIOS
         /// <returns>The original byte value if it is not 255; otherwise, <see langword="null"/>.</returns>
         private static byte? NormalizeByte255(byte value)
         {
-            return value != 0xFF ? value : null;
+            return value is not 0xFF ? value : null;
         }
 
         /// <summary>
@@ -303,7 +303,7 @@ namespace PSADT.SMBIOS
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "A property would insinuate that it's part of the SMBIOS specification.")]
         public Version? GetSystemBiosVersion()
         {
-            return SystemBiosMajorRelease.HasValue && SystemBiosMinorRelease.HasValue ? new(SystemBiosMajorRelease.Value, SystemBiosMinorRelease.Value) : null;
+            return SystemBiosMajorRelease is not null && SystemBiosMinorRelease is not null ? new(SystemBiosMajorRelease.Value, SystemBiosMinorRelease.Value) : null;
         }
 
         /// <summary>
@@ -312,7 +312,7 @@ namespace PSADT.SMBIOS
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "A property would insinuate that it's part of the SMBIOS specification.")]
         public Version? GetEmbeddedControllerVersion()
         {
-            return EmbeddedControllerMajorRelease.HasValue && EmbeddedControllerMinorRelease.HasValue ? new(EmbeddedControllerMajorRelease.Value, EmbeddedControllerMinorRelease.Value) : null;
+            return EmbeddedControllerMajorRelease is not null && EmbeddedControllerMinorRelease is not null ? new(EmbeddedControllerMajorRelease.Value, EmbeddedControllerMinorRelease.Value) : null;
         }
 
         /// <summary>

@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using PSADT.Interop.Utilities;
 using PSADT.SafeHandles;
@@ -53,7 +52,7 @@ namespace PSADT.FileSystem
                 FARPROC exitThread = NativeMethods.GetProcAddress(hKernel32Ptr, "ExitThread");
                 int handleOffset, bufferOffset, bufferLengthOffset; List<byte> startRoutine = [];
                 Architecture processArchitecture = RuntimeInformation.ProcessArchitecture;
-                if (processArchitecture == Architecture.X64)
+                if (processArchitecture is Architecture.X64)
                 {
                     // mov rcx, handle (placeholder)
                     startRoutine.Add(0x48); startRoutine.Add(0xB9);
@@ -96,7 +95,7 @@ namespace PSADT.FileSystem
                     startRoutine.Add(0xFF); startRoutine.Add(0xD0);
                     NtQueryObjectStartRoutineTemplate = new([.. startRoutine], handleOffset, bufferOffset, bufferLengthOffset);
                 }
-                else if (processArchitecture == Architecture.X86)
+                else if (processArchitecture is Architecture.X86)
                 {
                     // push NULL (ReturnLength)
                     startRoutine.Add(0x6A);
@@ -136,7 +135,7 @@ namespace PSADT.FileSystem
                     startRoutine.Add(0xFF); startRoutine.Add(0xD0);
                     NtQueryObjectStartRoutineTemplate = new([.. startRoutine], handleOffset, bufferOffset, bufferLengthOffset);
                 }
-                else if (processArchitecture == Architecture.Arm64)
+                else if (processArchitecture is Architecture.Arm64)
                 {
                     // x0 = handle (placeholder - 4 instructions)
                     List<uint> code = [];
@@ -242,7 +241,7 @@ namespace PSADT.FileSystem
             // Loop through all handles and return list of open file handles.
             try
             {
-                ref readonly SYSTEM_HANDLE_INFORMATION_EX handleInfo = ref handleBuffer.AsSpan().AsReadOnlyStructure<SYSTEM_HANDLE_INFORMATION_EX>();
+                ref readonly SYSTEM_HANDLE_INFORMATION_EX handleInfo = ref handleBuffer.AsReadOnlyStructure<SYSTEM_HANDLE_INFORMATION_EX>();
                 ReadOnlyDictionary<string, string> ntPathLookupTable = FileSystemUtilities.MakeNtPathLookupTable();
                 using SafeProcessHandle currentProcessHandle = NativeMethods.GetCurrentProcess();
                 ConcurrentBag<FileHandleInfo> openHandles = [];
@@ -302,7 +301,7 @@ namespace PSADT.FileSystem
                     {
                         try
                         {
-                            if (NativeMethods.GetFileType(fileDupHandle) != FILE_TYPE.FILE_TYPE_DISK)
+                            if (NativeMethods.GetFileType(fileDupHandle) is not FILE_TYPE.FILE_TYPE_DISK)
                             {
                                 return;
                             }
@@ -323,7 +322,7 @@ namespace PSADT.FileSystem
                             using (hThread)
                             {
                                 // Terminate the thread if it's taking longer than our timeout (NtQueryObject() has hung); otherwise just get the exit code.
-                                if (NativeMethods.WaitForSingleObject(hThread, 500) != WAIT_EVENT.WAIT_OBJECT_0)
+                                if (NativeMethods.WaitForSingleObject(hThread, 500) is not WAIT_EVENT.WAIT_OBJECT_0)
                                 {
                                     _ = NativeMethods.NtTerminateThread(hThread, NTSTATUS.STATUS_TIMEOUT);
                                 }
@@ -340,7 +339,7 @@ namespace PSADT.FileSystem
                                 throw ExceptionUtilities.GetException(res);
                             }
                             ref readonly OBJECT_NAME_INFORMATION objectBufferData = ref objectBuffer.AsReadOnlyStructure<OBJECT_NAME_INFORMATION>();
-                            if (objectBufferData.Name.Length == 0)
+                            if (objectBufferData.Name.Length is 0)
                             {
                                 return;
                             }
@@ -370,7 +369,7 @@ namespace PSADT.FileSystem
                     string objectNameKey = $@"\{string.Join('\\', objectName.Split(['\\'], StringSplitOptions.RemoveEmptyEntries).Take(2))}";
                     if (ntPathLookupTable.TryGetValue(objectNameKey, out string? driveLetter) && objectName.Replace(objectNameKey, driveLetter, StringComparison.OrdinalIgnoreCase) is string dosPath && (path is null || dosPath.StartsWith(path, StringComparison.OrdinalIgnoreCase)))
                     {
-                        openHandles.Add(new(sysHandle, dosPath, objectName, objectType));
+                        openHandles.Add(new(in sysHandle, dosPath, objectName, objectType));
                     }
                 });
                 return new ReadOnlyCollection<FileHandleInfo>([.. openHandles]);
@@ -379,8 +378,11 @@ namespace PSADT.FileSystem
             {
                 foreach ((SafePinnedGCHandle objectBuffer, SafeVirtualAllocHandle startRoutineBuffer) in threadBuffers.Values)
                 {
-                    startRoutineBuffer.Dispose();
-                    objectBuffer.Dispose();
+                    using (startRoutineBuffer)
+                    using (objectBuffer)
+                    {
+                        continue;
+                    }
                 }
             }
         }
@@ -394,18 +396,21 @@ namespace PSADT.FileSystem
         /// <param name="handleEntries">An array of SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX structures representing the handles to be closed. Each entry
         /// must be valid and correspond to an open handle.</param>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="handleEntries"/> is null.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Bug", "S1751:Loops with at most one iteration should be refactored", Justification = "This is a documented false positive.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0099:Use Explicit enum value instead of 0", Justification = "There is no zero value for the enums in question.")]
-        public static void CloseHandles(SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX[] handleEntries)
+        public static void CloseHandles(ReadOnlySpan<SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX> handleEntries)
         {
             // Open each process handle, duplicate it with close source flag, then close the duplicated handle to close the original handle.
-            ArgumentNullException.ThrowIfNull(handleEntries);
             using SafeProcessHandle currentProcessHandle = NativeMethods.GetCurrentProcess();
             foreach (SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX handleEntry in handleEntries)
             {
                 using SafeFileHandle fileProcessHandle = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_DUP_HANDLE, bInheritHandle: false, (uint)handleEntry.UniqueProcessId);
                 using SafeFileHandle fileOpenHandle = new((HANDLE)handleEntry.HandleValue, ownsHandle: false);
                 _ = NativeMethods.DuplicateHandle(fileProcessHandle, fileOpenHandle, currentProcessHandle, out SafeFileHandle localHandle, 0, bInheritHandle: false, DUPLICATE_HANDLE_OPTIONS.DUPLICATE_CLOSE_SOURCE);
-                localHandle.Dispose();
+                using (localHandle)
+                {
+                    continue;
+                }
             }
         }
 
@@ -420,7 +425,7 @@ namespace PSADT.FileSystem
         {
             // Patch the handle and buffer pointers into the StartRoutine template.
             Architecture processArchitecture = RuntimeInformation.ProcessArchitecture;
-            if (processArchitecture == Architecture.X64)
+            if (processArchitecture is Architecture.X64)
             {
                 // Patch handle at offset (mov rcx, handle -> 2 bytes opcode + 8 bytes value)
                 // Patch buffer at offset (mov r8, buffer -> 3 bytes opcode + 8 bytes value)
@@ -429,7 +434,7 @@ namespace PSADT.FileSystem
                 _ = startRoutineBuffer.WriteInt64(infoBuffer, NtQueryObjectStartRoutineTemplate.BufferOffset);
                 _ = startRoutineBuffer.WriteInt64(infoBufferLength, NtQueryObjectStartRoutineTemplate.BufferLengthOffset);
             }
-            else if (processArchitecture == Architecture.X86)
+            else if (processArchitecture is Architecture.X86)
             {
                 // Patch buffer length (push bufferSize)
                 // Patch buffer (push buffer)
@@ -438,7 +443,7 @@ namespace PSADT.FileSystem
                 _ = startRoutineBuffer.WriteInt32((int)infoBuffer, NtQueryObjectStartRoutineTemplate.BufferOffset);
                 _ = startRoutineBuffer.WriteInt32((int)fileHandle, NtQueryObjectStartRoutineTemplate.HandleOffset);
             }
-            else if (processArchitecture == Architecture.Arm64)
+            else if (processArchitecture is Architecture.Arm64)
             {
                 // For ARM64, we need to regenerate the MOVZ/MOVK sequences for each 64-bit value. Each instruction is 4 bytes, patch in place.
                 // Handle is at x0 (instructions 0-3), buffer is at x2 (instructions 8-11), length is at x3 (instructions 12-15).

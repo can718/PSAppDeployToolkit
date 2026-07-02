@@ -11,7 +11,6 @@ using System.ServiceProcess;
 using Microsoft.Win32.SafeHandles;
 using PSADT.FileSystem;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Security;
 using Windows.Wdk.System.Threading;
 using Windows.Win32;
@@ -398,7 +397,6 @@ namespace PSADT.ProcessManagement
                             {
                                 // This leverages the documented ProcessImageFileNameWin32 info class.
                                 return QueryProcessImageFileNameWin32(hProcess);
-
                             }
                             catch (Exception ex5) when (ex5.Message is not null)
                             {

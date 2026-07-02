@@ -6,7 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.Utilities;
 using Windows.Win32;
 
@@ -146,7 +145,7 @@ namespace PSADT.Utilities
         {
             Span<char> buffer = new char[65536]; uint len = NativeMethods.GetPrivateProfileSectionNames(buffer, filepath);
             string[] sections = buffer[..(int)len].ToString().Split(['\0'], StringSplitOptions.RemoveEmptyEntries);
-            return sections.Length == 0 ? throw new InvalidDataException("No sections found in the INI file.") : new(sections);
+            return sections.Length is 0 ? throw new InvalidDataException("No sections found in the INI file.") : new(sections);
         }
 
         /// <summary>
@@ -156,6 +155,7 @@ namespace PSADT.Utilities
         /// <param name="section">The section name</param>
         /// <param name="content">INI content to write</param>
         /// <exception cref="ArgumentException">Thrown if the content contains invalid keys or values.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0107:Do not use object.ToString", Justification = "Don't have a choice here.")]
         public static void WriteSection(string filepath, string section, IDictionary? content)
         {
             if (content is null)

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Runtime.CompilerServices;
-using PSADT.Interop.Extensions;
 using Windows.Win32;
 using Windows.Win32.System.Diagnostics.Debug;
 using Windows.Win32.System.SystemInformation;
@@ -12,7 +11,7 @@ namespace PSADT.FileSystem
     /// <summary>
     /// Provides information about a PE file.
     /// </summary>
-    public sealed record ExecutableInfo
+    public sealed record class ExecutableInfo
     {
         /// <summary>
         /// Retrieves information about a Portable Executable (PE) file at the specified path, including its
@@ -34,40 +33,41 @@ namespace PSADT.FileSystem
                 {
                     return false;
                 }
-                IMAGE_DATA_DIRECTORY comDir = dataDirectory._14;
+                ref readonly IMAGE_DATA_DIRECTORY comDir = ref dataDirectory._14;
                 return comDir.VirtualAddress != 0 && comDir.Size != 0;
             }
             static ref readonly T ReadStruct<T>(BinaryReader reader) where T : unmanaged
             {
-                return ref reader.ReadBytes(Unsafe.SizeOf<T>()).AsSpan().AsReadOnlyStructure<T>();
+                return ref reader.ReadBytes(Unsafe.SizeOf<T>()).AsReadOnlyStructure<T>();
             }
 
             // Read the DOS header and check for the PE signature.
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-            using FileStream fs = new(filePath, FileMode.Open, FileAccess.Read);
-            using BinaryReader reader = new(fs);
-            ref readonly IMAGE_DOS_HEADER dosHeader = ref ReadStruct<IMAGE_DOS_HEADER>(reader); _ = fs.Seek(dosHeader.e_lfanew, SeekOrigin.Begin);
+            using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read);
+            using BinaryReader binaryReader = new(fileStream);
+            ref readonly IMAGE_DOS_HEADER dosHeader = ref ReadStruct<IMAGE_DOS_HEADER>(binaryReader);
             if (dosHeader.e_magic != PInvoke.IMAGE_DOS_SIGNATURE)
             {
                 throw new BadImageFormatException("The specified file does not have a valid PE header.", filePath);
             }
-            if (reader.ReadUInt32() != PInvoke.IMAGE_NT_SIGNATURE)
+            _ = fileStream.Seek(dosHeader.e_lfanew, SeekOrigin.Begin);
+            if (binaryReader.ReadUInt32() != PInvoke.IMAGE_NT_SIGNATURE)
             {
                 throw new BadImageFormatException("The specified file does not have a valid PE signature.", filePath);
             }
 
             // Read the file header and optional header, returning the ExecutableInfo.
-            ref readonly IMAGE_FILE_MACHINE machine = ref ReadStruct<IMAGE_FILE_HEADER>(reader).Machine;
-            IMAGE_OPTIONAL_HEADER_MAGIC magic = (IMAGE_OPTIONAL_HEADER_MAGIC)reader.ReadUInt16(); _ = fs.Seek(-2, SeekOrigin.Current);
-            if (magic == IMAGE_OPTIONAL_HEADER_MAGIC.IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+            ref readonly IMAGE_FILE_HEADER fileHeader = ref ReadStruct<IMAGE_FILE_HEADER>(binaryReader);
+            ushort optionalHeaderMagic = binaryReader.ReadUInt16(); _ = fileStream.Seek(-2, SeekOrigin.Current);
+            if ((IMAGE_OPTIONAL_HEADER_MAGIC)optionalHeaderMagic is IMAGE_OPTIONAL_HEADER_MAGIC.IMAGE_NT_OPTIONAL_HDR32_MAGIC)
             {
-                ref readonly IMAGE_OPTIONAL_HEADER32 opt32 = ref ReadStruct<IMAGE_OPTIONAL_HEADER32>(reader);
-                return new(filePath, machine, opt32.Subsystem, HasCLRHeader(opt32.DataDirectory), opt32.AddressOfEntryPoint, opt32.ImageBase);
+                ref readonly IMAGE_OPTIONAL_HEADER32 opt32 = ref ReadStruct<IMAGE_OPTIONAL_HEADER32>(binaryReader);
+                return new(filePath, fileHeader.Machine, opt32.Subsystem, HasCLRHeader(opt32.DataDirectory), opt32.AddressOfEntryPoint, opt32.ImageBase);
             }
-            if (magic == IMAGE_OPTIONAL_HEADER_MAGIC.IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+            if ((IMAGE_OPTIONAL_HEADER_MAGIC)optionalHeaderMagic is IMAGE_OPTIONAL_HEADER_MAGIC.IMAGE_NT_OPTIONAL_HDR64_MAGIC)
             {
-                ref readonly IMAGE_OPTIONAL_HEADER64 opt64 = ref ReadStruct<IMAGE_OPTIONAL_HEADER64>(reader);
-                return new(filePath, machine, opt64.Subsystem, HasCLRHeader(opt64.DataDirectory), opt64.AddressOfEntryPoint, opt64.ImageBase);
+                ref readonly IMAGE_OPTIONAL_HEADER64 opt64 = ref ReadStruct<IMAGE_OPTIONAL_HEADER64>(binaryReader);
+                return new(filePath, fileHeader.Machine, opt64.Subsystem, HasCLRHeader(opt64.DataDirectory), opt64.AddressOfEntryPoint, opt64.ImageBase);
             }
             throw new BadImageFormatException("The specified file does not have a valid optional header magic number.", filePath);
         }

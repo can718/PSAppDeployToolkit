@@ -7,7 +7,6 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using PSADT.Interop;
-using PSADT.Interop.Extensions;
 using PSADT.Interop.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -314,11 +313,11 @@ namespace PSADT.Utilities
                 {
                     continue;
                 }
-                if (requireWindowsUnicode && p == 3 && !(e is 1 or 10))
+                if (requireWindowsUnicode && p is 3 && !(e is 1 or 10))
                 {
                     continue;
                 }
-                if (languageId.HasValue && l != languageId.Value)
+                if (languageId is not null && l != languageId.Value)
                 {
                     continue;
                 }
@@ -335,7 +334,7 @@ namespace PSADT.Utilities
                     {
                         fixed (byte* pBytes = nameTable.Slice(strPos, len))
                         {
-                            result = (TT_PLATFORM_ID)p == TT_PLATFORM_ID.TT_PLATFORM_MACINTOSH
+                            result = (TT_PLATFORM_ID)p is TT_PLATFORM_ID.TT_PLATFORM_MACINTOSH
                                 ? Encoding.GetEncoding(10000).GetString(pBytes, len)
                                 : Encoding.BigEndianUnicode.GetString(pBytes, len);
                         }

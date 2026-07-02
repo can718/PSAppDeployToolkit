@@ -16,9 +16,10 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// <summary>
         /// Initializes a new instance of the <see cref="ProgressDialog"/> class.
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0191:Do not use the null-forgiving operator", Justification = "This is necessary here.")]
         internal ProgressDialog() : this(null!)
         {
-            if (LicenseManager.UsageMode == LicenseUsageMode.Runtime)
+            if (LicenseManager.UsageMode is LicenseUsageMode.Runtime)
             {
                 throw new NotSupportedException("This constructor cannot be used in runtime mode.");
             }
@@ -31,6 +32,7 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// including the progress message, detail message, and progress percentage. The layout is configured to ensure
         /// proper display based on the options supplied.</remarks>
         /// <param name="options">The options that configure the appearance and behavior of the progress dialog. Cannot be null.</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0191:Do not use the null-forgiving operator", Justification = "This is OK here.")]
         internal ProgressDialog(ProgressDialogOptions options) : base(options, null!)
         {
             // Initialise the form and reset the control order.
@@ -162,7 +164,7 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// pressed.</param>
         private void AnyControl_MouseDown(object? sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Left)
+            if (e.Button is MouseButtons.Left)
             {
                 _ = NativeMethods.ReleaseCapture();
                 _ = NativeMethods.SendMessage((HWND)Handle, WINDOW_MESSAGE.WM_NCLBUTTONDOWN, (nuint)WM_NCHITTEST.HTCAPTION);

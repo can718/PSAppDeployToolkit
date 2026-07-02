@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls.Primitives;
@@ -28,7 +29,7 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// The required data for displaying an app to close on the CloseAppsDialog.
         /// This class is deliberately public as it's required by WPF to be so.
         /// </summary>
-        public sealed record AppToClose
+        public sealed record class AppToClose
         {
             /// <summary>
             /// Initializes a new instance of the AppToClose class using the specified process information.
@@ -88,32 +89,31 @@ namespace PSADT.UserInterface.Interfaces.Fluent
                     {
                         icon = null;
                     }
-                    using (icon)
+                    if (icon is null)
                     {
-                        if (icon is null)
+                        using DestroyIconSafeHandle hIcon = SystemIcons.Get(DialogSystemIcon.Application, SHIL_SIZE.SHIL_LARGE);
+                        bool hIconAddRef = false;
+                        try
                         {
-                            using DestroyIconSafeHandle hIcon = SystemIcons.Get(DialogSystemIcon.Application, SHIL_SIZE.SHIL_LARGE);
-                            bool hIconAddRef = false;
-                            try
+                            hIcon.DangerousAddRef(ref hIconAddRef);
+                            bitmapSource = Imaging.CreateBitmapSourceFromHIcon(hIcon.DangerousGetHandle(), Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        }
+                        finally
+                        {
+                            if (hIconAddRef)
                             {
-                                hIcon.DangerousAddRef(ref hIconAddRef);
-                                bitmapSource = Imaging.CreateBitmapSourceFromHIcon(hIcon.DangerousGetHandle(), Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-
-                            }
-                            finally
-                            {
-                                if (hIconAddRef)
-                                {
-                                    hIcon.DangerousRelease();
-                                }
+                                hIcon.DangerousRelease();
                             }
                         }
-                        else
+                    }
+                    else
+                    {
+                        using (icon)
                         {
                             bitmapSource = Imaging.CreateBitmapSourceFromHIcon(icon.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                         }
-                        bitmapSource.Freeze();
                     }
+                    bitmapSource.Freeze();
                     _appIconCache.Add(appFilePath, bitmapSource);
                 }
                 return bitmapSource;
@@ -125,6 +125,9 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// </summary>
         /// <param name="options">Mandatory options needed to construct the window.</param>
         /// <param name="state">Optional state values for the dialog.</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "Synchronous wait is necessary for constructor initialization.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0045:Do not use blocking calls", Justification = "Synchronous wait is necessary for constructor initialization.")]
         internal CloseAppsDialog(CloseAppsDialogOptions options, CloseAppsDialogState state) : base(options, CloseAppsDialogResult.Timeout, options.CustomMessageText, options.CountdownDuration, countdownStopwatch: state.CountdownStopwatch)
         {
             // Set up the context for data binding
@@ -143,18 +146,18 @@ namespace PSADT.UserInterface.Interfaces.Fluent
 
             // Set up UI
             FormatMessageWithHyperlinks(MessageTextBlock, _closeAppsNoProcessesMessageText);
-            DeferRemainingStackPanel.Visibility = _deferralsRemaining.HasValue && !options.UnlimitedDeferrals ? Visibility.Visible : Visibility.Collapsed;
+            DeferRemainingStackPanel.Visibility = _deferralsRemaining is not null && !options.UnlimitedDeferrals ? Visibility.Visible : Visibility.Collapsed;
             DeferRemainingHeadingTextBlock.Text = options.Strings.Fluent.DeferralsRemaining;
-            DeferDeadlineStackPanel.Visibility = _deferralDeadline.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            DeferDeadlineStackPanel.Visibility = _deferralDeadline is not null ? Visibility.Visible : Visibility.Collapsed;
             DeferDeadlineHeadingTextBlock.Text = options.Strings.Fluent.DeferralDeadline;
             CountdownHeadingTextBlock.Text = options.Strings.Fluent.AutomaticStartCountdown;
-            CountdownDeferPanelSeparator.Visibility = (_deferralsRemaining.HasValue || _deferralDeadline.HasValue) ? Visibility.Visible : Visibility.Collapsed;
+            CountdownDeferPanelSeparator.Visibility = (_deferralsRemaining is not null || _deferralDeadline is not null) ? Visibility.Visible : Visibility.Collapsed;
             ButtonPanel.Visibility = Visibility.Visible;
 
             // Configure buttons
             SetButtonContentWithAccelerator(ButtonRight, options.Strings.Fluent.ButtonRightText);
             AutomationProperties.SetName(ButtonRight, options.Strings.Fluent.ButtonRightText);
-            ButtonRight.Visibility = _deferralsRemaining.HasValue || _deferralDeadline.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            ButtonRight.Visibility = _deferralsRemaining is not null || _deferralDeadline is not null ? Visibility.Visible : Visibility.Collapsed;
             ButtonLeft.Visibility = Visibility.Visible;
             SetDefaultButton(ButtonLeft);
             SetAccentButton(ButtonLeft);
@@ -166,7 +169,7 @@ namespace PSADT.UserInterface.Interfaces.Fluent
                 AppsToCloseCollection.ResetItems(_runningProcessService.ProcessesToClose.Select(static p => new AppToClose(p)), force: true);
                 AppsToCloseCollection.CollectionChanged += AppsToCloseCollection_CollectionChanged;
             }
-            UpdateRunningProcesses();
+            UpdateRunningProcessesAsync().GetAwaiter().GetResult();
             UpdateDeferralValues();
             _logAction = state.LogAction;
         }
@@ -177,7 +180,7 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// <returns><see langword="true"/> if there are remaining deferrals or a deferral deadline is set; otherwise, <see langword="false"/>.</returns>
         private bool DeferralsAvailable()
         {
-            return _deferralsRemaining.HasValue || _deferralDeadline.HasValue;
+            return _deferralsRemaining is not null || _deferralDeadline is not null;
         }
 
         /// <summary>
@@ -193,7 +196,7 @@ namespace PSADT.UserInterface.Interfaces.Fluent
             }
 
             // Handle deferral values
-            if (_deferralsRemaining.HasValue)
+            if (_deferralsRemaining is not null)
             {
                 // Only enable the button if there are deferrals remaining
                 ButtonRight.IsEnabled = _deferralsRemaining > 0;
@@ -205,7 +208,7 @@ namespace PSADT.UserInterface.Interfaces.Fluent
                 AutomationProperties.SetName(DeferRemainingValueTextBlock, _deferralsRemaining.Value.ToString(CultureInfo.CurrentCulture));
 
                 // Update text color based on remaining deferrals
-                if (_deferralsRemaining == 0)
+                if (_deferralsRemaining is 0)
                 {
                     DeferRemainingValueTextBlock.SetResourceReference(ForegroundProperty, "SystemFillColorCriticalBrush");
                     DeferRemainingValueTextBlock.FontWeight = FontWeights.ExtraBold;
@@ -216,7 +219,7 @@ namespace PSADT.UserInterface.Interfaces.Fluent
                     DeferRemainingValueTextBlock.FontWeight = FontWeights.ExtraBold;
                 }
             }
-            if (_deferralDeadline.HasValue)
+            if (_deferralDeadline is not null)
             {
                 // Set button state based on deadline
                 TimeSpan timeRemaining = _deferralDeadline.Value - DateTime.Now;
@@ -254,22 +257,27 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// <param name="sender">The source of the event, typically the service that monitors running processes.</param>
         /// <param name="e">An object containing event data, including the updated list of processes to close.</param>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD001:Avoid legacy thread switching APIs", Justification = "Standalone WPF STA thread; JoinableTaskFactory not applicable.")]
-        private void RunningProcessService_ProcessesToCloseChanged(object? sender, ProcessesToCloseChangedEventArgs e)
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD100:Avoid async void methods", Justification = "This is necessary here.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0155:Do not use async void methods", Justification = "This is necessary here.")]
+        private async void RunningProcessService_ProcessesToCloseChanged(object? sender, ProcessesToCloseChangedEventArgs e)
         {
-            Dispatcher.Invoke(() => AppsToCloseCollection.ResetItems(e.ProcessesToClose.Select(static p => new AppToClose(p))));
+            await Dispatcher.InvokeAsync(() => AppsToCloseCollection.ResetItems(e.ProcessesToClose.Select(static p => new AppToClose(p)))).Task.ConfigureAwait(false);
         }
 
         /// <summary>
         /// Handles the event when the collection of apps to close changes.
         /// </summary>
-        private void UpdateRunningProcesses()
+        private async ValueTask UpdateRunningProcessesAsync()
         {
             // Update the UI based on the changes in the collection.
             AutomationProperties.SetName(CloseAppsListView, $"Applications to Close: {AppsToCloseCollection.Count} items");
             UpdateRowDefinition();
             if (AppsToCloseCollection.Count > 0)
             {
-                _logAction?.Invoke($"The running processes have changed. Updating the apps to close: ['{string.Join("', '", AppsToCloseCollection.Select(static a => a.Description))}']...", LogSeverity.Info);
+                if (_logAction is not null)
+                {
+                    await _logAction($"The running processes have changed. Updating the apps to close: ['{string.Join("', '", AppsToCloseCollection.Select(static a => a.Description))}']...", LogSeverity.Info);
+                }
                 FormatMessageWithHyperlinks(MessageTextBlock, _closeAppsMessageText);
                 CloseAppsStackPanel.Visibility = Visibility.Visible;
                 if (!_hideCloseButton)
@@ -287,7 +295,10 @@ namespace PSADT.UserInterface.Interfaces.Fluent
             }
             else
             {
-                _logAction?.Invoke("Previously detected running processes are no longer running.", LogSeverity.Info);
+                if (_logAction is not null)
+                {
+                    await _logAction("Previously detected running processes are no longer running.", LogSeverity.Info);
+                }
                 FormatMessageWithHyperlinks(MessageTextBlock, _closeAppsNoProcessesMessageText);
                 SetButtonContentWithAccelerator(ButtonLeft, _buttonLeftNoProcessesText);
                 AutomationProperties.SetName(ButtonLeft, _buttonLeftNoProcessesText);
@@ -311,9 +322,11 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// ensuring that the running processes are kept in sync with the current collection state.</remarks>
         /// <param name="sender">The source of the event, typically the collection that was modified.</param>
         /// <param name="e">An object that provides data about the type of change that occurred in the collection.</param>
-        private void AppsToCloseCollection_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD100:Avoid async void methods", Justification = "This is OK here.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0155:Do not use async void methods", Justification = "This is OK here.")]
+        private async void AppsToCloseCollection_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            UpdateRunningProcesses();
+            await UpdateRunningProcessesAsync();
         }
 
         /// <summary>
@@ -336,7 +349,7 @@ namespace PSADT.UserInterface.Interfaces.Fluent
             // Defensive: if we entered the dialog with zero processes already and ContinueOnProcessClosure
             // is set, fire the auto-continue now that the window is loaded. This is a backstop in case
             // the upstream short-circuit in DialogManager is bypassed.
-            if (_continueOnProcessClosure && AppsToCloseCollection.Count == 0)
+            if (_continueOnProcessClosure && AppsToCloseCollection.Count is 0)
             {
                 ButtonLeft.RaiseEvent(new(ButtonBase.ClickEvent));
             }
@@ -461,7 +474,7 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// Represents the delegate used for logging operations with severity.
         /// </summary>
         /// <remarks>This delegate is invoked to write log messages with optional severity.</remarks>
-        private readonly Action<string, LogSeverity> _logAction;
+        private readonly Func<string, LogSeverity, ValueTask> _logAction;
 
         /// <summary>
         /// App/process icon cache for improved performance
@@ -469,21 +482,17 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         private static readonly Dictionary<string, BitmapSource> _appIconCache = [];
 
         /// <summary>
-        /// Dispose managed and unmanaged resources
+        /// Releases the managed resources used by the dialog.
         /// </summary>
-        /// <param name="disposing">true if called from Dispose; false if called from finalizer.</param>
-        private protected override void Dispose(bool disposing)
+        public override void Dispose()
         {
             if (Disposed)
             {
                 return;
             }
-            if (disposing)
-            {
-                _runningProcessService?.ProcessesToCloseChanged -= RunningProcessService_ProcessesToCloseChanged;
-                AppsToCloseCollection.CollectionChanged -= AppsToCloseCollection_CollectionChanged;
-            }
-            base.Dispose(disposing);
+            _runningProcessService?.ProcessesToCloseChanged -= RunningProcessService_ProcessesToCloseChanged;
+            AppsToCloseCollection.CollectionChanged -= AppsToCloseCollection_CollectionChanged;
+            base.Dispose();
         }
     }
 }
