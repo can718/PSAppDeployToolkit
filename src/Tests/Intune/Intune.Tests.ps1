@@ -325,7 +325,7 @@ Describe 'Intune Tests' {
                 }
                 else
                 {
-                    $package = New-IntuneWinPackageV4 `
+                    $package = New-IntuneWinPackage `
                         -WorkDir              $env.WorkDir `
                         -IntuneWinAppUtilPath $script:IntuneWinAppUtil
                 }
