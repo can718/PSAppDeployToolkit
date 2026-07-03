@@ -1,6 +1,4 @@
 ﻿#pragma warning disable PSPlaceOpenBrace
-[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '')]
-
 <#
 .SYNOPSIS
     Returns the array of app configurations used in parallel install/uninstall tests.
@@ -18,6 +16,7 @@
         RegVersionName = 'DisplayVersion'
         DetectionRuleBuilder = {
             param($FilesDir)
+            $null = $FilesDir
             New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
                 -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '3.0.23'
@@ -101,6 +100,7 @@
         }
         DetectionRuleBuilder = {
             param($FilesDir)
+            $null = $FilesDir
             New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++' `
                 -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '6.6.4'
@@ -138,6 +138,7 @@
         RegVersionName = 'DisplayVersion'
         DetectionRuleBuilder = {
             param($FilesDir)
+            $null = $FilesDir
             New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Everything' `
                 -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '1.4.1.1032'
