@@ -621,6 +621,11 @@ function Invoke-ParallelAppPollWithRetry
         [int]$MaxRetryCount = 1
     )
 
+    if (-not (Test-Path -LiteralPath $HelperScriptPath))
+    {
+        throw "HelperScriptPath not found: $HelperScriptPath"
+    }
+
     if (-not $AppNames)
     {
         $AppNames = @($UploadedApps.Keys)

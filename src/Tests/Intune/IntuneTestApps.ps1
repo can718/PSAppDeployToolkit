@@ -1,4 +1,6 @@
 ﻿#pragma warning disable PSPlaceOpenBrace
+[System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '')]
+
 <#
 .SYNOPSIS
     Returns the array of app configurations used in parallel install/uninstall tests.
