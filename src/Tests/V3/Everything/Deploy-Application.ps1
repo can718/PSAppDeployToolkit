@@ -104,6 +104,7 @@ try
     }
     catch
     {
+        Write-Error -Message "Failed to set execution policy for process scope: $($_.Exception.Message)" -ErrorAction 'Continue'
     }
 
     ##*===============================================

@@ -343,10 +343,24 @@ Describe 'Intune Tests' {
 
                 # Upload to Intune.
                 $intuneDisplayName = '{0}-{1}' -f $package.DisplayName, $script:IntuneDisplayNameSuffix
-                $win32App = Publish-IntuneWin32App `
-                    -FilePath      $package.IntuneWinPath `
-                    -DisplayName   $intuneDisplayName `
-                    -DetectionRule $DetectionRule
+                if ($app.TemplateVersion -eq 'V3')
+                {
+                    Write-Information "[Intune Upload] Uploading V3 app '$intuneDisplayName'..." -InformationAction Continue
+                    $win32App = Publish-IntuneWin32App `
+                        -FilePath      $package.IntuneWinPath `
+                        -DisplayName   $intuneDisplayName `
+                        -DetectionRule $DetectionRule `
+                        -InstallCommand 'Deploy-Application.exe -DeploymentType ''Install''' `
+                        -UninstallCommand 'Deploy-Application.exe -DeploymentType ''Uninstall'''
+                }
+                else
+                {
+                    Write-Information "[Intune Upload] Uploading V4 app '$intuneDisplayName'..." -InformationAction Continue
+                    $win32App = Publish-IntuneWin32App `
+                        -FilePath      $package.IntuneWinPath `
+                        -DisplayName   $intuneDisplayName `
+                        -DetectionRule $DetectionRule
+                }
                 $win32App | Should -Not -BeNullOrEmpty
 
                 # Assign to test group.
