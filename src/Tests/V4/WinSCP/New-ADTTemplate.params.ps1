@@ -49,7 +49,7 @@ $NewADTTemplateParameters = @{
     PostInstallScriptBlock   = {
         Stop-AdditionalTestRecording
 
-        Remove-ADTFile -Path "$envCommonDesktop\WinSCP.lnk"
+        # Remove-ADTFile -Path "$envCommonDesktop\WinSCP.lnk"
         Invoke-ADTAllUsersRegistryAction {
             Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface' -Name 'CollectUsage' -Value 0 -Type DWord -SID $_.SID
             Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'Period' -Value 0 -Type DWord -SID $_.SID

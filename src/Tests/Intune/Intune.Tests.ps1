@@ -350,8 +350,8 @@ Describe 'Intune Tests' {
                         -FilePath      $package.IntuneWinPath `
                         -DisplayName   $intuneDisplayName `
                         -DetectionRule $DetectionRule `
-                        -InstallCommand 'Deploy-Application.exe -DeploymentType ''Install''' `
-                        -UninstallCommand 'Deploy-Application.exe -DeploymentType ''Uninstall'''
+                        -InstallCmd 'Deploy-Application.exe -DeploymentType ''Install''' `
+                        -UninstallCmd 'Deploy-Application.exe -DeploymentType ''Uninstall'''
                 }
                 else
                 {
