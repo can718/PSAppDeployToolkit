@@ -77,7 +77,7 @@ Toolkit exit Code Ranges:
 
 https://psappdeploytoolkit.com
 #>
-
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '')]
 
 [CmdletBinding()]
 param (

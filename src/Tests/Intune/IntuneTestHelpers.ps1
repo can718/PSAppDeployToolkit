@@ -227,10 +227,9 @@ function New-IntuneTestWorkDirV3
     Copy-Item -Path $InstallerSourceFile -Destination $filesDir -Force
     Write-Information "[$AppFolderName] Copied installer '$([System.IO.Path]::GetFileName($InstallerSourceFile))' to '$filesDir'." -InformationAction Continue
 
-    # Step 3: Copy Invoke-AppDeployToolkit.ps1 runner script
-    $targetScript = Join-Path $workDir 'Invoke-AppDeployToolkit.ps1'
-    Copy-Item -Path $RunnerScriptPath -Destination $targetScript -Force
-    Write-Information "[$AppFolderName] Copied runner script to '$targetScript'." -InformationAction Continue
+    # Step 3: Copy runner script into work directory without renaming.
+    Copy-Item -Path $RunnerScriptPath -Destination $workDir -Force
+    Write-Information "[$AppFolderName] Copied runner script '$([System.IO.Path]::GetFileName($RunnerScriptPath))' to '$workDir'." -InformationAction Continue
 
     return @{
         WorkDir = $workDir
