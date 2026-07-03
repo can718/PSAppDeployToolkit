@@ -632,11 +632,13 @@ function Invoke-ParallelAppPollWithRetry
     $jobs = foreach ($appName in $AppNames)
     {
         $appInfo = $UploadedApps[$appName]
+        $displayName = $appInfo.RegDisplayName
+        $valueName = $appInfo.RegVersionName
+        $expectedValue = $appInfo.RegVersionValue
         Start-ThreadJob -Name "$Operation-$appName" -ScriptBlock {
-            param($DisplayName, $ValueName, $ExpectedValue, $HelperPath, $WaitFunc)
-            . $HelperPath
-            & $WaitFunc -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
-        } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, $HelperScriptPath, $waitFunction
+            . $using:HelperScriptPath
+            & $using:waitFunction -DisplayName $using:displayName -ValueName $using:valueName -ExpectedValue $using:expectedValue -SkipImeRestartAndSync
+        }
     }
 
     Write-Information "Waiting for $($jobs.Count) parallel $($Operation.ToLower()) polls..." -InformationAction Continue
@@ -658,11 +660,13 @@ function Invoke-ParallelAppPollWithRetry
             $retryJobs = foreach ($appName in $appsToCheck)
             {
                 $appInfo = $UploadedApps[$appName]
+                $displayName = $appInfo.RegDisplayName
+                $valueName = $appInfo.RegVersionName
+                $expectedValue = $appInfo.RegVersionValue
                 Start-ThreadJob -Name "${Operation}Retry$attempt-$appName" -ScriptBlock {
-                    param($DisplayName, $ValueName, $ExpectedValue, $HelperPath, $WaitFunc)
-                    . $HelperPath
-                    & $WaitFunc -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
-                } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, $HelperScriptPath, $waitFunction
+                    . $using:HelperScriptPath
+                    & $using:waitFunction -DisplayName $using:displayName -ValueName $using:valueName -ExpectedValue $using:expectedValue -SkipImeRestartAndSync
+                }
             }
 
             Write-Information "Waiting for $($retryJobs.Count) retry $($Operation.ToLower()) polls..." -InformationAction Continue
