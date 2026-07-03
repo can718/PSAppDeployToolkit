@@ -143,19 +143,17 @@ Describe 'Intune Tests' {
     }
 
     Context 'Parallel Install - V3,V4 - Batch Upload, Single Sync, Parallel Poll inatll and uninstall of multiple apps' {
-        BeforeAll {
-            # Define all apps to install in parallel.
-            $script:ParallelApps = @(
+        # Define all apps to install in parallel (must be at Context body level for Pester 5 Discovery).
+        $script:ParallelApps = @(
                 @{
                     Name = 'VLC'
-                    TemplateName = 'VLC'
                     TemplateVersion = 'V4'
-                    AppFolderName = 'VLC'
-                    #InstallerSourceDir = 'C:\Tools\Intune\vlc'
+                    AppFolderName = 'VLC' # template folder name also using this one.
                     RegDisplayName = 'VLC media player'
                     RegVersionValue = '3.0.23'
                     RegVersionName = 'DisplayVersion'
                     DetectionRuleBuilder = {
+                        param($FilesDir)
                         New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                             -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player' `
                             -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '3.0.23'
@@ -163,10 +161,8 @@ Describe 'Intune Tests' {
                 }
                 @{
                     Name = 'WinSCP'
-                    TemplateName = 'WinSCP'
                     TemplateVersion = 'V4'
                     AppFolderName = 'WinSCP'
-                    #InstallerSourceDir = 'C:\Tools\Intune\WinSCP'
                     RegDisplayName = 'WinSCP'
                     RegVersionValue = '6.5.6'
                     RegVersionName = 'DisplayVersion'
@@ -181,10 +177,8 @@ Describe 'Intune Tests' {
                 @{
                     Name = 'Notepad++'
                     SkipUninstall = $true
-                    TemplateName = 'Notepad++'
                     TemplateVersion = 'V4'
                     AppFolderName = 'Notepad++'
-                    #InstallerSourceDir = 'C:\Tools\Intune\Notepad6.6.4'
                     RegDisplayName = 'Notepad++'
                     RegVersionValue = '6.6.4'
                     RegVersionName = 'DisplayVersion'
@@ -242,6 +236,7 @@ Describe 'Intune Tests' {
                         }
                     }
                     DetectionRuleBuilder = {
+                        param($FilesDir)
                         New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                             -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++' `
                             -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '6.6.4'
@@ -249,10 +244,12 @@ Describe 'Intune Tests' {
                 }
                 @{
                     Name = 'Digiexam'
-                    TemplateName = 'Digiexam'
                     TemplateVersion = 'V3'
                     AppFolderName = 'Digiexam'
                     InstallerSourceFile = 'C:\Tools\Intune\Digiexam_26.1.24_x64_en-US.msi'
+                    SetupFileName = 'Deploy-Application.exe'
+                    InstallCmd = "Deploy-Application.exe -DeploymentType 'Install'"
+                    UninstallCmd = "Deploy-Application.exe -DeploymentType 'Uninstall'"
                     RegDisplayName = 'Digiexam'
                     RegVersionValue = '26.1.24'
                     RegVersionName = 'DisplayVersion'
@@ -266,20 +263,25 @@ Describe 'Intune Tests' {
                 }
                 @{
                     Name = 'Everything'
-                    TemplateName = 'Everything'
                     TemplateVersion = 'V3'
                     AppFolderName = 'Everything'
                     InstallerSourceFile = 'C:\Tools\Intune\Everything-1.4.1.1032.x64-Setup.exe'
+                    SetupFileName = 'Deploy-Application.exe'
+                    InstallCmd = "Deploy-Application.exe -DeploymentType 'Install'"
+                    UninstallCmd = "Deploy-Application.exe -DeploymentType 'Uninstall'"
                     RegDisplayName = 'Everything 1.4.1.1032'
                     RegVersionValue = '1.4.1.1032'
                     RegVersionName = 'DisplayVersion'
                     DetectionRuleBuilder = {
+                        param($FilesDir)
                         New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                             -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Everything' `
                             -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '1.4.1.1032'
                     }
                 }
             )
+
+        BeforeAll {
             $script:ParallelInstallResults = @{}
         }
 
@@ -296,71 +298,32 @@ Describe 'Intune Tests' {
                     & $app.PreInstallScript
                 }
 
-                # Prepare working directory.
-                if ( $app.TemplateVersion -eq 'V3')
-                {
-                    $runnerScript = Join-Path $PSScriptRoot "..\V3\$($app.AppFolderName)\Deploy-Application.ps1"
-                    $env = New-IntuneTestWorkDirV3 `
-                        -AppFolderName       $app.AppFolderName `
-                        -BasePath            $script:BasePath `
-                        -InstallerSourceFile $app.InstallerSourceFile `
-                        -RunnerScriptPath    $runnerScript
-                }
-                else
-                {
-                    $templateParamsPath = Join-Path $PSScriptRoot "..\V4\$($app.TemplateName)\New-ADTTemplate.params.ps1"
-                    $env = New-IntuneTestWorkDirV4 `
-                        -AppFolderName      $app.AppFolderName `
-                        -BasePath           $script:BasePath `
-                        -TemplateParamsPath $templateParamsPath
-                }
+                # Prepare working directory (dispatches to V3/V4 internally).
+                $env = New-IntuneTestWorkDir -App $app -BasePath $script:BasePath
 
                 # Wrap into .intunewin package.
-                if ($app.TemplateVersion -eq 'V3')
-                {
-                    $package = New-IntuneWinPackage `
-                        -WorkDir              $env.WorkDir `
-                        -IntuneWinAppUtilPath $script:IntuneWinAppUtil `
-                        -SetupFileName "Deploy-Application.exe"
+                $packageParams = @{
+                    WorkDir              = $env.WorkDir
+                    IntuneWinAppUtilPath = $script:IntuneWinAppUtil
                 }
-                else
-                {
-                    $package = New-IntuneWinPackage `
-                        -WorkDir              $env.WorkDir `
-                        -IntuneWinAppUtilPath $script:IntuneWinAppUtil
-                }
+                if ($app.SetupFileName) { $packageParams.SetupFileName = $app.SetupFileName }
+                $package = New-IntuneWinPackage @packageParams
                 $package.IntuneWinPath | Should -Not -BeNullOrEmpty
 
-                # Build detection rule.
-                $DetectionRule = if ($app.Name -eq 'WinSCP' -or $app.Name -eq 'Digiexam')
-                {
-                    & $app.DetectionRuleBuilder $env.FilesDir
-                }
-                else
-                {
-                    & $app.DetectionRuleBuilder
-                }
+                # Build detection rule (unified signature: all builders accept $FilesDir).
+                $DetectionRule = & $app.DetectionRuleBuilder $env.FilesDir
 
                 # Upload to Intune.
                 $intuneDisplayName = '{0}-{1}' -f $package.DisplayName, $script:IntuneDisplayNameSuffix
-                if ($app.TemplateVersion -eq 'V3')
-                {
-                    Write-Information "[Intune Upload] Uploading V3 app '$intuneDisplayName'..." -InformationAction Continue
-                    $win32App = Publish-IntuneWin32App `
-                        -FilePath      $package.IntuneWinPath `
-                        -DisplayName   $intuneDisplayName `
-                        -DetectionRule $DetectionRule `
-                        -InstallCmd 'Deploy-Application.exe -DeploymentType ''Install''' `
-                        -UninstallCmd 'Deploy-Application.exe -DeploymentType ''Uninstall'''
+                Write-Information "[Intune Upload] Uploading $($app.TemplateVersion) app '$intuneDisplayName'..." -InformationAction Continue
+                $publishParams = @{
+                    FilePath      = $package.IntuneWinPath
+                    DisplayName   = $intuneDisplayName
+                    DetectionRule = $DetectionRule
                 }
-                else
-                {
-                    Write-Information "[Intune Upload] Uploading V4 app '$intuneDisplayName'..." -InformationAction Continue
-                    $win32App = Publish-IntuneWin32App `
-                        -FilePath      $package.IntuneWinPath `
-                        -DisplayName   $intuneDisplayName `
-                        -DetectionRule $DetectionRule
-                }
+                if ($app.InstallCmd)   { $publishParams.InstallCmd   = $app.InstallCmd }
+                if ($app.UninstallCmd) { $publishParams.UninstallCmd = $app.UninstallCmd }
+                $win32App = Publish-IntuneWin32App @publishParams
                 $win32App | Should -Not -BeNullOrEmpty
 
                 # Assign to test group.

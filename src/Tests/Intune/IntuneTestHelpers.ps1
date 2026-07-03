@@ -177,6 +177,45 @@ function Invoke-TFUpdateTestCase
 }
 
 # ---------------------------------------------------------------------------
+# Region: Unified Template Package Preparation
+# ---------------------------------------------------------------------------
+function New-IntuneTestWorkDir
+{
+    <#
+    .SYNOPSIS
+        Unified entry point that dispatches to V3 or V4 work directory preparation
+        based on the app configuration hashtable.
+    .OUTPUTS
+        [hashtable] with keys: WorkDir, FilesDir.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App,
+
+        [Parameter(Mandatory)]
+        [string]$BasePath
+    )
+
+    if ($App.TemplateVersion -eq 'V3')
+    {
+        $runnerScript = Join-Path $PSScriptRoot "..\V3\$($App.AppFolderName)\Deploy-Application.ps1"
+        return New-IntuneTestWorkDirV3 `
+            -AppFolderName       $App.AppFolderName `
+            -BasePath            $BasePath `
+            -InstallerSourceFile $App.InstallerSourceFile `
+            -RunnerScriptPath    $runnerScript
+    }
+    else
+    {
+        $templateParamsPath = Join-Path $PSScriptRoot "..\V4\$($App.AppFolderName)\New-ADTTemplate.params.ps1"
+        return New-IntuneTestWorkDirV4 `
+            -AppFolderName      $App.AppFolderName `
+            -BasePath           $BasePath `
+            -TemplateParamsPath $templateParamsPath
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Region: V3 Template Package Preparation
 # ---------------------------------------------------------------------------
 function New-IntuneTestWorkDirV3
