@@ -592,6 +592,128 @@ function Publish-IntuneWin32App
 }
 
 # ---------------------------------------------------------------------------
+# Region: Parallel Poll with Retry
+# ---------------------------------------------------------------------------
+
+function Invoke-ParallelAppPollWithRetry
+{
+    <#
+    .SYNOPSIS
+        Runs parallel ThreadJob polls for app installation or uninstallation
+        with a configurable retry loop. Handles MDM sync and IME restart
+        between retry attempts.
+    .OUTPUTS
+        [hashtable] with keys: Succeeded (string[]), Failed (string[]).
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$UploadedApps,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Uninstall')]
+        [string]$Operation,
+
+        [Parameter(Mandatory)]
+        [string]$HelperScriptPath,
+
+        [string[]]$AppNames,
+
+        [int]$MaxRetryCount = 1
+    )
+
+    if (-not $AppNames)
+    {
+        $AppNames = @($UploadedApps.Keys)
+    }
+
+    $waitFunction = if ($Operation -eq 'Install') { 'Wait-AppInstallation' } else { 'Wait-AppUninstallation' }
+
+    # Initial poll.
+    $jobs = foreach ($appName in $AppNames)
+    {
+        $appInfo = $UploadedApps[$appName]
+        Start-ThreadJob -Name "$Operation-$appName" -ScriptBlock {
+            param($DisplayName, $ValueName, $ExpectedValue, $HelperPath, $WaitFunc)
+            . $HelperPath
+            & $WaitFunc -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
+        } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, $HelperScriptPath, $waitFunction
+    }
+
+    Write-Information "Waiting for $($jobs.Count) parallel $($Operation.ToLower()) polls..." -InformationAction Continue
+    $jobs | Wait-Job | Out-Null
+
+    $succeededApps = @()
+    $appsToCheck = @($AppNames)
+
+    for ($attempt = 0; $attempt -le $MaxRetryCount; $attempt++)
+    {
+        if ($attempt -gt 0)
+        {
+            Write-Information "[Parallel $Operation] Retry attempt $attempt for failed apps: $($appsToCheck -join ', ')" -InformationAction Continue
+
+            Invoke-MdmSync
+            Start-Sleep -Seconds 8
+            Wait-IntuneManagementExtension
+
+            $retryJobs = foreach ($appName in $appsToCheck)
+            {
+                $appInfo = $UploadedApps[$appName]
+                Start-ThreadJob -Name "${Operation}Retry$attempt-$appName" -ScriptBlock {
+                    param($DisplayName, $ValueName, $ExpectedValue, $HelperPath, $WaitFunc)
+                    . $HelperPath
+                    & $WaitFunc -DisplayName $DisplayName -ValueName $ValueName -ExpectedValue $ExpectedValue -SkipImeRestartAndSync
+                } -ArgumentList $appInfo.RegDisplayName, $appInfo.RegVersionName, $appInfo.RegVersionValue, $HelperScriptPath, $waitFunction
+            }
+
+            Write-Information "Waiting for $($retryJobs.Count) retry $($Operation.ToLower()) polls..." -InformationAction Continue
+            $retryJobs | Wait-Job | Out-Null
+        }
+
+        $nextFailedApps = @()
+        foreach ($appName in $appsToCheck)
+        {
+            $jobName = if ($attempt -eq 0) { "$Operation-$appName" } else { "${Operation}Retry$attempt-$appName" }
+            $jobResult = Get-Job -Name $jobName -ErrorAction SilentlyContinue | Receive-Job
+            if ($jobResult -ne $true)
+            {
+                Write-Information "[$appName] $Operation poll result (attempt $attempt): $jobResult" -InformationAction Continue
+                $nextFailedApps += $appName
+            }
+            else
+            {
+                if (-not ($succeededApps -contains $appName))
+                {
+                    $succeededApps += $appName
+                }
+            }
+        }
+
+        if ($attempt -gt 0)
+        {
+            $retryJobs | Remove-Job -Force
+        }
+        else
+        {
+            $jobs | Remove-Job -Force
+        }
+
+        $appsToCheck = @($nextFailedApps)
+        if (-not $appsToCheck)
+        {
+            break
+        }
+    }
+
+    Write-Information "[Parallel $Operation] Succeeded: $(if ($succeededApps) { $succeededApps -join ', ' } else { 'none' })" -InformationAction Continue
+    Write-Information "[Parallel $Operation] Failed: $(if ($appsToCheck) { $appsToCheck -join ', ' } else { 'none' })" -InformationAction Continue
+
+    return @{
+        Succeeded = $succeededApps
+        Failed    = @($appsToCheck)
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Region: MDM Sync & IME Readiness
 # ---------------------------------------------------------------------------
 
