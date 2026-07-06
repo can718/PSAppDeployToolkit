@@ -985,7 +985,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             # ----------------------------------------------------------------
             # Step 4 - Copy DigiExam MSI into Files folder
             # ----------------------------------------------------------------
-            $msiSource = 'C:\Tools\Intune\DigiExam\Digiexam_26.1.24_x64_en-US.msi'
+            $msiSource = 'C:\Tools\Intune\Digiexam_26.1.24_x64_en-US.msi'
             Copy-PSADTPackageInstallerToFiles `
                 -DeployScriptPath $destScript.FullName `
                 -InstallerSource $msiSource `

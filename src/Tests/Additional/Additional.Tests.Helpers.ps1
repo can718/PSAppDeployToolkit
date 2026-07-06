@@ -512,6 +512,38 @@ function script:Update-PSADTPackageDeployScript
     )
 
     $sourceScriptName = Split-Path -Path $SourceScript -Leaf
+    function Resolve-PSADTPackageRoot
+    {
+        param (
+            [Parameter(Mandatory = $true)]
+            [string]$RootPath
+        )
+
+        if (Test-Path -LiteralPath (Join-Path $RootPath 'Invoke-AppDeployToolkit.ps1') -PathType Leaf)
+        {
+            return $RootPath
+        }
+
+        if (Test-Path -LiteralPath (Join-Path $RootPath 'Deploy-Application.ps1') -PathType Leaf)
+        {
+            return $RootPath
+        }
+
+        $nestedRoot = Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
+            Where-Object {
+                (Test-Path -LiteralPath (Join-Path $_.FullName 'Invoke-AppDeployToolkit.ps1') -PathType Leaf) -or
+                (Test-Path -LiteralPath (Join-Path $_.FullName 'Deploy-Application.ps1') -PathType Leaf)
+            } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+        if (-not [string]::IsNullOrWhiteSpace($nestedRoot))
+        {
+            return $nestedRoot
+        }
+
+        return $RootPath
+    }
+
     if ($UseInformationLogs)
     {
         Write-Information "::info::[$LogPrefix] Step 3: Updating deployment script '$sourceScriptName'..." -InformationAction Continue
@@ -528,7 +560,30 @@ function script:Update-PSADTPackageDeployScript
             Where-Object { $_.Name -in @('Invoke-AppDeployToolkit.ps1', 'Deploy-Application.ps1') } |
             Select-Object -First 1
     }
-    $destScript | Should -Not -BeNullOrEmpty -Because "A deployment script matching '$sourceScriptName' (or a standard PSADT script name) must exist in package '$PackageDir'"
+
+    if (-not $destScript)
+    {
+        # V3 templates may not include a deploy script. Create one at the resolved package root.
+        $packageRoot = Resolve-PSADTPackageRoot -RootPath $PackageDir
+        $destScriptPath = Join-Path -Path $packageRoot -ChildPath $sourceScriptName
+        New-Item -Path $destScriptPath -ItemType File -Force | Out-Null
+        $destScript = Get-Item -LiteralPath $destScriptPath -ErrorAction Stop
+
+        if ($UseInformationLogs)
+        {
+            Write-Information "::info::[$LogPrefix] Deployment script was not present in template; created '$destScriptPath'." -InformationAction Continue
+        }
+        else
+        {
+            Write-Verbose "[$LogPrefix] Deployment script was not present in template; created '$destScriptPath'."
+        }
+    }
+
+    if ($UseInformationLogs)
+    {
+        Write-Information "::info::[$LogPrefix] Source deployment script path: '$SourceScript'" -InformationAction Continue
+        Write-Information "::info::[$LogPrefix] Destination deployment script path: '$($destScript.FullName)'" -InformationAction Continue
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($AdditionalContentSourceDir))
     {
@@ -577,6 +632,12 @@ function script:Copy-PSADTPackageInstallerToFiles
 
     $scriptDir = Split-Path -Path $DeployScriptPath -Parent
     $filesDir = Join-Path -Path $scriptDir -ChildPath 'Files'
+    if ($UseInformationLogs)
+    {
+        Write-Information "::info::[$LogPrefix] Deploy script path used for Files resolution: '$DeployScriptPath'" -InformationAction Continue
+        Write-Information "::info::[$LogPrefix] Installer source path: '$InstallerSource'" -InformationAction Continue
+        Write-Information "::info::[$LogPrefix] Resolved Files directory: '$filesDir'" -InformationAction Continue
+    }
     if (-not (Test-Path $filesDir))
     {
         New-Item -ItemType Directory -Path $filesDir -Force | Out-Null
@@ -584,6 +645,10 @@ function script:Copy-PSADTPackageInstallerToFiles
 
     Copy-Item -Path $InstallerSource -Destination $filesDir -Force
     $expectedName = if ([string]::IsNullOrWhiteSpace($ExpectedFileName)) { Split-Path -Path $InstallerSource -Leaf } else { $ExpectedFileName }
+    if ($UseInformationLogs)
+    {
+        Write-Information "::info::[$LogPrefix] Expected copied installer path: '$(Join-Path $filesDir $expectedName)'" -InformationAction Continue
+    }
     Test-Path (Join-Path $filesDir $expectedName) | Should -BeTrue
 }
 

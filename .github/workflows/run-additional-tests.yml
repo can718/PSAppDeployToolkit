@@ -93,6 +93,16 @@ jobs:
         New-Item -ItemType Directory -Path $tfScriptsDir -Force | Out-Null
         Copy-Item -LiteralPath $tfHelper -Destination $tfScriptsDir -Force
 
+        # copy PSAppDeployToolkit.Recording.psm1 and PSAppDeployToolkit.Recording.psd1 to $tfScriptsDir
+        $recordingPath = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\Additional\PSAppDeployToolkit.Recording.psm1'
+        Copy-Item -LiteralPath $recordingPath -Destination $tfScriptsDir -Force
+        $recordingPath = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\Additional\PSAppDeployToolkit.Recording.psd1'
+        Copy-Item -LiteralPath $recordingPath -Destination $tfScriptsDir -Force
+
+        # add module into $env:PSModulePath
+        $env:PSModulePath += ";$tfScriptsDir"
+
+
         . $tfHelper
 
         # Start the test run and write test-run-id to GitHub output
