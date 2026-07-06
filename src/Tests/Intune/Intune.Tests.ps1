@@ -243,7 +243,7 @@ Describe 'Intune Tests' {
 
             # Validate PSADT log exit code.
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
-            $logValidation = Invoke-IntuneV4TemplateLogValidation -App $appConfig -DeploymentType 'Install'
+            $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Install'
             $logValidation.Success | Should -BeTrue -Because "PSADT log validation: $($logValidation.Message)"
         }
 
@@ -302,7 +302,7 @@ Describe 'Intune Tests' {
 
             # Validate PSADT log exit code.
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
-            $logValidation = Invoke-IntuneV4TemplateLogValidation -App $appConfig -DeploymentType 'Uninstall'
+            $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Uninstall'
             $logValidation.Success | Should -BeTrue -Because "PSADT log validation: $($logValidation.Message)"
         }
 

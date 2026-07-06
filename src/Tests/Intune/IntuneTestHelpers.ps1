@@ -215,7 +215,7 @@ function New-IntuneTestWorkDir
     }
 }
 
-function Invoke-IntuneV4TemplateLogValidation
+function Invoke-IntunePsadtLogValidation
 {
     <#
     .SYNOPSIS
@@ -353,8 +353,15 @@ function Invoke-IntuneV4TemplateLogValidation
     }
     else
     {
+        $lastLines = Get-Content -LiteralPath $logFile.FullName -Tail 3 -ErrorAction SilentlyContinue
         Write-Warning "[$($App.Name)] Log validation FAILED: [$($logFile.Name)] - Finalization exit code line not found."
-        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $logFile.FullName; Message = "Finalization exit code line not found in log." }
+        if ($lastLines)
+        {
+            Write-Warning "[$($App.Name)] Last 3 lines of log:"
+            $lastLines | ForEach-Object { Write-Warning "  $_" }
+        }
+        $tailMsg = if ($lastLines) { "`n" + ($lastLines -join "`n") } else { '' }
+        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $logFile.FullName; Message = "Finalization exit code line not found in log.$tailMsg" }
     }
 }
 
