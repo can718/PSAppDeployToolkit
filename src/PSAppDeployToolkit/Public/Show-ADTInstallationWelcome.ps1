@@ -65,6 +65,7 @@ function Show-ADTInstallationWelcome
         This addresses the issue where Intune retries deployments shortly after a user defers, preventing multiple immediate prompts and improving the user experience.
 
         Example:
+        - String values should use the `[d.]hh:mm:ss` format, where `d` (days) is optional.
         - To specify 30 minutes, use: `([System.TimeSpan]::FromMinutes(30))` or `00:30:00`.
         - To specify 24 hours, use: `([System.TimeSpan]::FromHours(24))` or `1.00:00:00`.
 
@@ -87,7 +88,7 @@ function Show-ADTInstallationWelcome
         Specifies whether to minimize other windows when displaying prompt.
 
     .PARAMETER NotTopMost
-        Specifies whether the windows is the topmost window.
+        Specifies whether the window is the topmost window.
 
     .PARAMETER AllowMinimize
         Specifies that the user is allowed to minimize the dialog.
@@ -145,7 +146,7 @@ function Show-ADTInstallationWelcome
     .EXAMPLE
         Show-ADTInstallationWelcome -CloseProcesses @{ Name = 'winword' }, @{ Name = 'msaccess' }, @{ Name = 'excel' } -PersistPrompt
 
-        Prompt the user to close Word, MSAccess and Excel. By using the PersistPrompt switch, the dialog will return to the center of the screen every couple of seconds, specified in the `config.psd1` file, so the user cannot ignore it by dragging it aside.
+        Prompt the user to close Word, MSAccess and Excel. By using the PersistPrompt switch, the dialog will return to the center of the screen at the interval specified in the `config.psd1` file, so the user cannot ignore it by dragging it aside.
 
     .EXAMPLE
         Show-ADTInstallationWelcome -AllowDefer -DeferDeadline '2013-08-25'
@@ -160,7 +161,7 @@ function Show-ADTInstallationWelcome
     .NOTES
         An active ADT session is NOT required to use this function.
 
-        The process descriptions are retrieved via `Get-Process`, with a fallback on the process name if no description is available. Alternatively, you can specify the description yourself by instantiating the ProcessDefinition object with a description, e.g., `@{ Name = 'winword'; Description = 'Microsoft Word' }`
+        The process descriptions are retrieved via `Get-Process`, with a fallback on the process name if no description is available. Alternatively, you can specify the description yourself by providing a hashtable that is converted to a ProcessDefinition object, e.g., `@{ Name = 'winword'; Description = 'Microsoft Word' }`
 
         The dialog box will timeout after the timeout specified in the `config.psd1` file (default 55 minutes) to prevent Intune/SCCM deployments from timing out and returning a failure code. When the dialog times out, the script will exit and return a 1618 code (SCCM fast retry code).
 
@@ -799,7 +800,7 @@ function Show-ADTInstallationWelcome
         {
             $sessionState = $PSCmdlet.SessionState
         }
-        $adtStrings = Get-ADTStringTable -SessionState $SessionState
+        $adtStrings = Get-ADTStringTable -SessionState $sessionState
 
         # Define parameter dictionary for returning at the end.
         $paramDictionary = [System.Management.Automation.RuntimeDefinedParameterDictionary]::new()
@@ -1127,6 +1128,7 @@ function Show-ADTInstallationWelcome
                         if ($CloseProcessesCountdown -gt 0)
                         {
                             $dialogOptions.Add('CountdownDuration', [System.TimeSpan]::FromSeconds($CloseProcessesCountdown))
+                            $dialogOptions.Remove('DialogExpiryDuration')
                         }
                     }
                     if ($PersistPrompt)
@@ -1136,6 +1138,7 @@ function Show-ADTInstallationWelcome
                     if (($PSBoundParameters.ContainsKey('ForceCloseProcessesCountdown') -or $PSBoundParameters.ContainsKey('ForceCountdown')) -and !$dialogOptions.ContainsKey('CountdownDuration'))
                     {
                         $dialogOptions.Add('CountdownDuration', [System.TimeSpan]::FromSeconds($CloseProcessesCountdown))
+                        $dialogOptions.Remove('DialogExpiryDuration')
                     }
                     if ($HideCloseButton -and ($AllowDefer -or !$dialogOptions.ContainsKey('CountdownDuration')))
                     {

@@ -20,7 +20,7 @@ function Show-ADTInstallationRestartPrompt
         Specifies the number of seconds to display the restart prompt without allowing the window to be hidden.
 
     .PARAMETER SilentCountdownSeconds
-        Specifies number of seconds to countdown for the restart when the toolkit is running in silent mode and `-SilentRestart` isn't specified.
+        Specifies number of seconds to countdown for the restart when the toolkit is running in silent mode and `-SilentRestart` is specified.
 
     .PARAMETER SilentRestart
         Specifies whether the restart should be triggered when DeployMode is silent or very silent.
@@ -141,7 +141,7 @@ function Show-ADTInstallationRestartPrompt
                 {
                     $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName ShutdownReasonText -ProvidedValue $_ -ExceptionMessage 'The specified ShutdownReasonText cannot be null or whitespace.'))
                 }
-                if ($_ -gt 511)
+                if ($_.Length -gt 512)
                 {
                     $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName ShutdownReasonText -ProvidedValue $_ -ExceptionMessage 'The specified ShutdownReasonText cannot exceed 512 characters in length.'))
                 }
@@ -192,7 +192,7 @@ function Show-ADTInstallationRestartPrompt
         {
             $sessionState = $PSCmdlet.SessionState
         }
-        $adtStrings = Get-ADTStringTable -SessionState $SessionState
+        $adtStrings = Get-ADTStringTable -SessionState $sessionState
 
         # Define parameter dictionary for returning at the end.
         $paramDictionary = [System.Management.Automation.RuntimeDefinedParameterDictionary]::new()
@@ -358,7 +358,7 @@ function Show-ADTInstallationRestartPrompt
                 {
                     $dialogOptions.Add('FluentAccentColorDark', $adtConfig.UI.FluentAccentColorDark)
                 }
-                $dialogOptions = New-ADTDialogOptionsObject -Type ([PSADT.UserInterface.DialogOptions.RestartDialogOptions]) -Data $dialogOptions -DeploymentType $DeploymentType
+                $dialogOptions = New-ADTDialogOptionsObject -Type ([PSADT.UserInterface.DialogOptions.RestartDialogOptions]) -Data $dialogOptions -DeploymentType $deploymentType
 
                 # If the script has been dot-source invoked by the deploy app script, display the restart prompt asynchronously.
                 if ($adtSession)

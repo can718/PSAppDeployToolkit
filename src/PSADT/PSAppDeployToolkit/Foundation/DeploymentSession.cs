@@ -367,7 +367,7 @@ namespace PSAppDeployToolkit.Foundation
                         // Generate list of MSI executables for use with Show-ADTInstallationWelcome.
                         if (!Settings.HasFlag(DeploymentSettings.DisableDefaultMsiProcessList))
                         {
-                            ProcessDefinition[] msiExecList = [.. (DefaultMstFile is not null ? MsiUtilities.GetMsiTableColumnValues(DefaultMsiFile.FullName, "File", 3, [DefaultMstFile.FullName]) : MsiUtilities.GetMsiTableColumnValues(DefaultMsiFile.FullName, "File", 3)).Where(static p => ((p as string)?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) is true).Select(static p => new ProcessDefinition(Path.GetFileNameWithoutExtension(((string)p).Split(['|'], StringSplitOptions.RemoveEmptyEntries)[^1])))];
+                            ProcessDefinition[] msiExecList = [.. (DefaultMstFile is not null ? MsiUtilities.GetMsiTableColumnValues(DefaultMsiFile.FullName, "File", 3, [DefaultMstFile.FullName]) : MsiUtilities.GetMsiTableColumnValues(DefaultMsiFile.FullName, "File", 3)).Where(static p => (p as string)?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) is true).Select(static p => new ProcessDefinition(Path.GetFileNameWithoutExtension(((string)p).Split(['|'], StringSplitOptions.RemoveEmptyEntries)[^1])))];
                             if (msiExecList.Length > 0)
                             {
                                 AppProcessesToClose = new ReadOnlyCollection<ProcessDefinition>([.. AppProcessesToClose.Concat(msiExecList).GroupBy(static p => p.Name, StringComparer.OrdinalIgnoreCase).Select(static g => g.First())]);
@@ -494,7 +494,7 @@ namespace PSAppDeployToolkit.Foundation
                 // Generate the log filename to use. Append the username to the log file name if the toolkit is not running as an administrator,
                 // since users do not have the rights to modify files in the ProgramData folder that belong to other users.
                 DefaultLogName = invalidChars.Replace($"{InstallName}_{{0}}_{DeploymentType}{(!isAdmin ? $"_{adtEnv.EnvUserName}" : null)}.log", string.Empty);
-                LogName = !string.IsNullOrWhiteSpace(LogName) ? invalidChars.Replace(LogName, string.Empty) : NewLogFileName(appDeployToolkitName);
+                LogName = !string.IsNullOrWhiteSpace(LogName) ? invalidChars.Replace(LogName, string.Empty) : NewLogFileName(appDeployToolkitName, fileNameOnly: true);
                 FileInfo logFile = new(Path.Join(LogPath.FullName, LogName));
                 int logMaxSize = (int)configToolkit["LogMaxSize"]!;
                 bool logFileSizeExceeded = logFile.Exists && (logMaxSize > 0) && ((logFile.Length / 1_048_576.0) > logMaxSize);
@@ -988,7 +988,7 @@ namespace PSAppDeployToolkit.Foundation
 
                 #endregion Finalization
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 WriteLogEntry(ex.Message, LogSeverity.Error);
                 SetExitCode(ex is NotSupportedException ? DeferExitCode : 60008);
@@ -1302,10 +1302,13 @@ namespace PSAppDeployToolkit.Foundation
         /// </summary>
         /// <param name="discriminator">A string value used to distinguish the log file name. Typically represents a unique identifier or context
         /// for the log file. Cannot be null.</param>
+        /// <param name="fileNameOnly">Indicates whether to return only the file name without the full path.</param>
         /// <returns>A string containing the formatted log file name that incorporates the specified discriminator.</returns>
-        public string NewLogFileName(string discriminator)
+        public string NewLogFileName(string discriminator, bool fileNameOnly)
         {
-            return string.Format(CultureInfo.InvariantCulture, DefaultLogName, discriminator);
+            return !fileNameOnly
+                ? Path.Join(LogPath.FullName, string.Format(CultureInfo.InvariantCulture, DefaultLogName, discriminator))
+                : string.Format(CultureInfo.InvariantCulture, DefaultLogName, discriminator);
         }
 
         /// <summary>

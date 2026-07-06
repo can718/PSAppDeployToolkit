@@ -36,6 +36,7 @@ namespace PSADT.UserInterface.Interfaces
         /// </summary>
         [SuppressMessage("Design", "CA1065:Do not raise exceptions in unexpected locations", Justification = "These exceptions will never fire under normal, expected circumstances.")]
         [SuppressMessage("Usage", "VSTHRD101:Avoid unsupported async delegates", Justification = "An exception throwing in this event is truly exceptional, so we want it to propagate.")]
+        [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "Access to System.Windows.Application.Current is appropriate here while we're setting up.")]
         static DialogManager()
         {
             // Set up the required dispatcher exception handler first. If it's not present, the setup is wrong and we won't proceed.
@@ -65,7 +66,7 @@ namespace PSADT.UserInterface.Interfaces
                 {
                     // Create the application and start the message pump (this will set dispatcherRunning when fully instantiated).
                     System.Windows.Application app = new() { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown, };
-                    app.Dispatcher.UnhandledException += (_, e) => unhandledExceptionHandler(e.Exception);
+                    app.DispatcherUnhandledException += (_, e) => unhandledExceptionHandler(e.Exception);
                     app.Startup += async (_, _) =>
                     {
                         if (!await app.Dispatcher.InvokeAsync(dispatcherRunning.Set, System.Windows.Threading.DispatcherPriority.Normal, default))
@@ -99,13 +100,13 @@ namespace PSADT.UserInterface.Interfaces
             {
                 throw new InvalidProgramException("Failed to initialize WPF application: Dispatcher threw an exception.", appThreadException);
             }
-            if (System.Windows.Application.Current is null)
+            if (System.Windows.Application.Current?.Dispatcher is not System.Windows.Threading.Dispatcher dispatcher)
             {
                 throw new InvalidProgramException("Failed to initialize WPF application: Application instance is null.");
             }
 
             // Refresh desktop icons to ensure any changes are reflected (https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/issues/1846).
-            _ = System.Windows.Application.Current.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Send, DesktopUtilities.RefreshDesktop);
+            _ = dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Send, DesktopUtilities.RefreshDesktop);
         }
 
         /// <summary>
@@ -158,11 +159,11 @@ namespace PSADT.UserInterface.Interfaces
                 }
                 if (processesToClose?.Count > 0)
                 {
-                    await state.LogAction($"Close applications countdown has [{elapsed.Value.ToString(format: null, CultureInfo.InvariantCulture)}] seconds remaining.", LogSeverity.Info).ConfigureAwait(false);
+                    await state.LogAction($"Close applications countdown has [{((int)Math.Ceiling(elapsed.Value.TotalSeconds)).ToString(CultureInfo.InvariantCulture)}] seconds remaining.", LogSeverity.Info).ConfigureAwait(false);
                 }
                 else
                 {
-                    await state.LogAction($"Countdown has [{elapsed.Value.ToString(format: null, CultureInfo.InvariantCulture)}] seconds remaining.", LogSeverity.Info).ConfigureAwait(false);
+                    await state.LogAction($"Countdown has [{((int)Math.Ceiling(elapsed.Value.TotalSeconds)).ToString(CultureInfo.InvariantCulture)}] seconds remaining.", LogSeverity.Info).ConfigureAwait(false);
                 }
             }
 
@@ -314,7 +315,7 @@ namespace PSADT.UserInterface.Interfaces
                 {
                     progressDialog.Show();
                 }
-                catch (Exception ex) when (ex.Message is not null)
+                catch (Exception ex)
                 {
                     using (progressDialog)
                     {
@@ -364,7 +365,7 @@ namespace PSADT.UserInterface.Interfaces
         /// <summary>
         /// Closes the currently open dialog, if any.
         /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown if no progress dialog is currently open. Ensure a progress dialog is displayed before attempting to close it.</exception>"
+        /// <exception cref="InvalidOperationException">Thrown if no progress dialog is currently open. Ensure a progress dialog is displayed before attempting to close it.</exception>
         internal static Task CloseProgressDialogAsync()
         {
             return progressDialog is null ? throw new InvalidOperationException("Cannot close a progress dialog while one is not open.") : InvokeDialogActionAsync(() =>
@@ -519,7 +520,7 @@ namespace PSADT.UserInterface.Interfaces
         /// <summary>
         /// Displays a message box with the specified title, prompt, and options.
         /// </summary>
-        /// <remarks>The behavior and appearance of the message box are determined by the properties of the <paramref name="options"/> parameter.</remarks>ews
+        /// <remarks>The behavior and appearance of the message box are determined by the properties of the <paramref name="options"/> parameter.</remarks>
         /// <param name="options">The options for configuring the message box, such as title, message text, buttons, icon, default button, topmost behavior, and expiry duration.</param>
         /// <returns>A <see cref="DialogBoxResult"/> value indicating the button that was clicked by the user.</returns>
         [SuppressMessage("Usage", "MA0099:Use Explicit enum value instead of 0", Justification = "There's no zero value for this enum.")]
@@ -624,6 +625,7 @@ namespace PSADT.UserInterface.Interfaces
         /// </summary>
         /// <param name="callback">The action to invoke on the WPF UI thread.</param>
         /// <returns>A task that represents the asynchronous operation.</returns>
+        [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "This is our safe implementation.")]
         private static Task InvokeDialogActionAsync(Action callback)
         {
             return System.Windows.Application.Current.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal, default).Task;
@@ -634,6 +636,7 @@ namespace PSADT.UserInterface.Interfaces
         /// </summary>
         /// <param name="callback">The asynchronous action to invoke on the WPF UI thread.</param>
         /// <returns>A task that represents the asynchronous operation.</returns>
+        [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "This is our safe implementation.")]
         private static Task InvokeDialogActionAsync(Func<Task> callback)
         {
             return System.Windows.Application.Current.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal, default).Task.Unwrap();
@@ -645,6 +648,7 @@ namespace PSADT.UserInterface.Interfaces
         /// <param name="callback">The function to invoke on the WPF UI thread.</param>
         /// <typeparam name="TResult">The type of the result returned by the function.</typeparam>
         /// <returns>A task that represents the asynchronous operation, containing the result of the function.</returns>
+        [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "This is our safe implementation.")]
         private static Task<TResult> InvokeDialogActionAsync<TResult>(Func<TResult> callback)
         {
             return System.Windows.Application.Current.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal, default).Task;

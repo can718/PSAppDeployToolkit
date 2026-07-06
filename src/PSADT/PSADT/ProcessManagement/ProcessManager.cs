@@ -138,7 +138,7 @@ namespace PSADT.ProcessManagement
                 }
 
                 // Attempt to launch the process with the specified user's token if the necessary information was provided, otherwise just directly create the process.
-                if ((launchInfo.RunAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser)) is false)
+                if (launchInfo.RunAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser) is false)
                 {
                     // Start the process with the user's token. Without creating an environment block, the process will take on the environment of the SYSTEM account.
                     if (!TokenManager.CanGetUserPrimaryToken)
@@ -194,7 +194,7 @@ namespace PSADT.ProcessManagement
                 hThread = new(pi.hThread, ownsHandle: true);
                 processId = pi.dwProcessId;
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 using (stdOutStream)
                 using (stdErrStream)
@@ -211,23 +211,30 @@ namespace PSADT.ProcessManagement
                 stdInStream?.DisposeLocalCopyOfClientHandle();
             }
 
-            // Finalise the process creation and return the handle to the caller.
+            // Finalise the process creation.
             try
             {
-                if (launchInfo.DenyUserTermination)
-                {
-                    DenyProcessTermination(launchInfo, hProcess, callerPrivileges);
-                }
                 Process process = Process.GetProcessById((int)processId);
                 try
                 {
+                    // Since the process was not spawned by .NET, we need to trigger .NET to get a lock on the handle of the process.
+                    // Otherwise, accessing properties like `ExitCode` will throw Exceptions like "Process was not started by this object", etc.
+                    // Fetching the process handle will trigger the `Process` object to update its internal state by calling `SetProcessHandle`,
+                    // the result is discarded as it's not used later in this code.
+                    _ = process.Handle;
+
+                    // Return the process handle and associated information to the caller.
+                    if (launchInfo.DenyUserTermination)
+                    {
+                        DenyProcessTermination(launchInfo, hProcess, callerPrivileges);
+                    }
                     using (hThread)
                     {
                         _ = NativeMethods.ResumeThread(hThread);
                     }
                     return new(launchInfo, process, processId, hProcess, commandSpan.ToString(), stdOutHandle, stdErrHandle, interleavedData, stdInHandle);
                 }
-                catch (Exception ex) when (ex.Message is not null)
+                catch (Exception ex)
                 {
                     using (process)
                     {
@@ -236,7 +243,7 @@ namespace PSADT.ProcessManagement
                     }
                 }
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 using (stdOutStream)
                 using (stdErrStream)
@@ -306,7 +313,7 @@ namespace PSADT.ProcessManagement
                     throw new InvalidProgramException("Failed to start the process.");
                 }
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 using (process)
                 {
@@ -345,7 +352,7 @@ namespace PSADT.ProcessManagement
                 }
                 return new(launchInfo, process);
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 using (hProcess)
                 using (process)
@@ -463,7 +470,7 @@ namespace PSADT.ProcessManagement
             {
                 return (stream, (HANDLE)stream.ClientSafePipeHandle.DangerousGetHandle(), new(output, ReadToEndAsync()));
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 using (stream)
                 {
@@ -505,7 +512,7 @@ namespace PSADT.ProcessManagement
             {
                 return (stream, (HANDLE)stream.ClientSafePipeHandle.DangerousGetHandle(), new(WriteToEndAsync()));
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 using (stream)
                 {
@@ -720,7 +727,7 @@ namespace PSADT.ProcessManagement
         /// <param name="runAsInvoker">If true, adds the EXTENDED_PROCESS_CREATION_FLAG_FORCELUA attribute.</param>
         /// <param name="pinnedHandles">When this method returns, contains the pinned GC handle for the handles array, or null if no handles were specified.</param>
         /// <returns>A tuple containing the STARTUPINFOEXW structure and the SafeProcThreadAttributeListHandle.</returns>
-        /// <exception cref="InvalidOperationException">Thrown if no attributes are specified or if an error occurs during attribute list creation or updating.</exception>"
+        /// <exception cref="InvalidOperationException">Thrown if no attributes are specified or if an error occurs during attribute list creation or updating.</exception>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0099:Use Explicit enum value instead of 0", Justification = "There is no zero value for the enums in question.")]
         private static (STARTUPINFOEXW startupInfoEx, SafeProcThreadAttributeListHandle hAttributeList) CreateStartupInfoEx(in STARTUPINFOW startupInfo, List<nint> handlesToInherit, bool forceBreakaway, bool runAsInvoker, out SafePinnedGCHandle? pinnedHandles)
         {
@@ -783,7 +790,7 @@ namespace PSADT.ProcessManagement
                     startupInfoEx.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)hAttributeList.DangerousGetHandle();
                     return (startupInfoEx, hAttributeList);
                 }
-                catch (Exception ex) when (ex.Message is not null)
+                catch (Exception ex)
                 {
                     using (pinnedHandles)
                     {
@@ -792,7 +799,7 @@ namespace PSADT.ProcessManagement
                     }
                 }
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 using (hAttributeList)
                 {

@@ -113,11 +113,11 @@ namespace PSADT.ProcessManagement
             // Confirm we're not using incompatible options.
             if (useShellExecute)
             {
-                if ((runAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser)) is false)
+                if (runAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser) is false)
                 {
                     throw new NotSupportedException("Cannot specify UseShellExecute while specifying a RunAsActiveUser.");
                 }
-                if ((elevatedTokenType?.Equals(Security.ElevatedTokenType.None)) is false)
+                if (elevatedTokenType?.Equals(Security.ElevatedTokenType.None) is false)
                 {
                     throw new NotSupportedException("Cannot specify ElevatedTokenType while specifying a RunAsActiveUser.");
                 }
@@ -148,7 +148,7 @@ namespace PSADT.ProcessManagement
             // Expand out environment variables for FilePath/ArgumentList as required.
             if (ExpandEnvironmentVariables = expandEnvironmentVariables)
             {
-                if ((RunAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser)) is false)
+                if (RunAsActiveUser?.Equals(AccountUtilities.CallerRunAsActiveUser) is false)
                 {
                     if (!TokenManager.CanGetUserPrimaryToken)
                     {
@@ -189,10 +189,10 @@ namespace PSADT.ProcessManagement
                     if (workingDirectory is not null)
                     {
                         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
-                        WorkingDirectory = new(EnvironmentUtilities.ExpandEnvironmentVariables(workingDirectory) ?? throw new InvalidOperationException($"The expansion of working directory [{workingDirectory}] returned a null result."));
+                        WorkingDirectory = new(EnvironmentUtilities.ExpandEnvironmentVariables(workingDirectory));
                     }
-                    ArgumentList = new ReadOnlyCollection<string>([.. ArgumentList.Select(static arg => EnvironmentUtilities.ExpandEnvironmentVariables(arg) ?? throw new InvalidOperationException($"The expansion of argument [{arg}] returned a null result."))]);
-                    FilePath = EnvironmentUtilities.ExpandEnvironmentVariables(FilePath) ?? throw new InvalidOperationException($"The expansion of file path [{FilePath}] returned a null result.");
+                    ArgumentList = new ReadOnlyCollection<string>([.. ArgumentList.Select(EnvironmentUtilities.ExpandEnvironmentVariables)]);
+                    FilePath = EnvironmentUtilities.ExpandEnvironmentVariables(FilePath);
                 }
             }
 

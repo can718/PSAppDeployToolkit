@@ -102,7 +102,7 @@ namespace PSADT.ShortcutManagement
                 _internetShortcut = internetShortcut;
                 _storageMode = storageMode;
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 _ = Marshal.FinalReleaseComObject(internetShortcut);
                 ExceptionDispatchInfo.Capture(ex).Throw();
@@ -680,7 +680,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <param name="propertyId">The property ID.</param>
         /// <returns>The property value, or <see langword="null"/> if not set.</returns>
-        /// <exception cref="FileFormatException">Thrown if the property has an unexpected type.</exception>"
+        /// <exception cref="FileFormatException">Thrown if the property has an unexpected type.</exception>
         private ushort? GetUInt16Property(PID_IS propertyId)
         {
             IPropertyStorage propertyStorage = OpenInternetShortcutPropertyStorage((uint)Interop.STGM.STGM_READ);
@@ -855,7 +855,7 @@ namespace PSADT.ShortcutManagement
         /// <summary>
         /// Gets a value indicating whether the current storage mode is read-only, preventing any write operations.
         /// </summary>
-        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) is Interop.STGM.STGM_DIRECT;
+        private bool IsReadOnly => (_storageMode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) is Interop.STGM.STGM_DIRECT;
 
         /// <summary>
         /// Indicates whether the object has been disposed.

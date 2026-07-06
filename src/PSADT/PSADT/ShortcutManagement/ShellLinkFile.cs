@@ -102,7 +102,7 @@ namespace PSADT.ShortcutManagement
                 _shellLink = shellLink;
                 _storageMode = storageMode;
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 _ = Marshal.FinalReleaseComObject(shellLink);
                 ExceptionDispatchInfo.Capture(ex).Throw();
@@ -1078,7 +1078,7 @@ namespace PSADT.ShortcutManagement
         /// </summary>
         /// <remarks>Use this property to determine if modifications to the storage are allowed. When <see
         /// langword="true"/>, attempts to write or update the storage will not be permitted.</remarks>
-        private bool IsReadOnly => _storageMode is Interop.STGM mode && (mode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) is Interop.STGM.STGM_DIRECT;
+        private bool IsReadOnly => (_storageMode & (Interop.STGM.STGM_WRITE | Interop.STGM.STGM_READWRITE)) is Interop.STGM.STGM_DIRECT;
 
         /// <summary>
         /// Indicates whether the object has been disposed.
