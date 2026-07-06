@@ -899,7 +899,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
 
         BeforeAll {
             $ctx = New-PSADTAppTestContext `
-                -SourceScriptRelativePath '..\V3\DigiExam\Invoke-AppDeployToolkit.ps1' `
+                -SourceScriptRelativePath '..\V3\Digiexam\Deploy-Application.ps1' `
                 -PackageDir 'C:\PSADT\DigiExam' `
                 -AppName 'Digiexam (PSADT v3 Digiexam)' `
                 -AppVendor 'DigiExam' `
@@ -960,7 +960,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
                         -TemplateEnvName 'PSADT_TEMPLATE_V3_DIR' `
                         -SiteCode $script:siteCode `
                         -SiteServer $script:siteServer `
-                        -SourceScriptLabel 'DigiExam\Invoke-AppDeployToolkit.ps1' `
+                        -SourceScriptLabel 'Digiexam\Deploy-Application.ps1' `
                         -LogPrefix 'DigiExam' `
                         -UseInformationLogs))
             {
