@@ -11,43 +11,41 @@ env:
   NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
 jobs:
   run-additional-tests:
-    if: false
     name: Run Additional Tests (MCM)
     uses: ./.github/workflows/run-additional-tests.yml
     secrets: inherit
 
   run-intune-tests:
     name: Run Additional Tests (Intune)
-    if: false
     uses: ./.github/workflows/run-intune-tests.yml
     secrets: inherit
 
-  check-additional-test-results:
-    name: Check Additional Test Results
-    if: false
-    needs: run-additional-tests
-    runs-on: windows-latest
-    steps:
-    - name: Download additional test results
-      uses: actions/download-artifact@v4
-      with:
-        name: additional-test-results
-        path: .\TestResults\
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+  # check-additional-test-results:
+  #   name: Check Additional Test Results
+  #   if: false
+  #   needs: run-additional-tests
+  #   runs-on: windows-latest
+  #   steps:
+  #   - name: Download additional test results
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: additional-test-results
+  #       path: .\TestResults\
+  #       github-token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Check test results
-      shell: powershell
-      run: |
-        [xml]$results = Get-Content '.\TestResults\AdditionalTests.xml'
-        $total   = [int]$results.'test-results'.total
-        $failures = [int]$results.'test-results'.failures
-        $errors   = [int]$results.'test-results'.errors
-        Write-Host "Total: $total  Failures: $failures  Errors: $errors"
-        if ($failures -gt 0 -or $errors -gt 0) {
-          Write-Error "Additional tests failed: $failures failure(s), $errors error(s)."
-          exit 1
-        }
-        Write-Host "All additional tests passed."
+  #   - name: Check test results
+  #     shell: powershell
+  #     run: |
+  #       [xml]$results = Get-Content '.\TestResults\AdditionalTests.xml'
+  #       $total   = [int]$results.'test-results'.total
+  #       $failures = [int]$results.'test-results'.failures
+  #       $errors   = [int]$results.'test-results'.errors
+  #       Write-Host "Total: $total  Failures: $failures  Errors: $errors"
+  #       if ($failures -gt 0 -or $errors -gt 0) {
+  #         Write-Error "Additional tests failed: $failures failure(s), $errors error(s)."
+  #         exit 1
+  #       }
+  #       Write-Host "All additional tests passed."
 
   test:
     name: Run Tests
