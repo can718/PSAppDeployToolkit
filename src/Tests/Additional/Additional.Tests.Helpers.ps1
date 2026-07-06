@@ -511,18 +511,24 @@ function script:Update-PSADTPackageDeployScript
         [switch]$UseInformationLogs
     )
 
+    $sourceScriptName = Split-Path -Path $SourceScript -Leaf
     if ($UseInformationLogs)
     {
-        Write-Information "::info::[$LogPrefix] Step 3: Updating Invoke-AppDeployToolkit.ps1..." -InformationAction Continue
+        Write-Information "::info::[$LogPrefix] Step 3: Updating deployment script '$sourceScriptName'..." -InformationAction Continue
     }
     else
     {
-        Write-Verbose "[$LogPrefix] Step 3: Updating Invoke-AppDeployToolkit.ps1..."
+        Write-Verbose "[$LogPrefix] Step 3: Updating deployment script '$sourceScriptName'..."
     }
 
-    $allDestScripts = Get-ChildItem -Path $PackageDir -Filter 'Invoke-AppDeployToolkit.ps1' -Recurse -File -ErrorAction SilentlyContinue
-    $destScript = $allDestScripts | Select-Object -First 1
-    $destScript | Should -Not -BeNullOrEmpty -Because 'Invoke-AppDeployToolkit.ps1 must exist in the copied V4 template'
+    $destScript = Get-ChildItem -Path $PackageDir -Filter $sourceScriptName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $destScript)
+    {
+        $destScript = Get-ChildItem -Path $PackageDir -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -in @('Invoke-AppDeployToolkit.ps1', 'Deploy-Application.ps1') } |
+            Select-Object -First 1
+    }
+    $destScript | Should -Not -BeNullOrEmpty -Because "A deployment script matching '$sourceScriptName' (or a standard PSADT script name) must exist in package '$PackageDir'"
 
     if (-not [string]::IsNullOrWhiteSpace($AdditionalContentSourceDir))
     {
@@ -532,7 +538,6 @@ function script:Update-PSADTPackageDeployScript
     {
         Copy-Item -Path $SourceScript -Destination $destScript.FullName -Force
     }
-
     $content = Get-Content -Path $destScript.FullName -Raw
     $content | Should -Match $ExpectedContentPattern
     return $destScript
