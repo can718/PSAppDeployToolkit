@@ -909,7 +909,11 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
 
             $script:v3Dir = $ctx.V3Dir
             $script:digiExamSourceScript = $ctx.SourceScript
+            #test:SourceScript
+            Write-Host "DigiExam SourceScript: $script:digiExamSourceScript"
             $script:digiExamPackageDir = $ctx.PackageDir
+            #test:PackageDir
+            Write-Host "DigiExam PackageDir: $script:digiExamPackageDir"
             $script:digiExamAppName = $ctx.AppName
             $script:digiExamAppVendor = $ctx.AppVendor
             $script:digiExamAppVersion = $ctx.AppVersion
