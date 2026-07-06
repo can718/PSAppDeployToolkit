@@ -40,15 +40,15 @@ Disables logging to file for the script. Default is: $false.
 
 .EXAMPLE
 
-powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeployMode 'Silent'; Exit $LastExitCode }"
+powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeployMode 'Silent'; exit $LastExitCode }"
 
 .EXAMPLE
 
-powershell.exe -Command "& { & '.\Deploy-Application.ps1' -AllowRebootPassThru; Exit $LastExitCode }"
+powershell.exe -Command "& { & '.\Deploy-Application.ps1' -AllowRebootPassThru; exit $LastExitCode }"
 
 .EXAMPLE
 
-powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeploymentType 'Uninstall'; Exit $LastExitCode }"
+powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeploymentType 'Uninstall'; exit $LastExitCode }"
 
 .EXAMPLE
 
@@ -68,7 +68,7 @@ This script does not generate any output.
 
 .NOTES
 
-Toolkit Exit Code Ranges:
+Toolkit exit Code Ranges:
 - 60000 - 68999: Reserved for built-in exit codes in Deploy-Application.ps1, Deploy-Application.exe, and AppDeployToolkitMain.ps1
 - 69000 - 69999: Recommended for user customized exit codes in Deploy-Application.ps1
 - 70000 - 79999: Recommended for user customized exit codes in AppDeployToolkitExtensions.ps1
@@ -77,10 +77,10 @@ Toolkit Exit Code Ranges:
 
 https://psappdeploytoolkit.com
 #>
-
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '')]
 
 [CmdletBinding()]
-Param (
+param (
     [Parameter(Mandatory = $false)]
     [ValidateSet('Install', 'Uninstall', 'Repair')]
     [String]$DeploymentType = 'Install',
@@ -104,13 +104,14 @@ try
     }
     catch
     {
+        Write-Error -Message "Failed to set execution policy for process scope: $($_.Exception.Message)" -ErrorAction 'Continue'
     }
 
     ##*===============================================
     ##* VARIABLE DECLARATION
     ##*===============================================
     ## Variables: Application
-    [String]$appVendor = 'voidtools'
+    [String]$appVendor = 'Voidtools'
     [String]$appName = 'Everything'
     [String]$appVersion = '1.4.1.1032'
     [String]$appArch = 'x64'
@@ -127,7 +128,7 @@ try
     ##* Do not modify section below
     #region DoNotModify
 
-    ## Variables: Exit Code
+    ## Variables: exit Code
     [Int32]$mainExitCode = 0
 
     ## Variables: Script
@@ -171,14 +172,14 @@ try
             [Int32]$mainExitCode = 60008
         }
         Write-Error -Message "Module [$moduleAppDeployToolkitMain] failed to load: `n$($_.Exception.Message)`n `n$($_.InvocationInfo.PositionMessage)" -ErrorAction 'Continue'
-        ## Exit the script, returning the exit code to SCCM
+        ## exit the script, returning the exit code to SCCM
         if (Test-Path -LiteralPath 'variable:HostInvocation')
         {
-            $script:ExitCode = $mainExitCode; Exit
+            $script:ExitCode = $mainExitCode; exit
         }
         else
         {
-            Exit $mainExitCode
+            exit $mainExitCode
         }
     }
 
@@ -238,7 +239,7 @@ try
         ## Display a message at the end of the install
         if (-not $useDefaultMsi)
         {
-            Show-InstallationPrompt -Message "$appName installation complete." -ButtonRightText 'OK' -Icon Information -NoWait
+            Show-InstallationPrompt -Message "$appName installation complete." -ButtonRightText 'OK' -Icon Information -NoWait -Timeout 5
         }
     }
     elseif ($deploymentType -ieq 'Uninstall')
@@ -249,7 +250,7 @@ try
         [String]$installPhase = 'Pre-Uninstallation'
 
         ## Show Welcome Message, close Everything with a 60 second countdown before automatically closing
-        Show-InstallationWelcome -CloseApps 'Everything=Everything' -CloseAppsCountdown 60
+        Show-InstallationWelcome -CloseApps 'Everything=Everything' -CloseAppsCountdown 10
 
         ## Show Progress Message (with the default message)
         Show-InstallationProgress
@@ -274,8 +275,8 @@ try
 
         ## <Perform Uninstallation tasks here>
 
-        Execute-Process -Path "$envProgramFiles\Everything\unins000.exe" -Parameters '/SILENT' -ContinueOnError $true
-        Execute-Process -Path "$envProgramFilesX86\Everything\unins000.exe" -Parameters '/SILENT' -ContinueOnError $true
+        Execute-Process -Path "$envProgramFiles\Everything\Uninstall.exe" -Parameters '/S' -ContinueOnError $true
+        # Execute-Process -Path "$envProgramFilesX86\Everything\unins000.exe" -Parameters '/SILENT' -ContinueOnError $true
 
         ##*===============================================
         ##* POST-UNINSTALLATION
@@ -284,7 +285,10 @@ try
 
         ## <Perform Post-Uninstallation tasks here>
 
-
+        if (-not $useDefaultMsi)
+        {
+            Show-InstallationPrompt -Message "$appName uninstallation complete." -ButtonRightText 'OK' -Icon Information -NoWait -Timeout 5
+        }
     }
     elseif ($deploymentType -ieq 'Repair')
     {
@@ -317,8 +321,7 @@ try
         }
         ## <Perform Repair tasks here>
 
-        Execute-Process -Path "$envProgramFiles\Everything\unins000.exe" -Parameters '/SILENT' -ContinueOnError $true -ExitOnProcessFailure $false
-        Execute-Process -Path "$envProgramFilesX86\Everything\unins000.exe" -Parameters '/SILENT' -ContinueOnError $true -ExitOnProcessFailure $false
+        Execute-Process -Path "$envProgramFiles\Everything\Uninstall.exe" -Parameters '/S' -ContinueOnError $true -ExitOnProcessFailure $false
         Execute-Process -Path 'Everything-1.4.1.1032.x64-Setup.exe' -Parameters '/S'
 
         ##*===============================================

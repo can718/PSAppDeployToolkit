@@ -40,15 +40,15 @@ Disables logging to file for the script. Default is: $false.
 
 .EXAMPLE
 
-powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeployMode 'Silent'; Exit $LastExitCode }"
+powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeployMode 'Silent'; exit $LastExitCode }"
 
 .EXAMPLE
 
-powershell.exe -Command "& { & '.\Deploy-Application.ps1' -AllowRebootPassThru; Exit $LastExitCode }"
+powershell.exe -Command "& { & '.\Deploy-Application.ps1' -AllowRebootPassThru; exit $LastExitCode }"
 
 .EXAMPLE
 
-powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeploymentType 'Uninstall'; Exit $LastExitCode }"
+powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeploymentType 'Uninstall'; exit $LastExitCode }"
 
 .EXAMPLE
 
@@ -68,7 +68,7 @@ This script does not generate any output.
 
 .NOTES
 
-Toolkit Exit Code Ranges:
+Toolkit exit Code Ranges:
 - 60000 - 68999: Reserved for built-in exit codes in Deploy-Application.ps1, Deploy-Application.exe, and AppDeployToolkitMain.ps1
 - 69000 - 69999: Recommended for user customized exit codes in Deploy-Application.ps1
 - 70000 - 79999: Recommended for user customized exit codes in AppDeployToolkitExtensions.ps1
@@ -77,7 +77,7 @@ Toolkit Exit Code Ranges:
 
 https://psappdeploytoolkit.com
 #>
-
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '')]
 
 [CmdletBinding()]
 param (
@@ -104,15 +104,16 @@ try
     }
     catch
     {
+        Write-Error -Message "Failed to set execution policy for process scope: $($_.Exception.Message)" -ErrorAction 'Continue'
     }
 
     ##*===============================================
     ##* VARIABLE DECLARATION
     ##*===============================================
     ## Variables: Application
-    [String]$appVendor = 'Mozilla'
-    [String]$appName = 'Firefox'
-    [String]$appVersion = '152.0.4'
+    [String]$appVendor = 'digiexam'
+    [String]$appName = 'Digiexam'
+    [String]$appVersion = '26.1.24'
     [String]$appArch = 'x64'
     [String]$appLang = 'EN'
     [String]$appRevision = '01'
@@ -127,7 +128,7 @@ try
     ##* Do not modify section below
     #region DoNotModify
 
-    ## Variables: Exit Code
+    ## Variables: exit Code
     [Int32]$mainExitCode = 0
 
     ## Variables: Script
@@ -141,7 +142,7 @@ try
     {
         $InvocationInfo = $HostInvocation
     }
-    Else
+    else
     {
         $InvocationInfo = $MyInvocation
     }
@@ -159,7 +160,7 @@ try
         {
             . $moduleAppDeployToolkitMain -DisableLogging
         }
-        Else
+        else
         {
             . $moduleAppDeployToolkitMain
         }
@@ -171,14 +172,14 @@ try
             [Int32]$mainExitCode = 60008
         }
         Write-Error -Message "Module [$moduleAppDeployToolkitMain] failed to load: `n$($_.Exception.Message)`n `n$($_.InvocationInfo.PositionMessage)" -ErrorAction 'Continue'
-        ## Exit the script, returning the exit code to SCCM
+        ## exit the script, returning the exit code to SCCM
         if (Test-Path -LiteralPath 'variable:HostInvocation')
         {
-            $script:ExitCode = $mainExitCode; Exit
+            $script:ExitCode = $mainExitCode; exit
         }
-        Else
+        else
         {
-            Exit $mainExitCode
+            exit $mainExitCode
         }
     }
 
@@ -195,8 +196,8 @@ try
         ##*===============================================
         [String]$installPhase = 'Pre-Installation'
 
-        ## Show Welcome Message, close Firefox if required, allow up to 3 deferrals, and persist the prompt
-        Show-InstallationWelcome -CloseApps 'firefox=Firefox' -AllowDeferCloseApps -DeferTimes 3 -PersistPrompt -MinimizeWindows $false
+        ## Show Welcome Message, close Digiexam if required, allow up to 3 deferrals, and persist the prompt
+        Show-InstallationWelcome -CloseApps 'digiexam=Digiexam' -AllowDeferCloseApps -DeferTimes 3 -PersistPrompt -MinimizeWindows $false
 
         ## Show Progress Message (with the default message)
         Show-InstallationProgress
@@ -237,18 +238,18 @@ try
         ## Display a message at the end of the install
         if (-not $useDefaultMsi)
         {
-            Show-InstallationPrompt -Message "$appName installation complete." -ButtonRightText 'OK' -Icon Information -NoWait
+            Show-InstallationPrompt -Message "$appName installation complete." -ButtonRightText 'OK' -Icon Information -NoWait -Timeout 5
         }
     }
-    Elseif ($deploymentType -ieq 'Uninstall')
+    elseif ($deploymentType -ieq 'Uninstall')
     {
         ##*===============================================
         ##* PRE-UNINSTALLATION
         ##*===============================================
         [String]$installPhase = 'Pre-Uninstallation'
 
-        ## Show Welcome Message, close Firefox silently if running
-        Show-InstallationWelcome -CloseApps 'firefox=Firefox' -Silent
+        ## Show Welcome Message, close Digiexam silently if running
+        Show-InstallationWelcome -CloseApps 'digiexam=Digiexam' -CloseAppsCountdown 10
 
         ## Show Progress Message (with the default message)
         Show-InstallationProgress
@@ -280,17 +281,20 @@ try
         [String]$installPhase = 'Post-Uninstallation'
 
         ## <Perform Post-Uninstallation tasks here>
-
+        if (-not $useDefaultMsi)
+        {
+            Show-InstallationPrompt -Message "$appName uninstallation complete." -ButtonRightText 'OK' -Icon Information -NoWait -Timeout 5
+        }
     }
-    Elseif ($deploymentType -ieq 'Repair')
+    elseif ($deploymentType -ieq 'Repair')
     {
         ##*===============================================
         ##* PRE-REPAIR
         ##*===============================================
         [String]$installPhase = 'Pre-Repair'
 
-        ## Show Welcome Message, close Firefox with a 60 second countdown before automatically closing
-        Show-InstallationWelcome -CloseApps 'firefox=Firefox' -Silent -CloseAppsCountdown 60
+        ## Show Welcome Message, close Digiexam with a 60 second countdown before automatically closing
+        Show-InstallationWelcome -CloseApps 'Digiexam=Digiexam' -CloseAppsCountdown 60
 
         ## Show Progress Message (with the default message)
         Show-InstallationProgress

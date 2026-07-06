@@ -177,10 +177,110 @@ function Invoke-TFUpdateTestCase
 }
 
 # ---------------------------------------------------------------------------
-# Region: Package Preparation
+# Region: Unified Template Package Preparation
+# ---------------------------------------------------------------------------
+function New-IntuneTestWorkDir
+{
+    <#
+    .SYNOPSIS
+        Unified entry point that dispatches to V3 or V4 work directory preparation
+        based on the app configuration hashtable.
+    .OUTPUTS
+        [hashtable] with keys: WorkDir, FilesDir.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App,
+
+        [Parameter(Mandatory)]
+        [string]$BasePath
+    )
+
+    if ($App.TemplateVersion -eq 'V3')
+    {
+        $runnerScript = Join-Path $PSScriptRoot "..\V3\$($App.AppFolderName)\Deploy-Application.ps1"
+        return New-IntuneTestWorkDirV3 `
+            -AppFolderName       $App.AppFolderName `
+            -BasePath            $BasePath `
+            -InstallerSourceFile $App.InstallerSourceFile `
+            -RunnerScriptPath    $runnerScript
+    }
+    else
+    {
+        $templateParamsPath = Join-Path $PSScriptRoot "..\V4\$($App.AppFolderName)\New-ADTTemplate.params.ps1"
+        return New-IntuneTestWorkDirV4 `
+            -AppFolderName      $App.AppFolderName `
+            -BasePath           $BasePath `
+            -TemplateParamsPath $templateParamsPath
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Region: V3 Template Package Preparation
+# ---------------------------------------------------------------------------
+function New-IntuneTestWorkDirV3
+{
+    <#
+    .SYNOPSIS
+        Prepares a working directory for an app by copying the PSADT template,
+        the installer files, and the runner script.
+    .OUTPUTS
+        [hashtable] with keys: WorkDir, FilesDir.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$AppFolderName,
+
+        [Parameter(Mandatory)]
+        [string]$BasePath,
+
+        [Parameter(Mandatory)]
+        [string]$InstallerSourceFile,
+
+        [Parameter(Mandatory)]
+        [string]$RunnerScriptPath
+    )
+
+    $workDir = Join-Path $BasePath $AppFolderName
+    New-Item -Path $workDir -ItemType Directory -Force | Out-Null
+
+    # Step 1: Copy PSADT v3 template
+    $v3Path = $env:PSADT_TEMPLATE_V3_DIR
+    if (-not (Test-Path $v3Path))
+    {
+        throw "PSADT v3 template folder missing: $v3Path"
+    }
+    Copy-Item -Path (Join-Path $v3Path '*') -Destination $workDir -Recurse -Force
+    Write-Information "[$AppFolderName] Copied PSADT template from '$v3Path' to '$workDir'." -InformationAction Continue
+
+    # Step 2: Copy installer files
+    $filesDir = Join-Path $workDir 'Files'
+    if (-not (Test-Path $filesDir))
+    {
+        New-Item -Path $filesDir -ItemType Directory -Force | Out-Null
+    }
+    if (-not (Test-Path $InstallerSourceFile))
+    {
+        throw "Installer file not found: '$InstallerSourceFile'."
+    }
+    Copy-Item -Path $InstallerSourceFile -Destination $filesDir -Force
+    Write-Information "[$AppFolderName] Copied installer '$([System.IO.Path]::GetFileName($InstallerSourceFile))' to '$filesDir'." -InformationAction Continue
+
+    # Step 3: Copy runner script into work directory without renaming.
+    Copy-Item -Path $RunnerScriptPath -Destination $workDir -Force
+    Write-Information "[$AppFolderName] Copied runner script '$([System.IO.Path]::GetFileName($RunnerScriptPath))' to '$workDir'." -InformationAction Continue
+
+    return @{
+        WorkDir = $workDir
+        FilesDir = $filesDir
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Region: V4 Template Package Preparation
 # ---------------------------------------------------------------------------
 
-function New-IntuneTestWorkDir
+function New-IntuneTestWorkDirV4
 {
     <#
     .SYNOPSIS
@@ -206,7 +306,7 @@ function New-IntuneTestWorkDir
         Remove-Item -Path $workDir -Recurse -Force
     }
 
-    $templateRunnerPath = Join-Path $PSScriptRoot '..\..\_Shared\Invoke-ADTTemplateRunner.ps1'
+    $templateRunnerPath = Join-Path $PSScriptRoot '..\_Shared\Invoke-ADTTemplateRunner.ps1'
     if (-not (Test-Path -LiteralPath $templateRunnerPath -PathType Leaf))
     {
         throw "Template runner file not found: $templateRunnerPath"
@@ -301,8 +401,8 @@ function New-IntuneTestWorkDir
         $resolvedPackageRoot = $workDir
     }
 
-    $recordingModuleSource = Join-Path $PSScriptRoot '..\..\_Shared\PSAppDeployToolkit.Recording.psm1'
-    $recordingManifestSource = Join-Path $PSScriptRoot '..\..\_Shared\PSAppDeployToolkit.Recording.psd1'
+    $recordingModuleSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psm1'
+    $recordingManifestSource = Join-Path $PSScriptRoot '..\_Shared\PSAppDeployToolkit.Recording.psd1'
     if (Test-Path -LiteralPath $recordingModuleSource -PathType Leaf)
     {
         $recordingDir = Join-Path $resolvedPackageRoot 'PSAppDeployToolkit.Recording'
@@ -353,7 +453,8 @@ function New-IntuneWinPackage
 
     # Wrap with IntuneWinAppUtil
     & $IntuneWinAppUtilPath -c $WorkDir -s $SetupFileName -o $WorkDir
-    $intunewinFile = Join-Path $WorkDir 'Invoke-AppDeployToolkit.intunewin'
+    $setupBaseName = [System.IO.Path]::GetFileNameWithoutExtension($SetupFileName)
+    $intunewinFile = Join-Path $WorkDir "$setupBaseName.intunewin"
     if (-not (Test-Path $intunewinFile))
     {
         throw "IntuneWinAppUtil did not produce expected output: $intunewinFile"
@@ -488,6 +589,137 @@ function Publish-IntuneWin32App
     }
 
     return $win32App
+}
+
+# ---------------------------------------------------------------------------
+# Region: Parallel Poll with Retry
+# ---------------------------------------------------------------------------
+
+function Invoke-ParallelAppPollWithRetry
+{
+    <#
+    .SYNOPSIS
+        Runs parallel ThreadJob polls for app installation or uninstallation
+        with a configurable retry loop. Handles MDM sync and IME restart
+        between retry attempts.
+    .OUTPUTS
+        [hashtable] with keys: Succeeded (string[]), Failed (string[]).
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$UploadedApps,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Uninstall')]
+        [string]$Operation,
+
+        [Parameter(Mandatory)]
+        [string]$HelperScriptPath,
+
+        [string[]]$AppNames,
+
+        [int]$MaxRetryCount = 1
+    )
+
+    if (-not (Test-Path -LiteralPath $HelperScriptPath))
+    {
+        throw "HelperScriptPath not found: $HelperScriptPath"
+    }
+
+    if (-not $AppNames)
+    {
+        $AppNames = @($UploadedApps.Keys)
+    }
+
+    $waitFunction = if ($Operation -eq 'Install') { 'Wait-AppInstallation' } else { 'Wait-AppUninstallation' }
+
+    # Initial poll.
+    $jobs = foreach ($appName in $AppNames)
+    {
+        $appInfo = $UploadedApps[$appName]
+        $displayName = $appInfo.RegDisplayName
+        $valueName = $appInfo.RegVersionName
+        $expectedValue = $appInfo.RegVersionValue
+        Start-ThreadJob -Name "$Operation-$appName" -ScriptBlock {
+            . $using:HelperScriptPath
+            & $using:waitFunction -DisplayName $using:displayName -ValueName $using:valueName -ExpectedValue $using:expectedValue -SkipImeRestartAndSync
+        }
+    }
+
+    Write-Information "Waiting for $($jobs.Count) parallel $($Operation.ToLower()) polls..." -InformationAction Continue
+    $jobs | Wait-Job | Out-Null
+
+    $succeededApps = @()
+    $appsToCheck = @($AppNames)
+
+    for ($attempt = 0; $attempt -le $MaxRetryCount; $attempt++)
+    {
+        if ($attempt -gt 0)
+        {
+            Write-Information "[Parallel $Operation] Retry attempt $attempt for failed apps: $($appsToCheck -join ', ')" -InformationAction Continue
+
+            Invoke-MdmSync
+            Start-Sleep -Seconds 8
+            Wait-IntuneManagementExtension
+
+            $retryJobs = foreach ($appName in $appsToCheck)
+            {
+                $appInfo = $UploadedApps[$appName]
+                $displayName = $appInfo.RegDisplayName
+                $valueName = $appInfo.RegVersionName
+                $expectedValue = $appInfo.RegVersionValue
+                Start-ThreadJob -Name "${Operation}Retry$attempt-$appName" -ScriptBlock {
+                    . $using:HelperScriptPath
+                    & $using:waitFunction -DisplayName $using:displayName -ValueName $using:valueName -ExpectedValue $using:expectedValue -SkipImeRestartAndSync
+                }
+            }
+
+            Write-Information "Waiting for $($retryJobs.Count) retry $($Operation.ToLower()) polls..." -InformationAction Continue
+            $retryJobs | Wait-Job | Out-Null
+        }
+
+        $nextFailedApps = @()
+        foreach ($appName in $appsToCheck)
+        {
+            $jobName = if ($attempt -eq 0) { "$Operation-$appName" } else { "${Operation}Retry$attempt-$appName" }
+            $jobResult = Get-Job -Name $jobName -ErrorAction SilentlyContinue | Receive-Job
+            if ($jobResult -ne $true)
+            {
+                Write-Information "[$appName] $Operation poll result (attempt $attempt): $jobResult" -InformationAction Continue
+                $nextFailedApps += $appName
+            }
+            else
+            {
+                if (-not ($succeededApps -contains $appName))
+                {
+                    $succeededApps += $appName
+                }
+            }
+        }
+
+        if ($attempt -gt 0)
+        {
+            $retryJobs | Remove-Job -Force
+        }
+        else
+        {
+            $jobs | Remove-Job -Force
+        }
+
+        $appsToCheck = @($nextFailedApps)
+        if (-not $appsToCheck)
+        {
+            break
+        }
+    }
+
+    Write-Information "[Parallel $Operation] Succeeded: $(if ($succeededApps) { $succeededApps -join ', ' } else { 'none' })" -InformationAction Continue
+    Write-Information "[Parallel $Operation] Failed: $(if ($appsToCheck) { $appsToCheck -join ', ' } else { 'none' })" -InformationAction Continue
+
+    return @{
+        Succeeded = $succeededApps
+        Failed    = @($appsToCheck)
+    }
 }
 
 # ---------------------------------------------------------------------------
