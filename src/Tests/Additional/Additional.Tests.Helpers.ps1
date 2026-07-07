@@ -913,8 +913,8 @@ function script:Get-PSADTDeploymentCommands
         return @{
             # Install   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive'
             # Uninstall = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
-            Install   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
-            Uninstall = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+            Install   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+            Uninstall = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
         }
     }
     if (Test-Path (Join-Path $PackageDir 'Deploy-Application.exe'))
