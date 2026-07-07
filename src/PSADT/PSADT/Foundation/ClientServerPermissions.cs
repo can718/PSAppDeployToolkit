@@ -37,10 +37,12 @@ namespace PSADT.Foundation
         {
             // Get the primary token for the user if they have a valid session ID, otherwise we'll just use their SID.
             using WindowsIdentity currentUser = WindowsIdentity.GetCurrent();
+            bool useCallerToken = runAsActiveUser.SessionId == AccountUtilities.CallerSessionId && !AccountUtilities.CallerIsLocalSystem;
             using SafeHandle? hPrimaryToken = runAsActiveUser.SessionId != uint.MaxValue
-                ? runAsActiveUser != AccountUtilities.CallerRunAsActiveUser || TokenManager.CanGetUserPrimaryToken
-                ? await TokenManager.GetUserPrimaryTokenAsync(runAsActiveUser.SessionId, elevatedTokenType).ConfigureAwait(false)
-                : currentUser.AccessToken
+                // Interactive admin runs can remediate with the caller token when targeting the same session.
+                ? useCallerToken
+                    ? currentUser.AccessToken
+                    : await TokenManager.GetUserPrimaryTokenAsync(runAsActiveUser.SessionId, elevatedTokenType).ConfigureAwait(false)
                 : null;
             Func<FileInfo, bool> testEffectiveAccess = hPrimaryToken is null
                 ? (path) => FileSystemUtilities.TestEffectiveAccess(path, runAsActiveUser.SID, _requiredPermissions)
