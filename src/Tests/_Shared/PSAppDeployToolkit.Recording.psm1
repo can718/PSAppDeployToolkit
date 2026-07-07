@@ -84,6 +84,120 @@ function Start-AdditionalTestRecording
 
 <#
 .SYNOPSIS
+Starts additional test recording for PSADT v3 execution flows.
+
+.DESCRIPTION
+Uses explicit v3-compatible application and deployment metadata instead of
+relying on a v4 deployment session. When values are not passed in, the
+function falls back to script-scoped v3 variables when available.
+#>
+function Start-AdditionalTestRecordingV3
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyString()]
+        [string]$AppName,
+
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyString()]
+        [string]$DeploymentType
+    )
+
+    if (-not $script:helperLoaded)
+    {
+        Import-AdditionalTestRecordingHelper
+
+        if (-not $script:helperLoaded)
+        {
+            Write-ADTLogEntry -Message 'V3 recording start skipped because TerraForge helper could not be loaded.' -Severity Warning
+            return
+        }
+
+        Start-Sleep -Seconds 10
+        Write-ADTLogEntry -Message 'TerraForge helper loaded successfully for V3 recording.' -Severity Info
+    }
+    Write-ADTLogEntry -Message 'Start-AdditionalTestRecordingV3 callback invoked.' -Severity Info
+
+    if ($script:recordingStarted)
+    {
+        Write-ADTLogEntry -Message 'V3 recording start skipped because a recording is already active.' -Severity Info
+        return
+    }
+
+    try
+    {
+        if (-not $script:helperLoaded)
+        {
+            Write-ADTLogEntry -Message 'V3 recording start skipped because TerraForge helper was not loaded.' -Severity Warning
+            return
+        }
+
+        if (-not $script:terraForgeHelperModule -or -not (Get-Command -Name Start-TerraForgeRecording -Module $script:terraForgeHelperModule -CommandType Function -ErrorAction SilentlyContinue))
+        {
+            Write-ADTLogEntry -Message 'V3 recording start skipped because Start-TerraForgeRecording is unavailable.' -Severity Info
+            return
+        }
+
+        if ([System.String]::IsNullOrWhiteSpace($AppName) -and (Get-Variable -Name appName -Scope Script -ErrorAction SilentlyContinue))
+        {
+            $AppName = $script:appName
+        }
+
+        if ([System.String]::IsNullOrWhiteSpace($DeploymentType) -and (Get-Variable -Name DeploymentType -Scope Script -ErrorAction SilentlyContinue))
+        {
+            $DeploymentType = $script:DeploymentType
+        }
+
+        if ([System.String]::IsNullOrWhiteSpace($DeploymentType) -and (Get-Variable -Name deploymentType -Scope Script -ErrorAction SilentlyContinue))
+        {
+            $DeploymentType = $script:deploymentType
+        }
+
+        if ([System.String]::IsNullOrWhiteSpace($AppName))
+        {
+            Write-ADTLogEntry -Message 'V3 recording start skipped because AppName could not be resolved.' -Severity Warning
+            return
+        }
+
+        if ([System.String]::IsNullOrWhiteSpace($DeploymentType))
+        {
+            Write-ADTLogEntry -Message 'V3 recording start skipped because DeploymentType could not be resolved.' -Severity Warning
+            return
+        }
+
+        Write-ADTLogEntry -Message "Starting V3 recording for [$AppName] deployment type [$DeploymentType]." -Severity Info
+        $recordingContext = & $script:terraForgeHelperModule {
+            param
+            (
+                [string]$ResolvedAppName,
+                [string]$ResolvedDeploymentType
+            )
+
+            Start-TerraForgeRecording -AppName $ResolvedAppName -DeploymentType $ResolvedDeploymentType
+        } $AppName $DeploymentType
+        $script:recordingStarted = $recordingContext.Started
+        $script:recordingOutputFile = $recordingContext.OutputFile
+
+        if ($script:recordingStarted)
+        {
+            Write-ADTLogEntry -Message "V3 recording started successfully. Output file: [$($script:recordingOutputFile)]." -Severity Info
+        }
+        else
+        {
+            $recordingReason = if ([System.String]::IsNullOrWhiteSpace($recordingContext.Reason)) { 'No additional detail was returned by the TerraForge helper.' } else { $recordingContext.Reason }
+            Write-ADTLogEntry -Message "V3 recording start completed without starting an active recording. $recordingReason" -Severity Info
+        }
+    }
+    catch
+    {
+        Write-ADTLogEntry -Message "Failed to start V3 recording. Deployment will continue. $($_.Exception.Message)" -Severity Info
+    }
+}
+
+<#
+.SYNOPSIS
 Stops the additional test recording and uploads artifacts when available.
 
 .DESCRIPTION
@@ -161,6 +275,119 @@ function Stop-AdditionalTestRecording
 
 <#
 .SYNOPSIS
+Stops the additional test recording for PSADT v3 execution flows.
+
+.DESCRIPTION
+Finalizes the active TerraForge recording for a v3 test run without relying on
+v4 deployment session state. Application and deployment metadata can be passed
+explicitly or resolved from script-scoped v3 variables when available.
+#>
+function Stop-AdditionalTestRecordingV3
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyString()]
+        [string]$AppName,
+
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyString()]
+        [string]$DeploymentType
+    )
+
+    Write-ADTLogEntry -Message 'Stop-AdditionalTestRecordingV3 callback invoked.' -Severity Info
+
+    if ($script:recordingStopAttempted)
+    {
+        Write-ADTLogEntry -Message 'V3 recording stop skipped because a stop was already attempted.' -Severity Info
+        return
+    }
+
+    if (!$script:recordingStarted)
+    {
+        Write-ADTLogEntry -Message 'V3 recording stop skipped because no recording was started.' -Severity Warning
+        return
+    }
+
+    $script:recordingStopAttempted = $true
+
+    if (-not $script:helperLoaded)
+    {
+        Write-ADTLogEntry -Message 'V3 recording stop skipped because TerraForge helper was not loaded.' -Severity Warning
+        return
+    }
+
+    if (-not $script:terraForgeHelperModule -or -not (Get-Command -Name Stop-TerraForgeRecording -Module $script:terraForgeHelperModule -CommandType Function -ErrorAction SilentlyContinue))
+    {
+        Write-ADTLogEntry -Message 'V3 recording stop skipped because Stop-TerraForgeRecording is unavailable.' -Severity Warning
+        return
+    }
+
+    if ([System.String]::IsNullOrWhiteSpace($AppName) -and (Get-Variable -Name appName -Scope Script -ErrorAction SilentlyContinue))
+    {
+        $AppName = $script:appName
+    }
+
+    if ([System.String]::IsNullOrWhiteSpace($DeploymentType) -and (Get-Variable -Name DeploymentType -Scope Script -ErrorAction SilentlyContinue))
+    {
+        $DeploymentType = $script:DeploymentType
+    }
+
+    if ([System.String]::IsNullOrWhiteSpace($DeploymentType) -and (Get-Variable -Name deploymentType -Scope Script -ErrorAction SilentlyContinue))
+    {
+        $DeploymentType = $script:deploymentType
+    }
+
+    Start-Sleep -Seconds 3
+    $uploadEnvironmentStatus = @(
+        "TERRAFORGE_API_BASE_URL=$(-not [System.String]::IsNullOrWhiteSpace($env:TERRAFORGE_API_BASE_URL))"
+        "TEST_RUN_ID=$(-not [System.String]::IsNullOrWhiteSpace($env:TEST_RUN_ID))"
+        "INFRA_MI_CLIENT_ID=$(-not [System.String]::IsNullOrWhiteSpace($env:INFRA_MI_CLIENT_ID))"
+        "INFRA_KEYVAULT=$(-not [System.String]::IsNullOrWhiteSpace($env:INFRA_KEYVAULT))"
+        "TERRAFORGE_API_KEY_SECRET=$(-not [System.String]::IsNullOrWhiteSpace($env:TERRAFORGE_API_KEY_SECRET))"
+    ) -join ', '
+    Write-ADTLogEntry -Message "TerraForge upload environment status: $uploadEnvironmentStatus" -Severity Info
+
+    if (-not [System.String]::IsNullOrWhiteSpace($AppName) -and -not [System.String]::IsNullOrWhiteSpace($DeploymentType))
+    {
+        Write-ADTLogEntry -Message "Stopping V3 recording for [$AppName] deployment type [$DeploymentType]." -Severity Info
+    }
+    else
+    {
+        Write-ADTLogEntry -Message 'Stopping V3 recording without resolved application metadata.' -Severity Warning
+    }
+
+    $recordingResult = & $script:terraForgeHelperModule {
+        param
+        (
+            [bool]$RecordingStarted,
+            [string]$RecordingOutputFile
+        )
+
+        Stop-TerraForgeRecording -RecordingStarted:$RecordingStarted -RecordingOutputFile $RecordingOutputFile
+    } $script:recordingStarted $script:recordingOutputFile
+    if ($recordingResult.Error)
+    {
+        Write-ADTLogEntry -Message "V3 recording stop/upload completed with warning for output file [$($script:recordingOutputFile)]: $($recordingResult.Error)" -Severity Warning
+    }
+    elseif ($recordingResult.UploadRequested -and $recordingResult.UploadSucceeded)
+    {
+        Write-ADTLogEntry -Message "V3 recording stopped and uploaded successfully for output file [$($script:recordingOutputFile)]." -Severity Info
+    }
+    elseif (-not $recordingResult.UploadRequested)
+    {
+        Append-RegistryValue -Name 'RecordingUploadNotRequested' -Value $script:recordingOutputFile
+        Write-ADTLogEntry -Message "Set registry value for V3 output file [$($script:recordingOutputFile)] successfully." -Severity Info
+    }
+    else
+    {
+        Write-ADTLogEntry -Message "V3 recording stop request completed for output file [$($script:recordingOutputFile)]." -Severity Info
+    }
+}
+
+<#
+.SYNOPSIS
 Registers recording callbacks for additional test execution.
 
 .DESCRIPTION
@@ -221,7 +448,9 @@ function Import-AdditionalTestRecordingHelper
 
 Export-ModuleMember -Function @(
     'Start-AdditionalTestRecording',
+    'Start-AdditionalTestRecordingV3',
     'Stop-AdditionalTestRecording',
+    'Stop-AdditionalTestRecordingV3',
     'Register-AdditionalTestRecordingCallbacks',
     'Import-AdditionalTestRecordingHelper'
 )
