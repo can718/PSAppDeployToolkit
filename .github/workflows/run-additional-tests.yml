@@ -99,8 +99,17 @@ jobs:
         $recordingPathpsd1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psd1'
         Copy-Item -LiteralPath $recordingPathpsd1 -Destination $tfScriptsDir -Force
 
-        # add module into $env:PSModulePath
-        $env:PSModulePath += ";$tfScriptsDir"
+        # add module into machine-level PSModulePath
+        $moduleRoot = $tfScriptsDir
+        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+        if ([string]::IsNullOrWhiteSpace($machinePath)) {
+          $machinePath = ''
+        }
+        $segments = $machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        if ($segments -notcontains $moduleRoot) {
+          [Environment]::SetEnvironmentVariable('PSModulePath', "$machinePath;$moduleRoot", 'Machine')
+        }
+        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
 
 
         . $tfHelper
