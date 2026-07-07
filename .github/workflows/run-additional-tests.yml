@@ -388,8 +388,8 @@ jobs:
         PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
-        $VerbosePreference = 'Continue'
-        $InformationPreference = 'Continue'
+        # $VerbosePreference = 'Continue'
+        # $InformationPreference = 'Continue'
         $pesterStart = Get-Date
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
         $workspaceRoot = '${{ github.workspace }}'
