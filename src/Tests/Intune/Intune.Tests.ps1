@@ -240,6 +240,11 @@ Describe 'Intune Tests' {
 
         It '<Name> should be installed' -ForEach $script:ParallelApps {
             $script:ParallelInstallResults[$Name] | Should -BeTrue -Because "'$Name' was not installed successfully via Intune MDM sync"
+
+            # Validate PSADT log exit code.
+            $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+            $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Install'
+            $logValidation.Success | Should -BeTrue -Because "PSADT log validation: $($logValidation.Message)"
         }
 
         It 'Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
@@ -294,6 +299,11 @@ Describe 'Intune Tests' {
 
         It '<Name> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) {
             $script:ParallelUninstallResults[$Name] | Should -BeTrue -Because "'$Name' was not uninstalled successfully via Intune MDM sync"
+
+            # Validate PSADT log exit code.
+            $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+            $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Uninstall'
+            $logValidation.Success | Should -BeTrue -Because "PSADT log validation: $($logValidation.Message)"
         }
 
         AfterAll {
