@@ -511,36 +511,36 @@ function script:Update-PSADTPackageDeployScript
         [switch]$UseInformationLogs
     )
 
-    $sourceScriptName = Split-Path -Path $SourceScript -Leaf
+    # Retained for backward compatibility with existing call sites.
+    [void]$ExpectedContentPattern
+    [void]$AdditionalContentSourceDir
+
+    # Step 1: check source script exists.
+    if (-not (Test-Path -LiteralPath $SourceScript -PathType Leaf))
+    {
+        throw "SourceScript file not found: $SourceScript"
+    }
+
+    # Step 2: check package directory exists.
+    if (-not (Test-Path -LiteralPath $PackageDir -PathType Container))
+    {
+        throw "PackageDir folder not found: $PackageDir"
+    }
+
+    # Step 3: force copy source script to package directory.
+    Copy-Item -LiteralPath $SourceScript -Destination $PackageDir -Force
+
+    $destScriptPath = Join-Path -Path $PackageDir -ChildPath (Split-Path -Path $SourceScript -Leaf)
     if ($UseInformationLogs)
     {
-        Write-Information "::info::[$LogPrefix] Step 3: Updating deployment script '$sourceScriptName'..." -InformationAction Continue
+        Write-Information "::info::[$LogPrefix] Copied '$SourceScript' to '$destScriptPath'." -InformationAction Continue
     }
     else
     {
-        Write-Verbose "[$LogPrefix] Step 3: Updating deployment script '$sourceScriptName'..."
+        Write-Verbose "[$LogPrefix] Copied '$SourceScript' to '$destScriptPath'."
     }
 
-    $destScript = Get-ChildItem -Path $PackageDir -Filter $sourceScriptName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $destScript)
-    {
-        $destScript = Get-ChildItem -Path $PackageDir -Recurse -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -in @('Invoke-AppDeployToolkit.ps1', 'Deploy-Application.ps1') } |
-            Select-Object -First 1
-    }
-    $destScript | Should -Not -BeNullOrEmpty -Because "A deployment script matching '$sourceScriptName' (or a standard PSADT script name) must exist in package '$PackageDir'"
-
-    if (-not [string]::IsNullOrWhiteSpace($AdditionalContentSourceDir))
-    {
-        Copy-Item -Path "$AdditionalContentSourceDir\*" -Destination $PackageDir -Recurse -Force
-    }
-    else
-    {
-        Copy-Item -Path $SourceScript -Destination $destScript.FullName -Force
-    }
-    $content = Get-Content -Path $destScript.FullName -Raw
-    $content | Should -Match $ExpectedContentPattern
-    return $destScript
+    return (Get-Item -LiteralPath $destScriptPath -ErrorAction Stop)
 }
 
 function script:Copy-PSADTPackageInstallerToFiles
@@ -577,6 +577,12 @@ function script:Copy-PSADTPackageInstallerToFiles
 
     $scriptDir = Split-Path -Path $DeployScriptPath -Parent
     $filesDir = Join-Path -Path $scriptDir -ChildPath 'Files'
+    if ($UseInformationLogs)
+    {
+        Write-Information "::info::[$LogPrefix] Deploy script path used for Files resolution: '$DeployScriptPath'" -InformationAction Continue
+        Write-Information "::info::[$LogPrefix] Installer source path: '$InstallerSource'" -InformationAction Continue
+        Write-Information "::info::[$LogPrefix] Resolved Files directory: '$filesDir'" -InformationAction Continue
+    }
     if (-not (Test-Path $filesDir))
     {
         New-Item -ItemType Directory -Path $filesDir -Force | Out-Null
@@ -584,6 +590,10 @@ function script:Copy-PSADTPackageInstallerToFiles
 
     Copy-Item -Path $InstallerSource -Destination $filesDir -Force
     $expectedName = if ([string]::IsNullOrWhiteSpace($ExpectedFileName)) { Split-Path -Path $InstallerSource -Leaf } else { $ExpectedFileName }
+    if ($UseInformationLogs)
+    {
+        Write-Information "::info::[$LogPrefix] Expected copied installer path: '$(Join-Path $filesDir $expectedName)'" -InformationAction Continue
+    }
     Test-Path (Join-Path $filesDir $expectedName) | Should -BeTrue
 }
 

@@ -344,7 +344,7 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:WinSCP_Install] Install winSCP via SCCM application deployment' {
+        It '[MCM:WinSCP_Install] winSCP should installed' {
             Write-Information "::info::[winSCP] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -463,10 +463,10 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:WinSCP_Uninstall] Uninstall winSCP via SCCM application deployment' {
+        It '[MCM:WinSCP_Uninstall] winSCP should uninstalled' {
             if (-not $script:winscpInstallDeploySucceeded)
             {
-                Set-ItResult -Skipped -Because "Prerequisite test 'Installs winSCP via SCCM application deployment' did not complete successfully"
+                Set-ItResult -Skipped -Because "Prerequisite test 'winSCP should installed' did not complete successfully"
                 return
             }
 
@@ -549,7 +549,7 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:VLC_media_player_Install] Install VLC via SCCM application deployment' {
+        It '[MCM:VLC_media_player_Install] VLC should installed' {
             if (-not (Test-PSADTTemplateValidationGate))
             {
                 Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
@@ -663,10 +663,10 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:VLC_media_player_Uninstall] Uninstall VLC via SCCM application deployment' {
+        It '[MCM:VLC_media_player_Uninstall] VLC should uninstalled' {
             if (-not $script:vlcInstallDeploySucceeded)
             {
-                Set-ItResult -Skipped -Because "Prerequisite test 'Installs VLC via SCCM application deployment' did not complete successfully"
+                Set-ItResult -Skipped -Because "Prerequisite test 'VLC should installed' did not complete successfully"
                 return
             }
 
@@ -747,7 +747,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Notepad++_Install] Install Notepad++ via SCCM application deployment' {
+        It '[MCM:Notepad++_Install] Notepad++ should installed' {
             Write-Information '::info::[Notepad++] Step 0: Verifying template validation gate...'
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -943,8 +943,10 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Digiexam_Install] [V3] Install DigiExam via SCCM application deployment' {
+        It '[MCM:Digiexam_Install] DigiExam should installed' {
             Write-Information "::info::[DigiExam] Step 0: Verifying template validation gate..."
+            Write-Information "DigiExam SourceScript: $script:digiExamSourceScript"
+            Write-Information "DigiExam PackageDir: $script:digiExamPackageDir"
             if (-not (Test-PSADTTemplateValidationGate))
             {
                 Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
@@ -966,11 +968,13 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             {
                 return
             }
+            Write-Information "::info::[DigiExam] Prerequisites verified." -InformationAction Continue
 
             # ----------------------------------------------------------------
             # Step 2 - Copy V3 template to DigiExam package directory
             # ----------------------------------------------------------------
             Initialize-PSADTPackageDirectoryFromTemplate -TemplateDir $script:v3Dir -PackageDir $script:digiExamPackageDir -LogPrefix 'DigiExam' -UseInformationLogs
+            Write-Information "::info::[DigiExam] V3 template copied to DigiExam package directory." -InformationAction Continue
 
             # ----------------------------------------------------------------
             # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with DigiExam version
@@ -981,11 +985,12 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
                 -ExpectedContentPattern 'DigiExam' `
                 -LogPrefix 'DigiExam' `
                 -UseInformationLogs
+            Write-Information "::info::[DigiExam] Invoke-AppDeployToolkit.ps1 replaced with DigiExam version." -InformationAction Continue
 
             # ----------------------------------------------------------------
             # Step 4 - Copy DigiExam MSI into Files folder
             # ----------------------------------------------------------------
-            $msiSource = 'C:\Tools\Intune\DigiExam\Digiexam_26.1.24_x64_en-US.msi'
+            $msiSource = 'C:\Tools\Intune\Digiexam_26.1.24_x64_en-US.msi'
             Copy-PSADTPackageInstallerToFiles `
                 -DeployScriptPath $destScript.FullName `
                 -InstallerSource $msiSource `
@@ -993,6 +998,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
                 -LogPrefix 'DigiExam' `
                 -UseInformationLogs `
                 -ExpectedFileName 'Digiexam_26.1.24_x64_en-US.msi'
+            Write-Information "::info::[DigiExam] DigiExam MSI copied to Files folder." -InformationAction Continue
 
             # ----------------------------------------------------------------
             # Step 5 - Verify SMB content share and directories exist
@@ -1006,7 +1012,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             {
                 return
             }
-
+            Write-Information "::info::[DigiExam] SMB content share and directories exist." -InformationAction Continue
             # ----------------------------------------------------------------
             # Step 6 - Import application into SCCM
             # ----------------------------------------------------------------
@@ -1039,19 +1045,19 @@ if ($app) { Write-Host "Installed" }
                     -PackageDir $script:digiExamPackageDir `
                     -DetectScript $detectScript `
                     -Description "PSADT v3 DigiExam template - DigiExam $script:digiExamAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
-
+                Write-Information "::info::[DigiExam] DigiExam application imported into SCCM." -InformationAction Continue
                 # ----------------------------------------------------------------
                 # Step 7 - Distribute content
                 # ----------------------------------------------------------------
                 Write-Verbose '[DigiExam] Step 7: Triggering content distribution...'
                 Start-PSADTContentDistributionAndAssert -AppName $script:digiExamAppName -LogPrefix 'DigiExam'
-
+                Write-Information "::info::[DigiExam] Content distribution triggered." -InformationAction Continue
                 # ----------------------------------------------------------------
                 # Step 7b - Deploy application to collection
                 # ----------------------------------------------------------------
                 Write-Verbose "[DigiExam] Step 7b: Deploying application to collection '$($script:targetCollection)'..."
                 New-PSADTRequiredDeployment -AppName $script:digiExamAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'DigiExam'
-
+                Write-Information "::info::[DigiExam] DigiExam application deployed to collection '$($script:targetCollection)'." -InformationAction Continue
                 # ----------------------------------------------------------------
                 # Step 8 - Poll application deployment status
                 # ----------------------------------------------------------------
@@ -1062,10 +1068,10 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:Digiexam_Uninstall] [V3] Uninstall DigiExam via SCCM application deployment' {
+        It '[MCM:Digiexam_Uninstall] DigiExam should uninstalled' {
             if (-not $script:digiExamInstallDeploySucceeded)
             {
-                Set-ItResult -Skipped -Because "Prerequisite test 'Installs DigiExam via SCCM application deployment' did not complete successfully"
+                Set-ItResult -Skipped -Because "Prerequisite test 'DigiExam should installed' did not complete successfully"
                 return
             }
 
@@ -1146,7 +1152,7 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Everything_Install] [V3] Install Everything via SCCM application deployment' {
+        It '[MCM:Everything_Install] Everything should installed' {
             Write-Information "::info::[Everything] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -1265,10 +1271,10 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:Everything_Uninstall] [V3] Uninstall Everything via SCCM application deployment' {
+        It '[MCM:Everything_Uninstall] Everything should uninstalled' {
             if (-not $script:everythingInstallDeploySucceeded)
             {
-                Set-ItResult -Skipped -Because "Prerequisite test 'Installs Everything via SCCM application deployment' did not complete successfully"
+                Set-ItResult -Skipped -Because "Prerequisite test 'Everything should installed' did not complete successfully"
                 return
             }
 
