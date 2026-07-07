@@ -232,6 +232,12 @@ namespace PSADT.Security
                     {
                         throw new InvalidOperationException($"Failed to get the linked admin token for Session Id [{sessionId}].", ex);
                     }
+#pragma warning disable CA1031
+                    catch
+                    {
+                        // For non-HighestMandatory elevation types, fall through to WTSQueryUserToken fallback.
+                    }
+#pragma warning restore CA1031
                 }
             }
 
@@ -250,6 +256,12 @@ namespace PSADT.Security
                     {
                         throw new InvalidOperationException($"Failed to get the linked admin token for Session Id [{sessionId}].", ex);
                     }
+#pragma warning disable CA1031
+                    catch
+                    {
+                        // For non-HighestMandatory elevation types, fall through to GetPrimaryToken fallback.
+                    }
+#pragma warning restore CA1031
                 }
                 return GetPrimaryToken(hUserToken, uiAccess);
             }
