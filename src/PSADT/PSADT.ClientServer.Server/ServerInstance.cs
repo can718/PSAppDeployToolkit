@@ -27,7 +27,7 @@ namespace PSADT.ClientServer
     /// of <see cref="ServerInstance"/>, calling <see cref="OpenAsync"/> to start the client-server communication, and
     /// using a number of predefined methods to send commands to the client. Once the communication is
     /// complete, the <see cref="DisposeAsync()"/> method should be called to release resources. </para></remarks>
-    public sealed record class ServerInstance : IAsyncDisposable
+    public sealed class ServerInstance : IAsyncDisposable
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="ServerInstance"/> class, setting up inter-process communication
@@ -518,18 +518,6 @@ namespace PSADT.ClientServer
         public ValueTask<bool> RemoveEnvironmentVariableAsync(string variable)
         {
             return InvokeAsync<EnvironmentVariablePayload, bool>(PipeCommand.RemoveEnvironmentVariable, new(variable));
-        }
-
-        /// <summary>
-        /// Triggers a Group Policy update on the target system, optionally forcing the update and specifying whether to
-        /// run synchronously or asynchronously.
-        /// </summary>
-        /// <param name="force">true to reapply all policy settings, even those that have not changed; false to update only changed
-        /// settings.</param>
-        /// <returns>A ProcessResult object containing the outcome of the Group Policy update operation.</returns>
-        public ValueTask<ProcessResult> GroupPolicyUpdateAsync(bool force)
-        {
-            return InvokeAsync<GroupPolicyUpdatePayload, ProcessResult>(PipeCommand.GroupPolicyUpdate, new(force));
         }
 
         /// <summary>

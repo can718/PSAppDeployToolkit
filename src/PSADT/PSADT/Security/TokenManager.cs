@@ -228,16 +228,13 @@ namespace PSADT.Security
                         // Return the token handle.
                         return new(tokenBuf.AsReadOnlyStructure<nint>(), ownsHandle: true);
                     }
-                    catch (Exception ex) when (elevatedTokenType is ElevatedTokenType.HighestMandatory)
+                    catch (Exception ex)
                     {
-                        throw new InvalidOperationException($"Failed to get the linked admin token for Session Id [{sessionId}].", ex);
+                        if (elevatedTokenType is ElevatedTokenType.HighestMandatory)
+                        {
+                            throw new InvalidOperationException($"Failed to get the linked admin token for Session Id [{sessionId}].", ex);
+                        }
                     }
-#pragma warning disable CA1031
-                    catch
-                    {
-                        // For non-HighestMandatory elevation types, fall through to WTSQueryUserToken fallback.
-                    }
-#pragma warning restore CA1031
                 }
             }
 
@@ -252,16 +249,13 @@ namespace PSADT.Security
                     {
                         return GetLinkedPrimaryToken(hUserToken, uiAccess);
                     }
-                    catch (Exception ex) when (elevatedTokenType is ElevatedTokenType.HighestMandatory)
+                    catch (Exception ex)
                     {
-                        throw new InvalidOperationException($"Failed to get the linked admin token for Session Id [{sessionId}].", ex);
+                        if (elevatedTokenType is ElevatedTokenType.HighestMandatory)
+                        {
+                            throw new InvalidOperationException($"Failed to get the linked admin token for Session Id [{sessionId}].", ex);
+                        }
                     }
-#pragma warning disable CA1031
-                    catch
-                    {
-                        // For non-HighestMandatory elevation types, fall through to GetPrimaryToken fallback.
-                    }
-#pragma warning restore CA1031
                 }
                 return GetPrimaryToken(hUserToken, uiAccess);
             }

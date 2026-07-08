@@ -44,7 +44,6 @@ namespace PSADT.ClientServer
     /// ensures they conform to the expected format before executing the requested operation.</remarks>
     internal static class ClientExecutable
     {
-
         /// <summary>
         /// Initializes the application by setting the unhandled exception handler for the dialog manager.
         /// </summary>
@@ -57,7 +56,7 @@ namespace PSADT.ClientServer
             static void UnhandledExceptionHandler(Exception ex)
             {
                 Console.Error.WriteLine(DataSerialization.SerializeToString(ex));
-                Environment.FailFast($"An unhandled exception occurred that resulted in client termination: {ex}", ex);
+                Environment.FailFast($"An unhandled exception occurred that resulted in client termination.{Environment.NewLine}Exception Info: {ex}", ex);
             }
 
             // Exception handler for the dialog thread.
@@ -550,13 +549,6 @@ namespace PSADT.ClientServer
                                                 break;
                                             }
 
-                                        case PipeCommand.GroupPolicyUpdate:
-                                            {
-                                                using ProcessResult result = await GroupPolicyUpdateAsync(DeserializeBytes<GroupPolicyUpdatePayload>(requestBytes, payloadOffset).Force).ConfigureAwait(false);
-                                                await WriteSuccessAsync(result).ConfigureAwait(false);
-                                                break;
-                                            }
-
                                         case PipeCommand.ShellExecuteProcess:
                                             {
                                                 using ProcessResult result = await ShellExecuteProcessAsync(DeserializeBytes<ShellExecuteProcessPayload>(requestBytes, payloadOffset).Options).ConfigureAwait(false);
@@ -842,17 +834,6 @@ namespace PSADT.ClientServer
                     await pipe.FlushAsync(default).ConfigureAwait(false); pipe.WaitForPipeDrain();
                     return (int)ClientExitCode.Success;
                 }
-                if (arg.Equals("/GroupPolicyUpdate", StringComparison.Ordinal) || arg.Equals("/gpu", StringComparison.Ordinal))
-                {
-                    if (ArgvToDictionary(argv) is not ReadOnlyDictionary<string, string> arguments || !arguments.TryGetValue("Force", out string? forceStr) || !bool.TryParse(forceStr, out bool force))
-                    {
-                        throw new ClientException("The 'Force' argument is required and cannot be null or whitespace.", ClientExitCode.InvalidArguments);
-                    }
-                    ClientServerUtilities.SetOperationSuccessFlag();
-                    using ProcessResult result = await GroupPolicyUpdateAsync(force).ConfigureAwait(false);
-                    Console.WriteLine(SerializeToString(result));
-                    return (int)ClientExitCode.Success;
-                }
                 if (arg.Equals("/ShellExecuteProcess", StringComparison.Ordinal) || arg.Equals("/sep", StringComparison.Ordinal))
                 {
                     using ProcessResult result = await ShellExecuteProcessAsync(DeserializeString<UserShellExecuteOptions>(GetOptionsFromArguments(ArgvToDictionary(argv)))).ConfigureAwait(false);
@@ -871,28 +852,6 @@ namespace PSADT.ClientServer
                 }
             }
             throw new ClientException("The specified arguments were unable to be resolved into a type of operation.", ClientExitCode.InvalidMode);
-        }
-
-        /// <summary>
-        /// Runs a Group Policy update on the local machine by invoking the gpupdate utility.
-        /// </summary>
-        /// <param name="force">A value indicating whether to force the update, reapplying all policy settings even if they have not
-        /// changed. If <see langword="true"/>, all settings are reapplied.</param>
-        /// <returns>A <see cref="ProcessResult"/> object that contains the results of the Group Policy update operation.</returns>
-        /// <exception cref="ClientException">Thrown if the Group Policy update process fails to launch.</exception>
-        private static Task<ProcessResult> GroupPolicyUpdateAsync(bool force)
-        {
-            // Build out argument list for gpupdate.exe.
-            List<string> argumentList = ["/Target:User"];
-            if (force)
-            {
-                argumentList.Add("/Force");
-            }
-
-            // Set up the process and return its result.
-            return ProcessManager.LaunchAsync(new(Path.Join(Environment.SystemDirectory, "gpupdate.exe"), argumentList, standardInput: ["N"], createNoWindow: true))?.Task is not Task<ProcessResult> task
-                ? throw new ClientException("Failed to launch the Group Policy update process.", ClientExitCode.InvalidResult)
-                : task;
         }
 
         /// <summary>
@@ -1105,9 +1064,9 @@ namespace PSADT.ClientServer
             {
                 Console.Error.WriteLine(DataSerialization.SerializeToString(exception));
             }
-            catch (Exception ex)
+            catch (Exception inner)
             {
-                Environment.FailFast($"An unexpected exception occurred while serializing main exception [{ex}].{Environment.NewLine}Exception Info: {exception}", exception);
+                Environment.FailFast($"An unexpected exception occurred while serializing main exception.{Environment.NewLine}Exception Info: {inner}{Environment.NewLine}Caller Exception: {exception}", inner);
                 throw;
             }
             return (int?)exitCode ?? exception.HResult;
