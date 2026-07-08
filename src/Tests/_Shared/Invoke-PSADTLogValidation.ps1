@@ -1,4 +1,4 @@
-function Invoke-PsadtLogValidation
+﻿function Invoke-PsadtLogValidation
 {
     <#
     .SYNOPSIS
