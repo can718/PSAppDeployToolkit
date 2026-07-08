@@ -15,7 +15,7 @@
     [void]([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
 }
 
-$sharedLogValidationPath = Join-Path $PSScriptRoot '..\_Shared\Invoke-IntunePsadtLogValidation.ps1'
+$sharedLogValidationPath = Join-Path $PSScriptRoot '..\_Shared\Invoke-PSADTLogValidation.ps1'
 if (-not (Test-Path -LiteralPath $sharedLogValidationPath -PathType Leaf))
 {
     throw "Required shared helper file not found: $sharedLogValidationPath"
@@ -803,7 +803,7 @@ function script:Assert-PSADTDeploymentLogValidation
     )
 
     Write-Information "[$LogPrefix] Validating PSADT $DeploymentType log..." -InformationAction Continue
-    $logValidation = Invoke-IntunePsadtLogValidation -App $App -DeploymentType $DeploymentType
+    $logValidation = Invoke-PsadtLogValidation -App $App -DeploymentType $DeploymentType
     $logValidation.Success | Should -BeTrue -Because "[$LogPrefix] PSADT log validation: $($logValidation.Message)"
 }
 

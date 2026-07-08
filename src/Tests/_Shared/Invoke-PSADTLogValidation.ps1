@@ -1,4 +1,4 @@
-function Invoke-IntunePsadtLogValidation
+function Invoke-PsadtLogValidation
 {
     <#
     .SYNOPSIS

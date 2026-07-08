@@ -3,7 +3,7 @@
 [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '')]
 param()
 
-$sharedLogValidationPath = Join-Path $PSScriptRoot '..\_Shared\Invoke-IntunePsadtLogValidation.ps1'
+$sharedLogValidationPath = Join-Path $PSScriptRoot '..\_Shared\Invoke-PSADTLogValidation.ps1'
 if (-not (Test-Path -LiteralPath $sharedLogValidationPath -PathType Leaf))
 {
     throw "Required shared helper file not found: $sharedLogValidationPath"
