@@ -1061,7 +1061,8 @@ jobs:
           $visibleCaseNames = @($orderedCaseNames | Select-Object -First $maxCases)
 
           $summaryLines.Add('') | Out-Null
-          $summaryLines.Add("### Test Cases (Top $($visibleCaseNames.Count) / $($orderedCaseNames.Count))") | Out-Null
+          $summaryLines.Add('<details>') | Out-Null
+          $summaryLines.Add("<summary>Test Cases (Top $($visibleCaseNames.Count) / $($orderedCaseNames.Count))</summary>") | Out-Null
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('| Test Case | Status | Duration | Recording |') | Out-Null
           $summaryLines.Add('|---|---|---|---|') | Out-Null
@@ -1092,11 +1093,15 @@ jobs:
             $summaryLines.Add('') | Out-Null
             $summaryLines.Add("_... and $remaining more test case(s). Full details are in Teams notification and test artifacts._") | Out-Null
           }
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('</details>') | Out-Null
         }
         
         if ($steps.Count -gt 0) {
           $summaryLines.Add('') | Out-Null
-          $summaryLines.Add('### Pipeline Steps') | Out-Null
+          $summaryLines.Add('<details>') | Out-Null
+          $summaryLines.Add("<summary>Pipeline Steps ($($steps.Count))</summary>") | Out-Null
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('| Step | Status | Duration |') | Out-Null
           $summaryLines.Add('|---|---|---|') | Out-Null
@@ -1108,6 +1113,9 @@ jobs:
             $safeDuration = Escape-MarkdownCell -Value $duration
             $summaryLines.Add("| $safeName | $icon $outcome | $safeDuration |") | Out-Null
           }
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('</details>') | Out-Null
         }
 
         $payload = [ordered]@{
