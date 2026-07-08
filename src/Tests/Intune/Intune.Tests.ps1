@@ -238,7 +238,7 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '[INTUNE:<Name>_Install] <Name> should be installed' -ForEach $script:ParallelApps {
+        It '[INTUNE:<Name>_Install] <Name>.<TemplateVersion> should be installed' -ForEach $script:ParallelApps {
             $failures = @()
 
             if (-not $script:ParallelInstallResults[$Name])
@@ -309,7 +309,7 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '[INTUNE:<Name>_Uninstall] <Name> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) {
+        It '[INTUNE:<Name>_Uninstall] <Name>.<TemplateVersion> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) {
             $failures = @()
 
             if (-not $script:ParallelUninstallResults[$Name])
