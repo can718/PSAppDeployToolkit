@@ -1183,7 +1183,7 @@ jobs:
               }) -join '<br/>'
             }
             elseif ($recordingEntries.Count -gt 0) {
-              "[Open folder](https://tfpfsstorage.blob.core.windows.net/tfp-public/psadt/$env:TEST_RUN_ID)"
+              'Not record'
             }
             else {
               '-'

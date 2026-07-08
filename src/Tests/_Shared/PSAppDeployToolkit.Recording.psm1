@@ -251,6 +251,8 @@ function Stop-AdditionalTestRecording
             [bool]$RecordingStarted,
             [string]$RecordingOutputFile
         )
+        #sleep for a few seconds to allow the helper to finalize any pending operations before attempting to stop recording.
+        Start-Sleep -Seconds 5
 
         Stop-TerraForgeRecording -RecordingStarted:$RecordingStarted -RecordingOutputFile $RecordingOutputFile
     } $script:recordingStarted $script:recordingOutputFile
