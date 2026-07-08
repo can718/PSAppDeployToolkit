@@ -15,6 +15,13 @@
     [void]([wmiclass]"\\.\root\ccm:SMS_Client").TriggerSchedule($trigger)
 }
 
+$sharedLogValidationPath = Join-Path $PSScriptRoot '..\_Shared\Invoke-IntunePsadtLogValidation.ps1'
+if (-not (Test-Path -LiteralPath $sharedLogValidationPath -PathType Leaf))
+{
+    throw "Required shared helper file not found: $sharedLogValidationPath"
+}
+. $sharedLogValidationPath
+
 function script:Invoke-WinSCPPollDeploymentStatus
 {
     <#
@@ -758,6 +765,46 @@ function script:New-PSADTAppTestContext
         SiteServer         = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\Setup' -Name 'Provider Location' -ErrorAction SilentlyContinue).'Provider Location'
         CmModulePath       = Get-PSADTCmModulePath
     }
+}
+
+function script:New-PSADTLogValidationAppConfig
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('V3', 'V4')]
+        [string]$TemplateVersion,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AppFolderName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    return @{
+        TemplateVersion = $TemplateVersion
+        AppFolderName   = $AppFolderName
+        Name            = $Name
+    }
+}
+
+function script:Assert-PSADTDeploymentLogValidation
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [hashtable]$App,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType,
+
+        [Parameter(Mandatory = $true)]
+        [string]$LogPrefix
+    )
+
+    Write-Information "[$LogPrefix] Validating PSADT $DeploymentType log..." -InformationAction Continue
+    $logValidation = Invoke-IntunePsadtLogValidation -App $App -DeploymentType $DeploymentType
+    $logValidation.Success | Should -BeTrue -Because "[$LogPrefix] PSADT log validation: $($logValidation.Message)"
 }
 
 function script:Assert-PSADTContentPathReady

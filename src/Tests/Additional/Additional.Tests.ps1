@@ -321,6 +321,7 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:winscpLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'WinSCP' -Name 'WinSCP'
         }
 
         AfterAll {
@@ -372,28 +373,6 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             # Step 2 - Copy V4 template to winSCP package directory
             # ----------------------------------------------------------------
             Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:winscpPackageDir -LogPrefix 'winSCP' -UseInformationLogs
-
-            # # ----------------------------------------------------------------
-            # # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with winSCP version
-            # # ----------------------------------------------------------------
-            # $destScript = Update-PSADTPackageDeployScript `
-            #     -PackageDir $script:winscpPackageDir `
-            #     -SourceScript $script:winscpSourceScript `
-            #     -ExpectedContentPattern 'WinSCP' `
-            #     -LogPrefix 'winSCP' `
-            #     -UseInformationLogs
-
-            # # ----------------------------------------------------------------
-            # # Step 4 - Copy WinSCP MSI into Files folder
-            # # ----------------------------------------------------------------
-            # $msiSource = 'C:\Tools\Intune\WinSCP\WinSCP-6.5.6.msi'
-            # Copy-PSADTPackageInstallerToFiles `
-            #     -DeployScriptPath $destScript.FullName `
-            #     -InstallerSource $msiSource `
-            #     -InstallerLabel 'MSI' `
-            #     -LogPrefix 'winSCP' `
-            #     -UseInformationLogs `
-            #     -ExpectedFileName 'WinSCP-6.5.6.msi'
 
             # ----------------------------------------------------------------
             # Step 5 - Verify SMB content share and directories exist
@@ -459,6 +438,7 @@ if ($app) { Write-Host "Installed" }
                 Write-Information '[winSCP] Step 8: Polling application deployment status...' -InformationAction Continue
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:winscpAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
+                Assert-PSADTDeploymentLogValidation -App $script:winscpLogValidationApp -DeploymentType 'Install' -LogPrefix 'winSCP'
                 $script:winscpInstallDeploySucceeded = $true
             }
         }
@@ -493,6 +473,7 @@ if ($app) { Write-Host "Installed" }
                 # ----------------------------------------------------------------
                 Write-Information '[winSCP] Step 9: Polling uninstall deployment status...' -InformationAction Continue
                 [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:winscpAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+                Assert-PSADTDeploymentLogValidation -App $script:winscpLogValidationApp -DeploymentType 'Uninstall' -LogPrefix 'winSCP'
             }
         }
     }
@@ -526,6 +507,7 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:vlcLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'VLC' -Name 'VLC'
         }
 
         AfterAll {
@@ -659,6 +641,7 @@ if ($app) { Write-Host "Installed" }
                 Write-Information '[VLC] Step 8: Polling application deployment status...' -InformationAction Continue
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:vlcAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
+                Assert-PSADTDeploymentLogValidation -App $script:vlcLogValidationApp -DeploymentType 'Install' -LogPrefix 'VLC'
                 $script:vlcInstallDeploySucceeded = $true
             }
         }
@@ -693,6 +676,7 @@ if ($app) { Write-Host "Installed" }
                 # ----------------------------------------------------------------
                 Write-Information '[VLC] Step 9: Polling uninstall deployment status...' -InformationAction Continue
                 [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:vlcAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+                Assert-PSADTDeploymentLogValidation -App $script:vlcLogValidationApp -DeploymentType 'Uninstall' -LogPrefix 'VLC'
             }
         }
     }
@@ -724,6 +708,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:notepadLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'Notepad++' -Name 'Notepad++'
         }
 
         AfterAll {
@@ -889,6 +874,8 @@ if (Test-Path $uninstallKey)
                 {
                     Write-Information "[Notepad++] File not found at: $notepadExePath" -InformationAction Continue
                 }
+
+                Assert-PSADTDeploymentLogValidation -App $script:notepadLogValidationApp -DeploymentType 'Install' -LogPrefix 'Notepad++'
             }
         }
     }
@@ -920,6 +907,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:digiExamLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V3' -AppFolderName 'Digiexam' -Name 'DigiExam'
         }
 
         AfterAll {
@@ -1064,6 +1052,7 @@ if ($app) { Write-Host "Installed" }
                 Write-Information '[DigiExam] Step 8: Polling application deployment status...' -InformationAction Continue
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:digiExamAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
+                Assert-PSADTDeploymentLogValidation -App $script:digiExamLogValidationApp -DeploymentType 'Install' -LogPrefix 'DigiExam'
                 $script:digiExamInstallDeploySucceeded = $true
             }
         }
@@ -1098,6 +1087,7 @@ if ($app) { Write-Host "Installed" }
                 # ----------------------------------------------------------------
                 Write-Information '[DigiExam] Step 9: Polling uninstall deployment status...' -InformationAction Continue
                 [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:digiExamAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+                Assert-PSADTDeploymentLogValidation -App $script:digiExamLogValidationApp -DeploymentType 'Uninstall' -LogPrefix 'DigiExam'
             }
         }
     }
@@ -1129,6 +1119,7 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:everythingLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V3' -AppFolderName 'Everything' -Name 'Everything'
         }
 
         AfterAll {
@@ -1267,6 +1258,7 @@ if ($app) { Write-Host "Installed" }
                 Write-Information '[Everything] Step 8: Polling application deployment status...' -InformationAction Continue
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:everythingAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
+                Assert-PSADTDeploymentLogValidation -App $script:everythingLogValidationApp -DeploymentType 'Install' -LogPrefix 'Everything'
                 $script:everythingInstallDeploySucceeded = $true
             }
         }
@@ -1301,6 +1293,7 @@ if ($app) { Write-Host "Installed" }
                 # ----------------------------------------------------------------
                 Write-Information '[Everything] Step 9: Polling uninstall deployment status...' -InformationAction Continue
                 [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:everythingAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+                Assert-PSADTDeploymentLogValidation -App $script:everythingLogValidationApp -DeploymentType 'Uninstall' -LogPrefix 'Everything'
             }
         }
     }

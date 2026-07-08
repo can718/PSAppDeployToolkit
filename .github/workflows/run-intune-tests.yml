@@ -89,6 +89,27 @@ jobs:
         $tfScriptsDir = 'C:\PSADTScripts'
         New-Item -ItemType Directory -Path $tfScriptsDir -Force | Out-Null
         Copy-Item -LiteralPath $tfHelper -Destination $tfScriptsDir -Force
+
+        $RecordingScriptsDir = 'C:\PSADTScripts\PSAppDeployToolkit.Recording'
+        New-Item -ItemType Directory -Path $RecordingScriptsDir -Force | Out-Null
+        # copy PSAppDeployToolkit.Recording.psm1 and PSAppDeployToolkit.Recording.psd1 to $RecordingScriptsDir
+        $recordingPathpsm1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psm1'
+        Copy-Item -LiteralPath $recordingPathpsm1 -Destination $RecordingScriptsDir -Force
+        $recordingPathpsd1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psd1'
+        Copy-Item -LiteralPath $recordingPathpsd1 -Destination $RecordingScriptsDir -Force
+
+        # add module into machine-level PSModulePath
+        $moduleRoot = $RecordingScriptsDir
+        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+        if ([string]::IsNullOrWhiteSpace($machinePath)) {
+          $machinePath = ''
+        }
+        $segments = $machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        if ($segments -notcontains $moduleRoot) {
+          [Environment]::SetEnvironmentVariable('PSModulePath', "$machinePath;$moduleRoot", 'Machine')
+        }
+        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+
         . $tfHelper
 
         # Register a new test run in TerraForge and expose its ID as 'test-run-id' output.
