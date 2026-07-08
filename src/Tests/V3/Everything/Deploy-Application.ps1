@@ -189,24 +189,31 @@ try
     ##* END VARIABLE DECLARATION
     ##*===============================================
 
+    # try
+    # {
+    #     [string]$recordingModulePath = Join-Path $scriptDirectory '..\..\_Shared\PSAppDeployToolkit.Recording.psd1'
+    #     if (Test-Path -LiteralPath $recordingModulePath -PathType Leaf)
+    #     {
+    #         Import-Module $recordingModulePath -Force -ErrorAction Stop
+    #         Start-AdditionalTestRecordingV3 -AppName $appName -DeploymentType $DeploymentType
+    #     }
+    #     else
+    #     {
+    #         Write-Log -Message "Recording module not found at path [$recordingModulePath]. Skipping V3 recording start." -Severity 2 -Source $deployAppScriptFriendlyName
+    #     }
+    # }
+    # catch
+    # {
+    #     Write-Log -Message "Failed to initialize V3 recording integration. Deployment will continue. $($_.Exception.Message)" -Severity 2 -Source $deployAppScriptFriendlyName
+    # }
     try
     {
-        [string]$recordingModulePath = Join-Path $scriptDirectory '..\..\_Shared\PSAppDeployToolkit.Recording.psd1'
-        if (Test-Path -LiteralPath $recordingModulePath -PathType Leaf)
-        {
-            Import-Module $recordingModulePath -Force -ErrorAction Stop
-            Start-AdditionalTestRecordingV3 -AppName $appName -DeploymentType $DeploymentType
-        }
-        else
-        {
-            Write-Log -Message "Recording module not found at path [$recordingModulePath]. Skipping V3 recording start." -Severity 2 -Source $deployAppScriptFriendlyName
-        }
+        Start-AdditionalTestRecordingV3 -AppName $appName -DeploymentType $DeploymentType
     }
     catch
     {
         Write-Log -Message "Failed to initialize V3 recording integration. Deployment will continue. $($_.Exception.Message)" -Severity 2 -Source $deployAppScriptFriendlyName
     }
-
     if ($deploymentType -ine 'Uninstall' -and $deploymentType -ine 'Repair')
     {
         ##*===============================================
