@@ -239,12 +239,24 @@ Describe 'Intune Tests' {
         }
 
         It '<Name> should be installed' -ForEach $script:ParallelApps {
-            $script:ParallelInstallResults[$Name] | Should -BeTrue -Because "'$Name' was not installed successfully via Intune MDM sync"
+            $failures = @()
 
-            # Validate PSADT log exit code.
+            if (-not $script:ParallelInstallResults[$Name])
+            {
+                $failures += '[Install Status] app was not installed successfully via Intune MDM sync'
+            }
+
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
-            $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Install'
-            $logValidation.Success | Should -BeTrue -Because "PSADT log validation: $($logValidation.Message)"
+            if ($appConfig)
+            {
+                $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Install'
+                if (-not $logValidation.Success)
+                {
+                    $failures += "[Log Validation] $($logValidation.Message)"
+                }
+            }
+
+            $failures | Should -BeNullOrEmpty -Because "'$Name' failed: $($failures -join '; ')"
         }
 
         It 'Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
@@ -298,12 +310,24 @@ Describe 'Intune Tests' {
         }
 
         It '<Name> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) {
-            $script:ParallelUninstallResults[$Name] | Should -BeTrue -Because "'$Name' was not uninstalled successfully via Intune MDM sync"
+            $failures = @()
 
-            # Validate PSADT log exit code.
+            if (-not $script:ParallelUninstallResults[$Name])
+            {
+                $failures += '[Uninstall Status] app was not uninstalled successfully via Intune MDM sync'
+            }
+
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
-            $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Uninstall'
-            $logValidation.Success | Should -BeTrue -Because "PSADT log validation: $($logValidation.Message)"
+            if ($appConfig)
+            {
+                $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Uninstall'
+                if (-not $logValidation.Success)
+                {
+                    $failures += "[Log Validation] $($logValidation.Message)"
+                }
+            }
+
+            $failures | Should -BeNullOrEmpty -Because "'$Name' failed: $($failures -join '; ')"
         }
 
         AfterAll {

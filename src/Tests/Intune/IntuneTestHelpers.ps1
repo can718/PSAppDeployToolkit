@@ -347,22 +347,126 @@ function Invoke-IntunePsadtLogValidation
         }
         else
         {
+            $errorSummary = Get-PsadtLogErrorSummary -LogFilePath $logFile.FullName
+            $msg = "Exit code $exitCode is not in success/reboot codes."
+            if ($errorSummary) { $msg += " $errorSummary" }
             Write-Warning "[$($App.Name)] Log validation FAILED: [$($logFile.Name)] - $DeploymentType exit code [$exitCode] not in success codes."
-            return @{ Success = $false; Skipped = $false; ExitCode = $exitCode; LogFile = $logFile.FullName; Message = "Exit code $exitCode is not in success/reboot codes." }
+            return @{ Success = $false; Skipped = $false; ExitCode = $exitCode; LogFile = $logFile.FullName; Message = $msg }
         }
     }
     else
     {
-        $lastLines = Get-Content -LiteralPath $logFile.FullName -Tail 3 -ErrorAction SilentlyContinue
         Write-Warning "[$($App.Name)] Log validation FAILED: [$($logFile.Name)] - Finalization exit code line not found."
-        if ($lastLines)
-        {
-            Write-Warning "[$($App.Name)] Last 3 lines of log:"
-            $lastLines | ForEach-Object { Write-Warning "  $_" }
-        }
-        $tailMsg = if ($lastLines) { "`n" + ($lastLines -join "`n") } else { '' }
-        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $logFile.FullName; Message = "Finalization exit code line not found in log.$tailMsg" }
+        $errorSummary = Get-PsadtLogErrorSummary -LogFilePath $logFile.FullName
+        $msg = "Finalization exit code line not found in log."
+        if ($errorSummary) { $msg += " $errorSummary" }
+        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $logFile.FullName; Message = $msg }
     }
+}
+
+# ---------------------------------------------------------------------------
+# Region: PSADT Log Parsing
+# ---------------------------------------------------------------------------
+
+function Get-PsadtLogErrorSummary
+{
+    <#
+    .SYNOPSIS
+        Parses a PSADT CMTrace-format log file and extracts a concise summary
+        of all error-level (type="3") entries.
+    .DESCRIPTION
+        Handles both single-line and multi-line CMTrace log entries.
+        Single-line: <![LOG[message]LOG]!><time="..." type="3" ...>
+        Multi-line:  <![LOG[line1\nline2\n...]LOG]!><time="..." type="3" ...>
+        (where ]LOG]!> and metadata appear on the final line of the entry)
+    .OUTPUTS
+        [string] A summary of error messages, or $null if no errors found.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$LogFilePath
+    )
+
+    if (-not (Test-Path -LiteralPath $LogFilePath -PathType Leaf))
+    {
+        return $null
+    }
+
+    $logLines = Get-Content -LiteralPath $LogFilePath -ErrorAction SilentlyContinue
+    if (-not $logLines) { return $null }
+
+    $errorMessages = @()
+    $inEntry = $false
+    $entryBuffer = $null
+
+    foreach ($line in $logLines)
+    {
+        if (-not $inEntry)
+        {
+            # Detect start of a new PSADT session - reset error collection to only keep errors from the last run.
+            if ($line -match '<!\[LOG\[\[Initialization\]' -or $line -match '\[Initialization\] ::')
+            {
+                $errorMessages = @()
+            }
+
+            # Single-line entry: both <![LOG[ and ]LOG]!> on same line with type="3".
+            if ($line -match 'type="3"' -and $line -match '<!\[LOG\[(.+?)\]LOG\]!>')
+            {
+                $errorMessages += $Matches[1].Trim()
+            }
+            # Start of multi-line entry: <![LOG[ without ]LOG]!> on this line.
+            elseif ($line -match '<!\[LOG\[(.*)$' -and $line -notmatch '\]LOG\]!>')
+            {
+                $inEntry = $true
+                $entryBuffer = $Matches[1]
+            }
+        }
+        else
+        {
+            # End of multi-line entry: line contains ]LOG]!> with metadata.
+            if ($line -match '^(.*?)\]LOG\]!>')
+            {
+                $tailPart = $Matches[1]
+                $inEntry = $false
+
+                # Check if this entry is type="3".
+                if ($line -match 'type="3"')
+                {
+                    $msg = ($entryBuffer + ' ' + $tailPart).Trim()
+                    if ($msg) { $errorMessages += $msg }
+                }
+                $entryBuffer = $null
+            }
+            else
+            {
+                # Middle of multi-line entry.
+                $entryBuffer += ' ' + $line.Trim()
+            }
+        }
+    }
+
+    if (-not $errorMessages) { return $null }
+
+    # Take the last 3 unique errors (chronologically most recent), truncate for report.
+    $maxMsgLen = 600
+    $reversed = @($errorMessages)
+    [array]::Reverse($reversed)
+    $seen = @{}
+    $recent = @()
+    foreach ($msg in $reversed)
+    {
+        if (-not $seen.ContainsKey($msg))
+        {
+            $seen[$msg] = $true
+            $recent += $msg
+            if ($recent.Count -ge 3) { break }
+        }
+    }
+    [array]::Reverse($recent)
+    $trimmed = $recent | ForEach-Object {
+        if ($_.Length -gt $maxMsgLen) { $_.Substring(0, $maxMsgLen) + '...' } else { $_ }
+    }
+    return "Errors: $($trimmed -join ' | ')"
 }
 
 # ---------------------------------------------------------------------------
