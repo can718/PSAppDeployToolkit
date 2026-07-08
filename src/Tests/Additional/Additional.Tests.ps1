@@ -345,7 +345,7 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:WinSCP_Install] winSCP should installed' {
+        It '[MCM:WinSCP_Install] [v4] winSCP should installed' {
             Write-Information "::info::[winSCP] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -375,7 +375,7 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:winscpPackageDir -LogPrefix 'winSCP' -UseInformationLogs
 
             # ----------------------------------------------------------------
-            # Step 5 - Verify SMB content share and directories exist
+            # Step 3 - Verify SMB content share and directories exist
             # ----------------------------------------------------------------
             if (-not (Assert-PSADTContentPathReady `
                         -CmModulePath $script:cmModulePath `
@@ -388,9 +388,9 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             }
 
             # ----------------------------------------------------------------
-            # Step 6 - Import application into SCCM
+            # Step 4 - Import application into SCCM
             # ----------------------------------------------------------------
-            Write-Verbose '[winSCP] Step 6: Importing winSCP application into SCCM...'
+            Write-Verbose '[winSCP] Step 4: Importing winSCP application into SCCM...'
             Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 Write-Information '::info::[winSCP] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
                 $detectScript = @'
@@ -421,21 +421,21 @@ if ($app) { Write-Host "Installed" }
                     -Description "PSADT v4 winSCP template - WinSCP $script:winscpAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
 
                 # ----------------------------------------------------------------
-                # Step 7 - Distribute content
+                # Step 5 - Distribute content
                 # ----------------------------------------------------------------
-                Write-Verbose '[winSCP] Step 7: Triggering content distribution...'
+                Write-Verbose '[winSCP] Step 5: Triggering content distribution...'
                 Start-PSADTContentDistributionAndAssert -AppName $script:winscpAppName -LogPrefix 'winSCP'
 
                 # ----------------------------------------------------------------
-                # Step 7b - Deploy application to collection
+                # Step 6 - Deploy application to collection
                 # ----------------------------------------------------------------
-                Write-Verbose "[winSCP] Step 7b: Deploying application to collection '$($script:targetCollection)'..."
+                Write-Verbose "[winSCP] Step 6: Deploying application to collection '$($script:targetCollection)'..."
                 New-PSADTRequiredDeployment -AppName $script:winscpAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'winSCP'
 
                 # ----------------------------------------------------------------
-                # Step 8 - Poll application deployment status
+                # Step 7 - Poll application deployment status
                 # ----------------------------------------------------------------
-                Write-Information '[winSCP] Step 8: Polling application deployment status...' -InformationAction Continue
+                Write-Information '[winSCP] Step 7: Polling application deployment status...' -InformationAction Continue
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:winscpAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
                 Assert-PSADTDeploymentLogValidation -App $script:winscpLogValidationApp -DeploymentType 'Install' -LogPrefix 'winSCP'
@@ -443,7 +443,7 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:WinSCP_Uninstall] winSCP should uninstalled' {
+        It '[MCM:WinSCP_Uninstall] [v4] winSCP should uninstalled' {
             if (-not $script:winscpInstallDeploySucceeded)
             {
                 Set-ItResult -Skipped -Because "Prerequisite test 'winSCP should installed' did not complete successfully"
@@ -469,10 +469,10 @@ if ($app) { Write-Host "Installed" }
                 New-PSADTRequiredDeployment -AppName $script:winscpAppName -TargetCollection $script:targetCollection -DeployAction Uninstall -LogPrefix 'winSCP'
 
                 # ----------------------------------------------------------------
-                # Step 9 - Poll uninstall deployment status
+                # Step 8 - Poll uninstall deployment status
                 # ----------------------------------------------------------------
-                Write-Information '[winSCP] Step 9: Polling uninstall deployment status...' -InformationAction Continue
-                [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:winscpAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+                Write-Information '[winSCP] Step 8: Polling uninstall deployment status...' -InformationAction Continue
+                [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:winscpAppName -SiteCode $script:siteCode -Label 'Step 8: Uninstall deployment')
                 Assert-PSADTDeploymentLogValidation -App $script:winscpLogValidationApp -DeploymentType 'Uninstall' -LogPrefix 'winSCP'
             }
         }
@@ -531,7 +531,7 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:VLC_media_player_Install] VLC should installed' {
+        It '[MCM:VLC_media_player_Install] [v4] VLC should installed' {
             if (-not (Test-PSADTTemplateValidationGate))
             {
                 Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
@@ -557,29 +557,8 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             # ----------------------------------------------------------------
             Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:vlcPackageDir -LogPrefix 'VLC'
 
-            # # ----------------------------------------------------------------
-            # # Step 3 - Replace Invoke-AppDeployToolkit.ps1 with VLC version
-            # # ----------------------------------------------------------------
-            # $destScript = Update-PSADTPackageDeployScript `
-            #     -PackageDir $script:vlcPackageDir `
-            #     -SourceScript $script:vlcSourceScript `
-            #     -ExpectedContentPattern 'VLC' `
-            #     -LogPrefix 'VLC' `
-            #     -AdditionalContentSourceDir $script:vlcSourceFolder
-
-            # # ----------------------------------------------------------------
-            # # Step 4 - Copy VLC installer into Files folder
-            # # ----------------------------------------------------------------
-            # $installerSource = "C:\Tools\Intune\VLC\vlc-$($script:vlcAppVersion)-win64.exe"
-            # Copy-PSADTPackageInstallerToFiles `
-            #     -DeployScriptPath $destScript.FullName `
-            #     -InstallerSource $installerSource `
-            #     -InstallerLabel 'installer' `
-            #     -LogPrefix 'VLC' `
-            #     -ExpectedFileName "vlc-$($script:vlcAppVersion)-win64.exe"
-
             # ----------------------------------------------------------------
-            # Step 5 - Verify SMB content share and directories exist
+            # Step 3 - Verify SMB content share and directories exist
             # ----------------------------------------------------------------
             if (-not (Assert-PSADTContentPathReady `
                         -CmModulePath $script:cmModulePath `
@@ -591,9 +570,9 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             }
 
             # ----------------------------------------------------------------
-            # Step 6 - Import application into SCCM
+            # Step 4 - Import application into SCCM
             # ----------------------------------------------------------------
-            Write-Verbose '[VLC] Step 6: Importing VLC application into SCCM...'
+            Write-Verbose '[VLC] Step 4: Importing VLC application into SCCM...'
             Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 Write-Information '::info::[VLC] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
                 $detectScript = @'
@@ -624,21 +603,21 @@ if ($app) { Write-Host "Installed" }
                     -Description "PSADT v4 VLC template - VLC media player $script:vlcAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
 
                 # ----------------------------------------------------------------
-                # Step 7 - Distribute content
+                # Step 5 - Distribute content
                 # ----------------------------------------------------------------
-                Write-Verbose '[VLC] Step 7: Triggering content distribution...'
+                Write-Verbose '[VLC] Step 5: Triggering content distribution...'
                 Start-PSADTContentDistributionAndAssert -AppName $script:vlcAppName -LogPrefix 'VLC'
 
                 # ----------------------------------------------------------------
-                # Step 7b - Deploy application to collection
+                # Step 5b - Deploy application to collection
                 # ----------------------------------------------------------------
-                Write-Verbose "[VLC] Step 7b: Deploying application to collection '$($script:targetCollection)'..."
+                Write-Verbose "[VLC] Step 5b: Deploying application to collection '$($script:targetCollection)'..."
                 New-PSADTRequiredDeployment -AppName $script:vlcAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'VLC'
 
                 # ----------------------------------------------------------------
-                # Step 8 - Poll application deployment status
+                # Step 6 - Poll application deployment status
                 # ----------------------------------------------------------------
-                Write-Information '[VLC] Step 8: Polling application deployment status...' -InformationAction Continue
+                Write-Information '[VLC] Step 6: Polling application deployment status...' -InformationAction Continue
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:vlcAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
                 Assert-PSADTDeploymentLogValidation -App $script:vlcLogValidationApp -DeploymentType 'Install' -LogPrefix 'VLC'
@@ -646,7 +625,7 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:VLC_media_player_Uninstall] VLC should uninstalled' {
+        It '[MCM:VLC_media_player_Uninstall] [v4] VLC should uninstalled' {
             if (-not $script:vlcInstallDeploySucceeded)
             {
                 Set-ItResult -Skipped -Because "Prerequisite test 'VLC should installed' did not complete successfully"
@@ -732,7 +711,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Notepad++_Install] Notepad++ should installed' {
+        It '[MCM:Notepad++_Install] [v4] Notepad++ should installed' {
             Write-Information '::info::[Notepad++] Step 0: Verifying template validation gate...'
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -772,29 +751,8 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             # ----------------------------------------------------------------
             Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:notepadPackageDir -LogPrefix 'Notepad++' -UseInformationLogs
 
-            # # ----------------------------------------------------------------
-            # # Step 4 - Replace Invoke-AppDeployToolkit.ps1 with Notepad++ version
-            # # ----------------------------------------------------------------
-            # $destScript = Update-PSADTPackageDeployScript `
-            #     -PackageDir $script:notepadPackageDir `
-            #     -SourceScript $script:notepadSourceScript `
-            #     -ExpectedContentPattern 'Notepad\+\+' `
-            #     -LogPrefix 'Notepad++' `
-            #     -UseInformationLogs
-
-            # # ----------------------------------------------------------------
-            # # Step 5 - Copy Notepad++ installer into Files folder
-            # # ----------------------------------------------------------------
-            # Copy-PSADTPackageInstallerToFiles `
-            #     -DeployScriptPath $destScript.FullName `
-            #     -InstallerSource $notepadEnvironment.TargetInstallerPath `
-            #     -InstallerLabel 'installer' `
-            #     -LogPrefix 'Notepad++' `
-            #     -UseInformationLogs `
-            #     -ExpectedFileName 'npp.6.6.4.Installer.exe'
-
             # ----------------------------------------------------------------
-            # Step 6 - Verify SMB content share and directories exist
+            # Step 4 - Verify SMB content share and directories exist
             # ----------------------------------------------------------------
             if (-not (Assert-PSADTContentPathReady `
                         -CmModulePath $script:cmModulePath `
@@ -807,9 +765,9 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             }
 
             # ----------------------------------------------------------------
-            # Step 7 - Import application into SCCM
+            # Step 5 - Import application into SCCM
             # ----------------------------------------------------------------
-            Write-Verbose '[Notepad++] Step 7: Importing Notepad++ application into SCCM...'
+            Write-Verbose '[Notepad++] Step 5: Importing Notepad++ application into SCCM...'
             Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 Write-Information '::info::[Notepad++] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
                 $detectScript = @'
@@ -835,26 +793,26 @@ if (Test-Path $uninstallKey)
                     -Description "PSADT v4 Notepad++ template - Notepad++ $script:notepadAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
 
                 # ----------------------------------------------------------------
-                # Step 8 - Distribute content
+                # Step 6 - Distribute content
                 # ----------------------------------------------------------------
-                Write-Verbose '[Notepad++] Step 8: Triggering content distribution...'
+                Write-Verbose '[Notepad++] Step 6: Triggering content distribution...'
                 Start-PSADTContentDistributionAndAssert -AppName $script:notepadAppName -LogPrefix 'Notepad++'
 
                 # ----------------------------------------------------------------
-                # Step 8b - Deploy application to collection
+                # Step 6b - Deploy application to collection
                 # ----------------------------------------------------------------
-                Write-Verbose "[Notepad++] Step 8b: Deploying application to collection '$($script:targetCollection)'..."
+                Write-Verbose "[Notepad++] Step 6b: Deploying application to collection '$($script:targetCollection)'..."
                 New-PSADTRequiredDeployment -AppName $script:notepadAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'Notepad++'
 
                 # ----------------------------------------------------------------
-                # Step 9 - Poll application deployment status
+                # Step 7 - Poll application deployment status
                 # ----------------------------------------------------------------
-                Write-Information '[Notepad++] Step 9: Polling application deployment status...' -InformationAction Continue
+                Write-Information '[Notepad++] Step 7: Polling application deployment status...' -InformationAction Continue
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
                 $script:notepadInstallDeploySucceeded = $true
                 #---------------------------------------------------------------
-                # Step 10 - Check version of installed Notepad++
+                # Step 8 - Check version of installed Notepad++
                 #---------------------------------------------------------------
                 $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
                 if (Test-Path $notepadExePath)
@@ -931,7 +889,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Digiexam_Install] DigiExam should installed' {
+        It '[MCM:Digiexam_Install] [v3] DigiExam should installed' {
             Write-Information "::info::[DigiExam] Step 0: Verifying template validation gate..."
             Write-Information "DigiExam SourceScript: $script:digiExamSourceScript"
             Write-Information "DigiExam PackageDir: $script:digiExamPackageDir"
@@ -1057,7 +1015,7 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:Digiexam_Uninstall] DigiExam should uninstalled' {
+        It '[MCM:Digiexam_Uninstall] [v3] DigiExam should uninstalled' {
             if (-not $script:digiExamInstallDeploySucceeded)
             {
                 Set-ItResult -Skipped -Because "Prerequisite test 'DigiExam should installed' did not complete successfully"
@@ -1143,7 +1101,7 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Everything_Install] Everything should installed' {
+        It '[MCM:Everything_Install] [v3] Everything should installed' {
             Write-Information "::info::[Everything] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -1263,7 +1221,7 @@ if ($app) { Write-Host "Installed" }
             }
         }
 
-        It '[MCM:Everything_Uninstall] Everything should uninstalled' {
+        It '[MCM:Everything_Uninstall] [v3] Everything should uninstalled' {
             if (-not $script:everythingInstallDeploySucceeded)
             {
                 Set-ItResult -Skipped -Because "Prerequisite test 'Everything should installed' did not complete successfully"
