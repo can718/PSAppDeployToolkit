@@ -154,7 +154,7 @@ Describe 'Intune Tests' {
             $script:ParallelInstallResults = @{}
         }
 
-        It 'Batch upload all apps and assign to group' {
+        It '[INTUNE:BatchUpload] Batch upload all apps and assign to group' {
             $script:UploadedApps = @{}
 
             foreach ($app in $script:ParallelApps)
@@ -212,7 +212,7 @@ Describe 'Intune Tests' {
             $script:UploadedApps.Count | Should -Be $script:ParallelApps.Count
         }
 
-        It 'MDM sync, then parallel poll for all installations' {
+        It '[INTUNE:InstallSync] MDM sync, then parallel poll for all installations' {
             $script:UploadedApps | Should -Not -BeNullOrEmpty -Because 'Upload step must succeed first'
 
             Invoke-MdmSync
@@ -238,16 +238,16 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '<Name> should be installed' -ForEach $script:ParallelApps {
+        It '[INTUNE:<Name>_Install] <Name> should be installed' -ForEach $script:ParallelApps {
             $script:ParallelInstallResults[$Name] | Should -BeTrue -Because "'$Name' was not installed successfully via Intune MDM sync"
 
             # Validate PSADT log exit code.
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
-            $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Install'
+            $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Install'
             $logValidation.Success | Should -BeTrue -Because "PSADT log validation: $($logValidation.Message)"
         }
 
-        It 'Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
+        It '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
             $script:ParallelInstallResults.Count | Should -BeGreaterThan 0 -Because 'At least one app must have installed'
 
             # Build uninstall candidate list from installed apps, honoring per-app filters.
@@ -297,12 +297,12 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '<Name> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) {
+        It '[INTUNE:<Name>_Uninstall] <Name> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) {
             $script:ParallelUninstallResults[$Name] | Should -BeTrue -Because "'$Name' was not uninstalled successfully via Intune MDM sync"
 
             # Validate PSADT log exit code.
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
-            $logValidation = Invoke-IntunePsadtLogValidation -App $appConfig -DeploymentType 'Uninstall'
+            $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Uninstall'
             $logValidation.Success | Should -BeTrue -Because "PSADT log validation: $($logValidation.Message)"
         }
 

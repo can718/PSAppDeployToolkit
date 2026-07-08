@@ -189,6 +189,14 @@ try
     ##* END VARIABLE DECLARATION
     ##*===============================================
 
+    try
+    {
+        Start-AdditionalTestRecordingV3 -AppName $appName -DeploymentType $DeploymentType
+    }
+    catch
+    {
+        Write-Log -Message "Failed to initialize V3 recording integration. Deployment will continue. $($_.Exception.Message)" -Severity 2 -Source $deployAppScriptFriendlyName
+    }
     if ($deploymentType -ine 'Uninstall' -and $deploymentType -ine 'Repair')
     {
         ##*===============================================
@@ -339,6 +347,7 @@ try
     ##*===============================================
 
     ## Call the Exit-Script function to perform final cleanup operations
+    Stop-AdditionalTestRecordingV3 -AppName $appName -DeploymentType $DeploymentType
     Exit-Script -ExitCode $mainExitCode
 }
 catch
@@ -346,6 +355,14 @@ catch
     [Int32]$mainExitCode = 60001
     [String]$mainErrorMessage = "$(Resolve-Error)"
     Write-Log -Message $mainErrorMessage -Severity 3 -Source $deployAppScriptFriendlyName
+    try
+    {
+        Stop-AdditionalTestRecordingV3 -AppName $appName -DeploymentType $DeploymentType
+    }
+    catch
+    {
+        Write-Log -Message "Failed to stop V3 recording. $($_.Exception.Message)" -Severity 2 -Source $deployAppScriptFriendlyName
+    }
     Show-DialogBox -Text $mainErrorMessage -Icon 'Stop'
     Exit-Script -ExitCode $mainExitCode
 }

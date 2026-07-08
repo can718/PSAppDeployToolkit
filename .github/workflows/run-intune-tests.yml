@@ -49,6 +49,8 @@ jobs:
       pester_skipped:    ${{ steps.run-pester.outputs.pester_skipped || '0' }}
       pester_notrun:     ${{ steps.run-pester.outputs.pester_notrun || '0' }}
       cases_json:        ${{ steps.collect-cases.outputs.cases_json || '{}' }}
+      cases_order_json:  ${{ steps.collect-cases.outputs.cases_order_json || '[]' }}
+      recording_urls_json: ${{ steps.upload-to-blob.outputs.public_recording_urls_json || '[]' }}
       result_summary_payload: ${{ steps.result-summary-collect.outputs.result_summary_payload || '{}' }}
       result_summary_console: ${{ steps.result-summary-collect.outputs.result_summary_console || '' }}
       result_summary_markdown: ${{ steps.result-summary-collect.outputs.result_summary_markdown || '' }}
@@ -89,6 +91,27 @@ jobs:
         $tfScriptsDir = 'C:\PSADTScripts'
         New-Item -ItemType Directory -Path $tfScriptsDir -Force | Out-Null
         Copy-Item -LiteralPath $tfHelper -Destination $tfScriptsDir -Force
+
+        $RecordingScriptsDir = 'C:\PSADTScripts\PSAppDeployToolkit.Recording'
+        New-Item -ItemType Directory -Path $RecordingScriptsDir -Force | Out-Null
+        # copy PSAppDeployToolkit.Recording.psm1 and PSAppDeployToolkit.Recording.psd1 to $RecordingScriptsDir
+        $recordingPathpsm1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psm1'
+        Copy-Item -LiteralPath $recordingPathpsm1 -Destination $RecordingScriptsDir -Force
+        $recordingPathpsd1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psd1'
+        Copy-Item -LiteralPath $recordingPathpsd1 -Destination $RecordingScriptsDir -Force
+
+        # add module into machine-level PSModulePath
+        $moduleRoot = $RecordingScriptsDir
+        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+        if ([string]::IsNullOrWhiteSpace($machinePath)) {
+          $machinePath = ''
+        }
+        $segments = $machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        if ($segments -notcontains $moduleRoot) {
+          [Environment]::SetEnvironmentVariable('PSModulePath', "$machinePath;$moduleRoot", 'Machine')
+        }
+        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+
         . $tfHelper
 
         # Register a new test run in TerraForge and expose its ID as 'test-run-id' output.
@@ -257,20 +280,35 @@ jobs:
       id: build
       shell: pwsh
       run: |
+        $buildStart = Get-Date
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
             Invoke-ADTModuleBuild -Steps 'Prerequisites', 'Clean', 'Dependencies', 'DotNet', 'Build'
         }
+        $buildEnd = Get-Date
+        $duration = $buildEnd - $buildStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "build_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Generate artifact templates
       id: exports
       shell: pwsh
       run: |
+        $exportsStart = Get-Date
         & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
+        $exportsEnd = Get-Date
+        $duration = $exportsEnd - $exportsStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "exports_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Prepare PSADT templates for deployment test
       id: template-prep
       shell: pwsh
       run: |
+        $templateStart = Get-Date
         $v3Src = '.\src\Artifacts\Template_v3'
         $v4Src = '.\src\Artifacts\Template_v4'
 
@@ -300,6 +338,13 @@ jobs:
         "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+        $templateEnd = Get-Date
+        $duration = $templateEnd - $templateStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "template_prep_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
     # Add your new Intune test cases below this line
     - name: Run Intune Tests
       id: run-pester
@@ -309,6 +354,7 @@ jobs:
         PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
       run: |
+        $pesterStart = Get-Date
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
 
         $discoveryConfig = New-PesterConfiguration
@@ -334,7 +380,7 @@ jobs:
         $notRun = [math]::Max($discoveredTotal - $executedTotal, 0)
 
         "pester_discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "pester_total=$discoveredTotal"      | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_total=$executedTotal"        | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester_passed=$passed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester_failed=$failed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
         "pester_skipped=$skipped"            | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -343,6 +389,13 @@ jobs:
         if ($failed -gt 0) {
           throw "One or more Intune tests failed. Failed count: $failed"
         }
+
+        $pesterEnd = Get-Date
+        $duration = $pesterEnd - $pesterStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "run_pester_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Collect test case results from XML
       id: collect-cases
@@ -442,7 +495,9 @@ jobs:
         }
 
         $casesJson = if ($caseEntries.Count -gt 0) { $caseEntries | ConvertTo-Json -Compress } else { '{}' }
+        $casesOrderJson = @($caseEntries.Keys) | ConvertTo-Json -Compress
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_json=$casesJson`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_order_json=$casesOrderJson`n", [System.Text.Encoding]::UTF8)
         Write-Host "Collected $($caseEntries.Count) test case result(s)."
 
     - name: Upload Intune test results
@@ -483,46 +538,161 @@ jobs:
         . $tfHelper
         Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml' -BlobPathBase "testruns/$env:TEST_RUN_ID"
 
+        $publicRecordingEntries = @()
+
         $recordFile = Get-RegistryValue -Name 'RecordingUploadNotRequested'
         if ($recordFile) {
           Write-Host "Uploading recording file(s) to blob storage: $recordFile"
           $recordFiles = $recordFile -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
           Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "testruns/$env:TEST_RUN_ID"
           Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "psadt/$env:TEST_RUN_ID" -ContainerName "tfp-public"
+
+          foreach ($recordPath in $recordFiles) {
+            $recordName = [System.IO.Path]::GetFileName([string]$recordPath)
+            if ([string]::IsNullOrWhiteSpace($recordName)) {
+              continue
+            }
+
+            $encodedName = [System.Uri]::EscapeDataString($recordName)
+            $publicUrl = "https://tfpfsstorage.blob.core.windows.net/tfp-public/psadt/$env:TEST_RUN_ID/$encodedName"
+            $publicRecordingEntries += [ordered]@{
+              Name = $recordName
+              Url  = $publicUrl
+            }
+          }
         } else {
           Write-Host "No recording file found for upload."
         }
+
+        $publicRecordingJson = @($publicRecordingEntries) | ConvertTo-Json -Compress
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "public_recording_urls_json=$publicRecordingJson`n", [System.Text.Encoding]::UTF8)
 
     - name: Collect step outcomes
       id: collect-outputs
       if: always()
       shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
-        $steps = [ordered]@{
-          'Check out repository'                  = '${{ steps.checkout-repository.outcome }}'
-          'Set Test Run Start'                    = '${{ steps.set-test-run-start.outcome }}'
-          'Download Test Assets'                  = '${{ steps.download-test-assets.outcome }}'
-          'Check runner environment'              = '${{ steps.check-runner-environment.outcome }}'
-          'Install Node.js'                       = '${{ steps.install-node.outcome }}'
-          'Install 7-Zip'                         = '${{ steps.install-7zip.outcome }}'
-          'Display the path'                      = '${{ steps.display-path.outcome }}'
-          'Version Display'                       = '${{ steps.version-display.outcome }}'
-          'Install .NET 10 SDK'                   = '${{ steps.setup-dotnet.outcome }}'
-          'Cache NuGet packages'                  = '${{ steps.cache-nuget.outcome }}'
-          'Cache PowerShell modules'              = '${{ steps.psmodule-cache.outcome }}'
-          'Install PowerShell modules'            = '${{ steps.install-psmodules.outcome }}'
-          'Configure NuGet source'                = '${{ steps.configure-nuget.outcome }}'
-          'Build'                                 = '${{ steps.build.outcome }}'
-          'Generate Artifact Templates'           = '${{ steps.exports.outcome }}'
-          'Prepare Templates'                     = '${{ steps.template-prep.outcome }}'
-          'Run Pester Tests'                      = '${{ steps.run-pester.outcome }}'
-          'Collect test case results'             = '${{ steps.collect-cases.outcome }}'
-          'Upload Test Results'                   = '${{ steps.upload-artifacts.outcome }}'
-          'Complete Test Run'                     = '${{ steps.complete-test-run.outcome }}'
-          'Upload to Blob Storage'                = '${{ steps.upload-to-blob.outcome }}'
+        $apiStepTimings = @{}
+        try {
+          $apiHeaders = @{
+            Authorization          = "Bearer $env:GH_TOKEN"
+            Accept                 = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $jobsUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/jobs?per_page=100"
+          $jobsData = Invoke-RestMethod -Uri $jobsUrl -Headers $apiHeaders -ErrorAction Stop
+
+          $thisJob = $jobsData.jobs |
+                     Where-Object { $_.steps | Where-Object { $_.name -eq 'Collect step outcomes' } } |
+                     Select-Object -First 1
+
+          if ($thisJob) {
+            foreach ($apiStep in $thisJob.steps) {
+              if ($apiStep.started_at -and $apiStep.completed_at) {
+                $started = [datetime]::Parse($apiStep.started_at, $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                $completed = [datetime]::Parse($apiStep.completed_at, $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                $sec = ($completed - $started).TotalSeconds
+                $mins = [int]($sec / 60)
+                $secs = [int]($sec % 60)
+                if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+                $apiStepTimings[$apiStep.name] = "${mins}m ${secs}s"
+              }
+            }
+            Write-Host "Fetched timings for $($apiStepTimings.Count) step(s) from GitHub API."
+          }
+          else {
+            Write-Warning 'Could not locate this job in the GitHub API response; falling back to env-based timings.'
+          }
+        }
+        catch {
+          Write-Warning "GitHub API call failed; falling back to env-based timings. Error: $_"
         }
 
-        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($steps | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
+        $displayToApiPattern = [ordered]@{
+          'Check out repository'        = 'Check out repository'
+          'Set Test Run Start'          = 'Set Test Run Start'
+          'Download Test Assets'        = 'Download Test Results from Azure Blob Storage*'
+          'Check runner environment'    = 'Check runner environment'
+          'Install Node.js'             = 'Install Node.js*'
+          'Install 7-Zip'               = 'Install 7-Zip*'
+          'Display the path'            = 'Display the path'
+          'Version Display'             = 'Version Display'
+          'Install .NET 10 SDK'         = 'Install .NET 10 SDK*'
+          'Cache NuGet packages'        = 'Cache NuGet packages'
+          'Cache PowerShell modules'    = 'Cache PowerShell modules'
+          'Install PowerShell modules'  = 'Install PowerShell modules'
+          'Configure NuGet source'      = 'Configure NuGet source'
+          'Build'                       = 'Build*'
+          'Generate Artifact Templates' = 'Generate artifact templates'
+          'Prepare Templates'           = 'Prepare PSADT*'
+          'Run Pester Tests'            = 'Run Intune Tests'
+          'Collect test case results'   = 'Collect test case results*'
+          'Upload Test Results'         = 'Upload Intune test results'
+          'Complete Test Run'           = 'Complete Test Run'
+          'Upload to Blob Storage'      = 'Upload Test Results to Azure*'
+        }
+
+        function Get-ApiDuration {
+          param([string]$DisplayName)
+          $pattern = $displayToApiPattern[$DisplayName]
+          if (-not $pattern) { return $null }
+          foreach ($key in $apiStepTimings.Keys) {
+            if ($key -like $pattern) { return $apiStepTimings[$key] }
+          }
+          return $null
+        }
+
+        function Resolve-Duration {
+          param([string[]]$Candidates)
+          foreach ($v in $Candidates) {
+            if (-not [string]::IsNullOrWhiteSpace($v)) { return $v }
+          }
+          return '-'
+        }
+
+        $steps = [ordered]@{
+          'Check out repository'        = @{ outcome = '${{ steps.checkout-repository.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Check out repository')) }
+          'Set Test Run Start'          = @{ outcome = '${{ steps.set-test-run-start.outcome }}';  duration = (Resolve-Duration (Get-ApiDuration 'Set Test Run Start')) }
+          'Download Test Assets'        = @{ outcome = '${{ steps.download-test-assets.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Download Test Assets')) }
+          'Check runner environment'    = @{ outcome = '${{ steps.check-runner-environment.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Check runner environment')) }
+          'Install Node.js'             = @{ outcome = '${{ steps.install-node.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Install Node.js')) }
+          'Install 7-Zip'               = @{ outcome = '${{ steps.install-7zip.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Install 7-Zip')) }
+          'Display the path'            = @{ outcome = '${{ steps.display-path.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Display the path')) }
+          'Version Display'             = @{ outcome = '${{ steps.version-display.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Version Display')) }
+          'Install .NET 10 SDK'         = @{ outcome = '${{ steps.setup-dotnet.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Install .NET 10 SDK')) }
+          'Cache NuGet packages'        = @{ outcome = '${{ steps.cache-nuget.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Cache NuGet packages')) }
+          'Cache PowerShell modules'    = @{ outcome = '${{ steps.psmodule-cache.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Cache PowerShell modules')) }
+          'Install PowerShell modules'  = @{ outcome = '${{ steps.install-psmodules.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Install PowerShell modules')) }
+          'Configure NuGet source'      = @{ outcome = '${{ steps.configure-nuget.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Configure NuGet source')) }
+          'Build'                       = @{ outcome = '${{ steps.build.outcome }}'; duration = (Resolve-Duration @((Get-ApiDuration 'Build'), $env:build_duration)) }
+          'Generate Artifact Templates' = @{ outcome = '${{ steps.exports.outcome }}'; duration = (Resolve-Duration @((Get-ApiDuration 'Generate Artifact Templates'), $env:exports_duration)) }
+          'Prepare Templates'           = @{ outcome = '${{ steps.template-prep.outcome }}'; duration = (Resolve-Duration @((Get-ApiDuration 'Prepare Templates'), $env:template_prep_duration)) }
+          'Run Pester Tests'            = @{ outcome = '${{ steps.run-pester.outcome }}'; duration = (Resolve-Duration @((Get-ApiDuration 'Run Pester Tests'), $env:run_pester_duration)) }
+          'Collect test case results'   = @{ outcome = '${{ steps.collect-cases.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Collect test case results')) }
+          'Upload Test Results'         = @{ outcome = '${{ steps.upload-artifacts.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Upload Test Results')) }
+          'Complete Test Run'           = @{ outcome = '${{ steps.complete-test-run.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Complete Test Run')) }
+          'Upload to Blob Storage'      = @{ outcome = '${{ steps.upload-to-blob.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Upload to Blob Storage')) }
+        }
+
+        $stepsJson = [ordered]@{}
+        foreach ($stepName in $steps.Keys) {
+          $outcome = $steps[$stepName].outcome
+          $duration = $steps[$stepName].duration
+
+          if ([string]::IsNullOrWhiteSpace($duration) -or $duration -eq '$null') {
+            $duration = '-'
+          }
+
+          if ($duration -eq '-') {
+            $stepsJson[$stepName] = $outcome
+          } else {
+            $stepsJson[$stepName] = "$outcome | $duration"
+          }
+        }
+
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($stepsJson | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
 
     - name: Reset Azure Session VM
       id: reset-sessionvm
@@ -551,6 +721,8 @@ jobs:
         PESTER_NOTRUN: ${{ steps.run-pester.outputs.pester_notrun || '0' }}
         STEPS_JSON: ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
         CASES_JSON: ${{ steps.collect-cases.outputs.cases_json || '{}' }}
+        CASES_ORDER_JSON: ${{ steps.collect-cases.outputs.cases_order_json || '[]' }}
+        RECORDING_URLS_JSON: ${{ steps.upload-to-blob.outputs.public_recording_urls_json || '[]' }}
         NOTIFICATION_SOURCE: Intune Tests
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         BRANCH: ${{ github.ref_name }}
@@ -586,6 +758,127 @@ jobs:
         function Escape-MarkdownCell {
           param([string]$Value)
           return ([string]$Value).Replace('|', '\|').Replace("`r", ' ').Replace("`n", ' ')
+        }
+
+        function Get-NormalizedTokens {
+          param([string]$Text)
+
+          $raw = ([string]$Text).ToLowerInvariant()
+          $raw = $raw -replace '\+', ' plus '
+          $parts = $raw -split '[^a-z0-9]+'
+          return @($parts | Where-Object { $_.Length -ge 3 } | Select-Object -Unique)
+        }
+
+        function Expand-TokenAliases {
+          param([string[]]$Tokens)
+
+          $expanded = New-Object System.Collections.Generic.HashSet[string]
+          foreach ($token in @($Tokens)) {
+            if ([string]::IsNullOrWhiteSpace($token)) {
+              continue
+            }
+
+            $null = $expanded.Add($token)
+            switch ($token) {
+              'notepad' { $null = $expanded.Add('notepadplusplus') }
+              'plusplus' { $null = $expanded.Add('notepadplusplus') }
+              'notepadplusplus' {
+                $null = $expanded.Add('notepad')
+                $null = $expanded.Add('plusplus')
+              }
+              'vlc' { $null = $expanded.Add('mediaplayer') }
+              'media' { $null = $expanded.Add('mediaplayer') }
+              'player' { $null = $expanded.Add('mediaplayer') }
+              'mediaplayer' {
+                $null = $expanded.Add('vlc')
+                $null = $expanded.Add('media')
+                $null = $expanded.Add('player')
+              }
+            }
+          }
+
+          return @($expanded)
+        }
+
+        function Parse-RecordingNameMetadata {
+          param([string]$RecordingFileName)
+
+          $stem = [System.IO.Path]::GetFileNameWithoutExtension([string]$RecordingFileName)
+          if ([string]::IsNullOrWhiteSpace($stem)) {
+            return $null
+          }
+
+          $appPart = $stem
+          $deploymentType = $null
+
+          if ($stem -match '^(?<app>.+?)_(?<action>Install|Uninstall|Repair)_\d{8}_\d{6}$') {
+            $appPart = [string]$matches['app']
+            $deploymentType = ([string]$matches['action']).ToLowerInvariant()
+          }
+
+          $baseTokens = Get-NormalizedTokens -Text $appPart
+          $tokens = Expand-TokenAliases -Tokens $baseTokens
+
+          return [pscustomobject]@{
+            Name           = [string]$RecordingFileName
+            AppNameRaw     = $appPart
+            AppTokens      = @($tokens)
+            DeploymentType = $deploymentType
+          }
+        }
+
+        function Parse-CaseRecordingHint {
+          param([string]$CaseName)
+
+          if ([string]::IsNullOrWhiteSpace($CaseName)) {
+            return $null
+          }
+
+          if ($CaseName -notmatch '\[INTUNE:(?<app>[A-Za-z0-9_+\- ]+?)_(?<action>Install|Uninstall|Repair)\]') {
+            return $null
+          }
+
+          $hintApp = [string]$matches['app']
+          $hintAction = ([string]$matches['action']).ToLowerInvariant()
+          $hintTokens = Expand-TokenAliases -Tokens (Get-NormalizedTokens -Text $hintApp)
+
+          return [pscustomobject]@{
+            AppTokens      = @($hintTokens)
+            DeploymentType = $hintAction
+          }
+        }
+
+        function Find-CaseRecordingLinks {
+          param(
+            [string]$CaseName,
+            [array]$RecordingEntries
+          )
+
+          if (-not $RecordingEntries -or $RecordingEntries.Count -eq 0) {
+            return @()
+          }
+
+          $caseHint = Parse-CaseRecordingHint -CaseName $CaseName
+          if (-not $caseHint) {
+            return @()
+          }
+
+          $matched = foreach ($entry in $RecordingEntries) {
+            $recordingMeta = Parse-RecordingNameMetadata -RecordingFileName ([string]$entry.Name)
+            if (-not $recordingMeta -or $recordingMeta.AppTokens.Count -eq 0) {
+              continue
+            }
+
+            $hintOverlap = @($caseHint.AppTokens | Where-Object { $recordingMeta.AppTokens -contains $_ })
+            if ($hintOverlap.Count -gt 0 -and $recordingMeta.DeploymentType -and $recordingMeta.DeploymentType -eq $caseHint.DeploymentType) {
+              [pscustomobject]@{
+                Name  = [string]$entry.Name
+                Url   = [string]$entry.Url
+              }
+            }
+          }
+
+          return @($matched | Sort-Object -Property Name -Descending | Select-Object -First 1)
         }
 
         function Get-IntFromEnv {
@@ -633,6 +926,58 @@ jobs:
           Write-Warning "Failed to parse CASES_JSON: $($_.Exception.Message)"
         }
 
+        $caseOrder = @()
+        try {
+          $rawCaseOrder = if ([string]::IsNullOrWhiteSpace($env:CASES_ORDER_JSON)) { '[]' } else { $env:CASES_ORDER_JSON }
+          $parsedCaseOrder = $rawCaseOrder | ConvertFrom-Json -ErrorAction Stop
+          if ($parsedCaseOrder) {
+            $caseOrder = @($parsedCaseOrder | ForEach-Object { [string]$_ })
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse CASES_ORDER_JSON: $($_.Exception.Message)"
+        }
+
+        $recordingEntries = @()
+        try {
+          $rawRecordingUrls = if ([string]::IsNullOrWhiteSpace($env:RECORDING_URLS_JSON)) { '[]' } else { $env:RECORDING_URLS_JSON }
+          $parsedRecordingUrls = $rawRecordingUrls | ConvertFrom-Json -ErrorAction Stop
+          if ($parsedRecordingUrls) {
+            foreach ($item in @($parsedRecordingUrls)) {
+              $name = [string]$item.Name
+              $url = [string]$item.Url
+              if (-not [string]::IsNullOrWhiteSpace($name) -and -not [string]::IsNullOrWhiteSpace($url)) {
+                $recordingEntries += [pscustomobject]@{ Name = $name; Url = $url }
+              }
+            }
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse RECORDING_URLS_JSON: $($_.Exception.Message)"
+        }
+
+        $orderedCaseNames = @()
+        if ($cases.Count -gt 0) {
+          $seenCaseNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+          foreach ($caseName in @($caseOrder)) {
+            if ([string]::IsNullOrWhiteSpace($caseName)) {
+              continue
+            }
+
+            if ($cases.ContainsKey($caseName) -and $seenCaseNames.Add($caseName)) {
+              $orderedCaseNames += $caseName
+            }
+          }
+
+          foreach ($caseName in $cases.Keys) {
+            $caseNameText = [string]$caseName
+            if ($seenCaseNames.Add($caseNameText)) {
+              $orderedCaseNames += $caseNameText
+            }
+          }
+        }
+
         $consoleLines = New-Object System.Collections.Generic.List[string]
         $consoleLines.Add("Source:           $env:NOTIFICATION_SOURCE") | Out-Null
         $consoleLines.Add("Job status:       $jobStatusIcon $jobStatus") | Out-Null
@@ -660,17 +1005,26 @@ jobs:
 
         if ($cases.Count -gt 0) {
           $maxCaseLogCount = 30
-          $sortedCaseNames = @($cases.Keys | Sort-Object)
-          $visibleCaseNames = @($sortedCaseNames | Select-Object -First $maxCaseLogCount)
+          $visibleCaseNames = @($orderedCaseNames | Select-Object -First $maxCaseLogCount)
           $consoleLines.Add('') | Out-Null
-          $consoleLines.Add(("Test Cases (parsed, showing {0}/{1})" -f $visibleCaseNames.Count, $sortedCaseNames.Count)) | Out-Null
+          $consoleLines.Add(("Test Cases (parsed, showing {0}/{1})" -f $visibleCaseNames.Count, $orderedCaseNames.Count)) | Out-Null
           foreach ($caseName in $visibleCaseNames) {
             $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
             $icon = Get-StatusIcon -Status $outcome
-            $consoleLines.Add(("  - {0}: {1} {2} | {3}" -f $caseName, $icon, $outcome, $duration)) | Out-Null
+            $matchedRecordings = @(Find-CaseRecordingLinks -CaseName $caseName -RecordingEntries $recordingEntries)
+            $recordingText = if ($matchedRecordings.Count -gt 0) {
+              ($matchedRecordings | ForEach-Object { $_.Name }) -join ', '
+            }
+            elseif ($recordingEntries.Count -gt 0) {
+              'Folder only'
+            }
+            else {
+              '-'
+            }
+            $consoleLines.Add(("  - {0}: {1} {2} | {3} | Recording: {4}" -f $caseName, $icon, $outcome, $duration, $recordingText)) | Out-Null
           }
-          if ($sortedCaseNames.Count -gt $maxCaseLogCount) {
-            $consoleLines.Add(("  ... and {0} more test case(s)." -f ($sortedCaseNames.Count - $maxCaseLogCount))) | Out-Null
+          if ($orderedCaseNames.Count -gt $maxCaseLogCount) {
+            $consoleLines.Add(("  ... and {0} more test case(s)." -f ($orderedCaseNames.Count - $maxCaseLogCount))) | Out-Null
           }
         }
 
@@ -704,33 +1058,50 @@ jobs:
 
         if ($cases.Count -gt 0) {
           $maxCases = 25
-          $sortedCaseNames = @($cases.Keys | Sort-Object)
-          $visibleCaseNames = @($sortedCaseNames | Select-Object -First $maxCases)
+          $visibleCaseNames = @($orderedCaseNames | Select-Object -First $maxCases)
 
           $summaryLines.Add('') | Out-Null
-          $summaryLines.Add("### Test Cases (Top $($visibleCaseNames.Count) / $($sortedCaseNames.Count))") | Out-Null
+          $summaryLines.Add('<details>') | Out-Null
+          $summaryLines.Add("<summary>Test Cases (Top $($visibleCaseNames.Count) / $($orderedCaseNames.Count))</summary>") | Out-Null
           $summaryLines.Add('') | Out-Null
-          $summaryLines.Add('| Test Case | Status | Duration |') | Out-Null
-          $summaryLines.Add('|---|---|---|') | Out-Null
+          $summaryLines.Add('| Test Case | Status | Duration | Recording |') | Out-Null
+          $summaryLines.Add('|---|---|---|---|') | Out-Null
 
           foreach ($caseName in $visibleCaseNames) {
             $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
             $icon = Get-StatusIcon -Status $outcome
             $safeCase = Escape-MarkdownCell -Value ([string]$caseName)
             $safeDuration = Escape-MarkdownCell -Value $duration
-            $summaryLines.Add("| $safeCase | $icon $outcome | $safeDuration |") | Out-Null
+            $matchedRecordings = @(Find-CaseRecordingLinks -CaseName $caseName -RecordingEntries $recordingEntries)
+            $recordingCell = if ($matchedRecordings.Count -gt 0) {
+              ($matchedRecordings | ForEach-Object {
+                $safeName = Escape-MarkdownCell -Value ([string]$_.Name)
+                "[$safeName]($($_.Url))"
+              }) -join '<br/>'
+            }
+            elseif ($recordingEntries.Count -gt 0) {
+              'Not record'
+            }
+            else {
+              '-'
+            }
+            $summaryLines.Add("| $safeCase | $icon $outcome | $safeDuration | $recordingCell |") | Out-Null
           }
 
-          if ($sortedCaseNames.Count -gt $maxCases) {
-            $remaining = $sortedCaseNames.Count - $maxCases
+          if ($orderedCaseNames.Count -gt $maxCases) {
+            $remaining = $orderedCaseNames.Count - $maxCases
             $summaryLines.Add('') | Out-Null
             $summaryLines.Add("_... and $remaining more test case(s). Full details are in Teams notification and test artifacts._") | Out-Null
           }
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('</details>') | Out-Null
         }
         
         if ($steps.Count -gt 0) {
           $summaryLines.Add('') | Out-Null
-          $summaryLines.Add('### Pipeline Steps') | Out-Null
+          $summaryLines.Add('<details>') | Out-Null
+          $summaryLines.Add("<summary>Pipeline Steps ($($steps.Count))</summary>") | Out-Null
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('| Step | Status | Duration |') | Out-Null
           $summaryLines.Add('|---|---|---|') | Out-Null
@@ -742,6 +1113,9 @@ jobs:
             $safeDuration = Escape-MarkdownCell -Value $duration
             $summaryLines.Add("| $safeName | $icon $outcome | $safeDuration |") | Out-Null
           }
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('</details>') | Out-Null
         }
 
         $payload = [ordered]@{

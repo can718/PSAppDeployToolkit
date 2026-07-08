@@ -5,13 +5,15 @@
     Author               = 'PSAppDeployToolkit'
     CompanyName          = 'PSAppDeployToolkit'
     Copyright            = '(c) PSAppDeployToolkit.'
-    Description          = 'Recording helper module for Additional Tests in PSADT V4.'
+    Description          = 'Recording helper module for Additional Tests in PSADT V3 and V4.'
     PowerShellVersion    = '5.1'
     CompatiblePSEditions = @('Desktop', 'Core')
 
     FunctionsToExport    = @(
         'Start-AdditionalTestRecording',
+        'Start-AdditionalTestRecordingV3',
         'Stop-AdditionalTestRecording',
+        'Stop-AdditionalTestRecordingV3',
         'Register-AdditionalTestRecordingCallbacks',
         'Import-AdditionalTestRecordingHelper'
     )

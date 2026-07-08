@@ -93,14 +93,25 @@ jobs:
         New-Item -ItemType Directory -Path $tfScriptsDir -Force | Out-Null
         Copy-Item -LiteralPath $tfHelper -Destination $tfScriptsDir -Force
 
-        # copy PSAppDeployToolkit.Recording.psm1 and PSAppDeployToolkit.Recording.psd1 to $tfScriptsDir
+        $RecordingScriptsDir = 'C:\PSADTScripts\PSAppDeployToolkit.Recording'
+        New-Item -ItemType Directory -Path $RecordingScriptsDir -Force | Out-Null
+        # copy PSAppDeployToolkit.Recording.psm1 and PSAppDeployToolkit.Recording.psd1 to $RecordingScriptsDir
         $recordingPathpsm1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psm1'
-        Copy-Item -LiteralPath $recordingPathpsm1 -Destination $tfScriptsDir -Force
+        Copy-Item -LiteralPath $recordingPathpsm1 -Destination $RecordingScriptsDir -Force
         $recordingPathpsd1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psd1'
-        Copy-Item -LiteralPath $recordingPathpsd1 -Destination $tfScriptsDir -Force
+        Copy-Item -LiteralPath $recordingPathpsd1 -Destination $RecordingScriptsDir -Force
 
-        # add module into $env:PSModulePath
-        $env:PSModulePath += ";$tfScriptsDir"
+        # add module into machine-level PSModulePath
+        $moduleRoot = $RecordingScriptsDir
+        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+        if ([string]::IsNullOrWhiteSpace($machinePath)) {
+          $machinePath = ''
+        }
+        $segments = $machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        if ($segments -notcontains $moduleRoot) {
+          [Environment]::SetEnvironmentVariable('PSModulePath', "$machinePath;$moduleRoot", 'Machine')
+        }
+        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
 
 
         . $tfHelper
@@ -607,7 +618,9 @@ jobs:
           }
         }
         $casesJson = if ($caseEntries.Count -gt 0) { $caseEntries | ConvertTo-Json -Compress } else { '{}' }
+        $casesOrderJson = @($caseEntries.Keys) | ConvertTo-Json -Compress
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_json=$casesJson`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_order_json=$casesOrderJson`n", [System.Text.Encoding]::UTF8)
         Write-Host "Collected $($caseEntries.Count) test case result(s)."
 
     - name: Upload additional test results
@@ -845,6 +858,7 @@ jobs:
         PESTER_NOTRUN: ${{ steps.run-pester.outputs.pester_notrun || '0' }}
         STEPS_JSON: ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
         CASES_JSON: ${{ steps.collect-cases.outputs.cases_json || '{}' }}
+        CASES_ORDER_JSON: ${{ steps.collect-cases.outputs.cases_order_json || '[]' }}
         RECORDING_URLS_JSON: ${{ steps.upload-to-blob.outputs.public_recording_urls_json || '[]' }}
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
         NOTIFICATION_SOURCE: SCCM Tests
@@ -1051,6 +1065,18 @@ jobs:
           Write-Warning "Failed to parse CASES_JSON: $($_.Exception.Message)"
         }
 
+        $caseOrder = @()
+        try {
+          $rawCaseOrder = if ([string]::IsNullOrWhiteSpace($env:CASES_ORDER_JSON)) { '[]' } else { $env:CASES_ORDER_JSON }
+          $parsedCaseOrder = $rawCaseOrder | ConvertFrom-Json -ErrorAction Stop
+          if ($parsedCaseOrder) {
+            $caseOrder = @($parsedCaseOrder | ForEach-Object { [string]$_ })
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse CASES_ORDER_JSON: $($_.Exception.Message)"
+        }
+
         $recordingEntries = @()
         try {
           $rawRecordingUrls = if ([string]::IsNullOrWhiteSpace($env:RECORDING_URLS_JSON)) { '[]' } else { $env:RECORDING_URLS_JSON }
@@ -1067,6 +1093,32 @@ jobs:
         }
         catch {
           Write-Warning "Failed to parse RECORDING_URLS_JSON: $($_.Exception.Message)"
+        }
+
+        $orderedCaseNames = @()
+        if ($cases.Count -gt 0) {
+          $seenCaseNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+          foreach ($caseName in @($caseOrder)) {
+            if ([string]::IsNullOrWhiteSpace($caseName)) {
+              continue
+            }
+
+            if ($cases.ContainsKey($caseName) -and $seenCaseNames.Add($caseName)) {
+              $orderedCaseNames += $caseName
+            }
+          }
+
+          foreach ($caseName in $cases.Keys) {
+            $caseNameText = [string]$caseName
+            if ($seenCaseNames.Add($caseNameText)) {
+              $orderedCaseNames += $caseNameText
+            }
+          }
+
+          if ($orderedCaseNames.Count -gt 1) {
+            [array]::Reverse($orderedCaseNames)
+          }
         }
 
         $consoleLines = New-Object System.Collections.Generic.List[string]
@@ -1096,10 +1148,9 @@ jobs:
 
         if ($cases.Count -gt 0) {
           $maxCaseLogCount = 30
-          $sortedCaseNames = @($cases.Keys | Sort-Object)
-          $visibleCaseNames = @($sortedCaseNames | Select-Object -First $maxCaseLogCount)
+          $visibleCaseNames = @($orderedCaseNames | Select-Object -First $maxCaseLogCount)
           $consoleLines.Add('') | Out-Null
-          $consoleLines.Add(("Test Cases (parsed, showing {0}/{1})" -f $visibleCaseNames.Count, $sortedCaseNames.Count)) | Out-Null
+          $consoleLines.Add(("Test Cases (parsed, showing {0}/{1})" -f $visibleCaseNames.Count, $orderedCaseNames.Count)) | Out-Null
           foreach ($caseName in $visibleCaseNames) {
             $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
             $icon = Get-StatusIcon -Status $outcome
@@ -1115,8 +1166,8 @@ jobs:
             }
             $consoleLines.Add(("  - {0}: {1} {2} | {3} | Recording: {4}" -f $caseName, $icon, $outcome, $duration, $recordingText)) | Out-Null
           }
-          if ($sortedCaseNames.Count -gt $maxCaseLogCount) {
-            $consoleLines.Add(("  ... and {0} more test case(s)." -f ($sortedCaseNames.Count - $maxCaseLogCount))) | Out-Null
+          if ($orderedCaseNames.Count -gt $maxCaseLogCount) {
+            $consoleLines.Add(("  ... and {0} more test case(s)." -f ($orderedCaseNames.Count - $maxCaseLogCount))) | Out-Null
           }
         }
 
@@ -1150,11 +1201,11 @@ jobs:
 
         if ($cases.Count -gt 0) {
           $maxCases = 25
-          $sortedCaseNames = @($cases.Keys | Sort-Object)
-          $visibleCaseNames = @($sortedCaseNames | Select-Object -First $maxCases)
+          $visibleCaseNames = @($orderedCaseNames | Select-Object -First $maxCases)
 
           $summaryLines.Add('') | Out-Null
-          $summaryLines.Add("### Test Cases (Top $($visibleCaseNames.Count) / $($sortedCaseNames.Count))") | Out-Null
+          $summaryLines.Add('<details>') | Out-Null
+          $summaryLines.Add("<summary>Test Cases (Top $($visibleCaseNames.Count) / $($orderedCaseNames.Count))</summary>") | Out-Null
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('| Test Case | Status | Duration | Recording |') | Out-Null
           $summaryLines.Add('|---|---|---|---|') | Out-Null
@@ -1172,7 +1223,7 @@ jobs:
               }) -join '<br/>'
             }
             elseif ($recordingEntries.Count -gt 0) {
-              "[Open folder](https://tfpfsstorage.blob.core.windows.net/tfp-public/psadt/$env:TEST_RUN_ID)"
+              'Not record'
             }
             else {
               '-'
@@ -1180,17 +1231,21 @@ jobs:
             $summaryLines.Add("| $safeCase | $icon $outcome | $safeDuration | $recordingCell |") | Out-Null
           }
 
-          if ($sortedCaseNames.Count -gt $maxCases) {
-            $remaining = $sortedCaseNames.Count - $maxCases
+          if ($orderedCaseNames.Count -gt $maxCases) {
+            $remaining = $orderedCaseNames.Count - $maxCases
             $summaryLines.Add('') | Out-Null
             $summaryLines.Add("_... and $remaining more test case(s). Full details are in Teams notification and test artifacts._") | Out-Null
           }
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('</details>') | Out-Null
         }
         
         
         if ($steps.Count -gt 0) {
           $summaryLines.Add('') | Out-Null
-          $summaryLines.Add('### Pipeline Steps') | Out-Null
+          $summaryLines.Add('<details>') | Out-Null
+          $summaryLines.Add("<summary>Pipeline Steps ($($steps.Count))</summary>") | Out-Null
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('| Step | Status | Duration |') | Out-Null
           $summaryLines.Add('|---|---|---|') | Out-Null
@@ -1202,6 +1257,9 @@ jobs:
             $safeDuration = Escape-MarkdownCell -Value $duration
             $summaryLines.Add("| $safeName | $icon $outcome | $safeDuration |") | Out-Null
           }
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('</details>') | Out-Null
         }
 
         $payload = [ordered]@{
