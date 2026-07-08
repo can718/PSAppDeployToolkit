@@ -1119,6 +1119,12 @@ jobs:
           if ($orderedCaseNames.Count -gt 1) {
             [array]::Reverse($orderedCaseNames)
           }
+
+          $validationCaseName = 'PSADT Build Template Validation'
+          $validationCaseIndex = [array]::IndexOf($orderedCaseNames, $validationCaseName)
+          if ($validationCaseIndex -gt 0) {
+            $orderedCaseNames = @($validationCaseName) + @($orderedCaseNames | Where-Object { $_ -ne $validationCaseName })
+          }
         }
 
         $consoleLines = New-Object System.Collections.Generic.List[string]
