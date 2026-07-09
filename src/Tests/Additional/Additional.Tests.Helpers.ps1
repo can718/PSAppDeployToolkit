@@ -34,7 +34,7 @@ function script:Invoke-WinSCPPollDeploymentStatus
         [string]$SiteCode,
         [string]$Label = 'Deployment',
         [int]$MaxWaitSeconds = 1800,
-        [int]$PollInterval = 60
+        [int]$PollInterval = 300
     )
 
     $elapsed = 0
