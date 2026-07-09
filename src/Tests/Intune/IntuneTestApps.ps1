@@ -42,6 +42,8 @@
         SkipUninstall = $true
         TemplateVersion = 'V4'
         AppFolderName = 'Notepad++'
+        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+        UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
         RegDisplayName = 'Notepad++'
         RegVersionValue = '6.6.4'
         RegVersionName = 'DisplayVersion'
