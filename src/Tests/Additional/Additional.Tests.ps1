@@ -791,6 +791,8 @@ if (Test-Path $uninstallKey)
                     -PackageDir $script:notepadPackageDir `
                     -DetectScript $detectScript `
                     -Description "PSADT v4 Notepad++ template - Notepad++ $script:notepadAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+                    -InstallCommand "Invoke-AppDeployToolkit.exe -DeploymentType Install"
+                    -UninstallCommand "Invoke-AppDeployToolkit.exe -DeploymentType Uninstall"
 
                 # ----------------------------------------------------------------
                 # Step 6 - Distribute content

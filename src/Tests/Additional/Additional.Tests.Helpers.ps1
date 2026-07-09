@@ -1002,7 +1002,11 @@ function script:New-PSADTApplicationWithDeploymentType
         [Parameter(Mandatory = $true)]
         [string]$DetectScript,
         [Parameter(Mandatory = $true)]
-        [string]$Description
+        [string]$Description,
+        [Parameter(Mandatory = $false)]
+        [string]$InstallCommand,
+        [Parameter(Mandatory = $false)]
+        [string]$UninstallCommand
     )
 
     Remove-CMApplicationIfExists -AppName $AppName
@@ -1015,6 +1019,14 @@ function script:New-PSADTApplicationWithDeploymentType
         -Description     $Description | Out-Null
 
     $commands = Get-PSADTDeploymentCommands -PackageDir $PackageDir
+    if ($InstallCommand)
+    {
+        $commands.Install = $InstallCommand
+    }
+    if ($UninstallCommand)
+    {
+        $commands.Uninstall = $UninstallCommand
+    }
     Add-CMScriptDeploymentType `
         -ApplicationName           $AppName `
         -DeploymentTypeName        $DeploymentTypeName `

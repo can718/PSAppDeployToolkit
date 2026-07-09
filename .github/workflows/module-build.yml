@@ -3,6 +3,10 @@ on:
   pull_request:
   push:
   workflow_dispatch:
+concurrency:
+  # De-duplicate PR + push runs for the same commit.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
 permissions:
   id-token: write # Require write permission to Fetch an OIDC token.
   contents: read
