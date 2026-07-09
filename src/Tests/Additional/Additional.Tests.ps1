@@ -307,7 +307,7 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
 
         BeforeAll {
             $winSCPParameters = Get-PSADTWinSCPAppParameters
-            $ctx = New-PSADTAppTestContext @winSCPParameters
+            $ctx = New-PSADTAppTestContextSafe -Parameters $winSCPParameters -LogPrefix 'winSCP'
 
             $script:v4Dir = $ctx.V4Dir
             $script:winscpSourceScript = $ctx.SourceScript
@@ -416,7 +416,7 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
                 {
                     $createAppParams.UninstallCommand = $script:winscpUninstallCommand
                 }
-                New-PSADTApplicationWithDeploymentType @createAppParams
+                Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'winSCP'
 
                 # ----------------------------------------------------------------
                 # Step 5 - Distribute content
@@ -482,7 +482,7 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
 
         BeforeAll {
             $vlcParameters = Get-PSADTVLCAppParameters
-            $ctx = New-PSADTAppTestContext @vlcParameters
+            $ctx = New-PSADTAppTestContextSafe -Parameters $vlcParameters -LogPrefix 'VLC'
 
             $script:v4Dir = $ctx.V4Dir
             $script:vlcSourceScript = $ctx.SourceScript
@@ -588,7 +588,7 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
                 {
                     $createAppParams.UninstallCommand = $script:vlcUninstallCommand
                 }
-                New-PSADTApplicationWithDeploymentType @createAppParams
+                Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'VLC'
 
                 # ----------------------------------------------------------------
                 # Step 5 - Distribute content
@@ -654,7 +654,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
 
         BeforeAll {
             $notepadParameters = Get-PSADTNotepadPlusPlusAppParameters
-            $ctx = New-PSADTAppTestContext @notepadParameters
+            $ctx = New-PSADTAppTestContextSafe -Parameters $notepadParameters -LogPrefix 'Notepad++'
 
             $script:v4Dir = $ctx.V4Dir
             $script:notepadSourceScript = $ctx.SourceScript
@@ -774,7 +774,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                 {
                     $createAppParams.UninstallCommand = $script:notepadUninstallCommand
                 }
-                New-PSADTApplicationWithDeploymentType @createAppParams
+                Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'Notepad++'
 
                 # ----------------------------------------------------------------
                 # Step 6 - Distribute content
@@ -828,7 +828,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
 
         BeforeAll {
             $digiExamParameters = Get-PSADTDigiExamAppParameters
-            $ctx = New-PSADTAppTestContext @digiExamParameters
+            $ctx = New-PSADTAppTestContextSafe -Parameters $digiExamParameters -LogPrefix 'DigiExam'
 
             $script:v3Dir = $ctx.V3Dir
             $script:digiExamSourceScript = $ctx.SourceScript
@@ -965,7 +965,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
                 {
                     $createAppParams.UninstallCommand = $script:digiExamUninstallCommand
                 }
-                New-PSADTApplicationWithDeploymentType @createAppParams
+                Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'DigiExam'
                 Write-Information "::info::[DigiExam] DigiExam application imported into SCCM." -InformationAction Continue
                 # ----------------------------------------------------------------
                 # Step 7 - Distribute content
@@ -1031,7 +1031,7 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
 
         BeforeAll {
             $everythingParameters = Get-PSADTEverythingAppParameters
-            $ctx = New-PSADTAppTestContext @everythingParameters
+            $ctx = New-PSADTAppTestContextSafe -Parameters $everythingParameters -LogPrefix 'Everything'
 
             $script:v3Dir = $ctx.V3Dir
             $script:everythingSourceScript = $ctx.SourceScript
@@ -1162,7 +1162,7 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
                 {
                     $createAppParams.UninstallCommand = $script:everythingUninstallCommand
                 }
-                New-PSADTApplicationWithDeploymentType @createAppParams
+                Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'Everything'
 
                 # ----------------------------------------------------------------
                 # Step 7 - Distribute content

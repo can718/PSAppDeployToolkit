@@ -788,6 +788,62 @@ function script:New-PSADTLogValidationAppConfig
     }
 }
 
+function script:Invoke-PSADTApplicationWithDeploymentTypeSafe
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Parameters,
+
+        [string]$LogPrefix = 'PSADT'
+    )
+
+    $command = Get-Command -Name 'New-PSADTApplicationWithDeploymentType' -ErrorAction Stop
+    $supportedParameters = $command.Parameters
+    $filteredParameters = @{}
+
+    foreach ($entry in $Parameters.GetEnumerator())
+    {
+        if ($supportedParameters.ContainsKey($entry.Key))
+        {
+            $filteredParameters[$entry.Key] = $entry.Value
+        }
+        else
+        {
+            Write-Verbose "[$LogPrefix] Skipping unsupported parameter '$($entry.Key)' for New-PSADTApplicationWithDeploymentType."
+        }
+    }
+
+    New-PSADTApplicationWithDeploymentType @filteredParameters
+}
+
+function script:New-PSADTAppTestContextSafe
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Parameters,
+
+        [string]$LogPrefix = 'PSADT'
+    )
+
+    $command = Get-Command -Name 'New-PSADTAppTestContext' -ErrorAction Stop
+    $supportedParameters = $command.Parameters
+    $filteredParameters = @{}
+
+    foreach ($entry in $Parameters.GetEnumerator())
+    {
+        if ($supportedParameters.ContainsKey($entry.Key))
+        {
+            $filteredParameters[$entry.Key] = $entry.Value
+        }
+        else
+        {
+            Write-Verbose "[$LogPrefix] Skipping unsupported parameter '$($entry.Key)' for New-PSADTAppTestContext."
+        }
+    }
+
+    New-PSADTAppTestContext @filteredParameters
+}
+
 function script:Assert-PSADTDeploymentLogValidation
 {
     param (
