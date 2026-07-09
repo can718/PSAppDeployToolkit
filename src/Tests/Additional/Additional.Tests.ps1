@@ -242,6 +242,13 @@ BeforeAll {
     }
     . $script:AdditionalHelpersPath
 
+    $script:AppParameterHelpPath = Join-Path $script:_tfScriptRoot 'APPParameterHelp.ps1'
+    if (-not (Test-Path $script:AppParameterHelpPath))
+    {
+        throw "Required app parameter helper file not found: $script:AppParameterHelpPath"
+    }
+    . $script:AppParameterHelpPath
+
 }
 
 # ---------------------------------------------------------------------------
@@ -299,14 +306,8 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
     Context 'Build winSCP package from V4 template and deploy into SCCM' {
 
         BeforeAll {
-            $ctx = New-PSADTAppTestContext `
-                -SourceScriptRelativePath 'winSCP\Invoke-AppDeployToolkit.ps1' `
-                -PackageDir 'C:\PSADT\winSCP' `
-                -AppName 'WinSCP (PSADT v4 winSCP)' `
-                -AppVendor 'Martin Prikryl' `
-                -AppVersion '6.5.6' `
-                -DeploymentTypeName 'WinSCP 6.5.6 (v4 winSCP)' `
-                -ContentSubPath 'winSCP'
+            $winSCPParameters = Get-PSADTWinSCPAppParameters
+            $ctx = New-PSADTAppTestContext @winSCPParameters
 
             $script:v4Dir = $ctx.V4Dir
             $script:winscpSourceScript = $ctx.SourceScript
@@ -321,6 +322,10 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:winscpDetectScript = $winSCPParameters.DetectScript
+            $script:winscpDescriptionTemplate = $winSCPParameters.DescriptionTemplate
+            $script:winscpInstallCommand = $winSCPParameters.InstallCommand
+            $script:winscpUninstallCommand = $winSCPParameters.UninstallCommand
             $script:winscpLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'WinSCP' -Name 'WinSCP'
         }
 
@@ -393,32 +398,25 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             Write-Verbose '[winSCP] Step 4: Importing winSCP application into SCCM...'
             Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 Write-Information '::info::[winSCP] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
-                $detectScript = @'
-$uninstallRoots = @(
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-)
-$app = foreach ($root in $uninstallRoots)
-{
-    if (Test-Path $root)
-    {
-        Get-ChildItem -Path $root |
-            Get-ItemProperty -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like '*WinSCP*' -and $_.DisplayVersion -like '6.5.6*' }
-    }
-}
-if ($app) { Write-Host "Installed" }
-'@
-
-                New-PSADTApplicationWithDeploymentType `
-                    -AppName $script:winscpAppName `
-                    -Vendor $script:winscpAppVendor `
-                    -Version $script:winscpAppVersion `
-                    -DeploymentTypeName $script:winscpDTName `
-                    -ContentUNC $script:winscpContentUNC `
-                    -PackageDir $script:winscpPackageDir `
-                    -DetectScript $detectScript `
-                    -Description "PSADT v4 winSCP template - WinSCP $script:winscpAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+                $createAppParams = @{
+                    AppName            = $script:winscpAppName
+                    Vendor             = $script:winscpAppVendor
+                    Version            = $script:winscpAppVersion
+                    DeploymentTypeName = $script:winscpDTName
+                    ContentUNC         = $script:winscpContentUNC
+                    PackageDir         = $script:winscpPackageDir
+                    DetectScript       = $script:winscpDetectScript
+                    Description        = ($script:winscpDescriptionTemplate -f $script:winscpAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:winscpInstallCommand))
+                {
+                    $createAppParams.InstallCommand = $script:winscpInstallCommand
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:winscpUninstallCommand))
+                {
+                    $createAppParams.UninstallCommand = $script:winscpUninstallCommand
+                }
+                New-PSADTApplicationWithDeploymentType @createAppParams
 
                 # ----------------------------------------------------------------
                 # Step 5 - Distribute content
@@ -483,15 +481,8 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
     Context 'Build VLC package from V4 template and deploy into SCCM' {
 
         BeforeAll {
-            $ctx = New-PSADTAppTestContext `
-                -SourceScriptRelativePath 'VLC\Invoke-AppDeployToolkit.ps1' `
-                -SourceFolderRelativePath 'VLC' `
-                -PackageDir 'C:\PSADT\VLC' `
-                -AppName 'VLC media player (PSADT v4 VLC)' `
-                -AppVendor 'VideoLAN' `
-                -AppVersion '3.0.23' `
-                -DeploymentTypeName 'VLC 3.0.23 (v4 VLC)' `
-                -ContentSubPath 'VLC'
+            $vlcParameters = Get-PSADTVLCAppParameters
+            $ctx = New-PSADTAppTestContext @vlcParameters
 
             $script:v4Dir = $ctx.V4Dir
             $script:vlcSourceScript = $ctx.SourceScript
@@ -507,6 +498,10 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:vlcDetectScript = $vlcParameters.DetectScript
+            $script:vlcDescriptionTemplate = $vlcParameters.DescriptionTemplate
+            $script:vlcInstallCommand = $vlcParameters.InstallCommand
+            $script:vlcUninstallCommand = $vlcParameters.UninstallCommand
             $script:vlcLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'VLC' -Name 'VLC'
         }
 
@@ -575,32 +570,25 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             Write-Verbose '[VLC] Step 4: Importing VLC application into SCCM...'
             Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 Write-Information '::info::[VLC] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
-                $detectScript = @'
-$uninstallRoots = @(
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-)
-$app = foreach ($root in $uninstallRoots)
-{
-    if (Test-Path $root)
-    {
-        Get-ChildItem -Path $root |
-            Get-ItemProperty -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like '*VLC media player*' -and $_.DisplayVersion -like '3.0.23*' }
-    }
-}
-if ($app) { Write-Host "Installed" }
-'@
-
-                New-PSADTApplicationWithDeploymentType `
-                    -AppName $script:vlcAppName `
-                    -Vendor $script:vlcAppVendor `
-                    -Version $script:vlcAppVersion `
-                    -DeploymentTypeName $script:vlcDTName `
-                    -ContentUNC $script:vlcContentUNC `
-                    -PackageDir $script:vlcPackageDir `
-                    -DetectScript $detectScript `
-                    -Description "PSADT v4 VLC template - VLC media player $script:vlcAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+                $createAppParams = @{
+                    AppName            = $script:vlcAppName
+                    Vendor             = $script:vlcAppVendor
+                    Version            = $script:vlcAppVersion
+                    DeploymentTypeName = $script:vlcDTName
+                    ContentUNC         = $script:vlcContentUNC
+                    PackageDir         = $script:vlcPackageDir
+                    DetectScript       = $script:vlcDetectScript
+                    Description        = ($script:vlcDescriptionTemplate -f $script:vlcAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:vlcInstallCommand))
+                {
+                    $createAppParams.InstallCommand = $script:vlcInstallCommand
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:vlcUninstallCommand))
+                {
+                    $createAppParams.UninstallCommand = $script:vlcUninstallCommand
+                }
+                New-PSADTApplicationWithDeploymentType @createAppParams
 
                 # ----------------------------------------------------------------
                 # Step 5 - Distribute content
@@ -665,14 +653,8 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
     Context 'Build Notepad++ package from V4 template and deploy into SCCM' {
 
         BeforeAll {
-            $ctx = New-PSADTAppTestContext `
-                -SourceScriptRelativePath 'Notepad++\Invoke-AppDeployToolkit.ps1' `
-                -PackageDir 'C:\PSADT\NotepadPlusPlus' `
-                -AppName 'Notepad++ (PSADT v4 Notepad++)' `
-                -AppVendor 'Don HO don.h@free.fr' `
-                -AppVersion '6.6.4' `
-                -DeploymentTypeName 'Notepad++ 6.6.4 (v4 Notepad++)' `
-                -ContentSubPath 'NotepadPlusPlus'
+            $notepadParameters = Get-PSADTNotepadPlusPlusAppParameters
+            $ctx = New-PSADTAppTestContext @notepadParameters
 
             $script:v4Dir = $ctx.V4Dir
             $script:notepadSourceScript = $ctx.SourceScript
@@ -687,6 +669,10 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:notepadDetectScript = $notepadParameters.DetectScript
+            $script:notepadDescriptionTemplate = $notepadParameters.DescriptionTemplate
+            $script:notepadInstallCommand = $notepadParameters.InstallCommand
+            $script:notepadUninstallCommand = $notepadParameters.UninstallCommand
             $script:notepadLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'Notepad++' -Name 'Notepad++'
         }
 
@@ -770,29 +756,25 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             Write-Verbose '[Notepad++] Step 5: Importing Notepad++ application into SCCM...'
             Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 Write-Information '::info::[Notepad++] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
-                $detectScript = @'
-$uninstallKey = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++'
-if (Test-Path $uninstallKey)
-{
-    $app = Get-ItemProperty -Path $uninstallKey -ErrorAction SilentlyContinue
-    if ($app.DisplayVersion -like '6.6.4*')
-    {
-        Write-Host "Installed"
-    }
-}
-'@
-
-                New-PSADTApplicationWithDeploymentType `
-                    -AppName $script:notepadAppName `
-                    -Vendor $script:notepadAppVendor `
-                    -Version $script:notepadAppVersion `
-                    -DeploymentTypeName $script:notepadDTName `
-                    -ContentUNC $script:notepadContentUNC `
-                    -PackageDir $script:notepadPackageDir `
-                    -DetectScript $detectScript `
-                    -Description "PSADT v4 Notepad++ template - Notepad++ $script:notepadAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')" `
-                    -InstallCommand "Invoke-AppDeployToolkit.exe -DeploymentType Install" `
-                    -UninstallCommand "Invoke-AppDeployToolkit.exe -DeploymentType Uninstall"
+                $createAppParams = @{
+                    AppName            = $script:notepadAppName
+                    Vendor             = $script:notepadAppVendor
+                    Version            = $script:notepadAppVersion
+                    DeploymentTypeName = $script:notepadDTName
+                    ContentUNC         = $script:notepadContentUNC
+                    PackageDir         = $script:notepadPackageDir
+                    DetectScript       = $script:notepadDetectScript
+                    Description        = ($script:notepadDescriptionTemplate -f $script:notepadAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:notepadInstallCommand))
+                {
+                    $createAppParams.InstallCommand = $script:notepadInstallCommand
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:notepadUninstallCommand))
+                {
+                    $createAppParams.UninstallCommand = $script:notepadUninstallCommand
+                }
+                New-PSADTApplicationWithDeploymentType @createAppParams
 
                 # ----------------------------------------------------------------
                 # Step 6 - Distribute content
@@ -845,14 +827,8 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
     Context 'Build DigiExam package from V3 template and deploy into SCCM' {
 
         BeforeAll {
-            $ctx = New-PSADTAppTestContext `
-                -SourceScriptRelativePath '..\V3\Digiexam\Deploy-Application.ps1' `
-                -PackageDir 'C:\PSADT\DigiExam' `
-                -AppName 'Digiexam (PSADT v3 Digiexam)' `
-                -AppVendor 'DigiExam' `
-                -AppVersion '26.1.24' `
-                -DeploymentTypeName 'Digiexam 26.1.24 (v3 Digiexam)' `
-                -ContentSubPath 'DigiExam'
+            $digiExamParameters = Get-PSADTDigiExamAppParameters
+            $ctx = New-PSADTAppTestContext @digiExamParameters
 
             $script:v3Dir = $ctx.V3Dir
             $script:digiExamSourceScript = $ctx.SourceScript
@@ -867,6 +843,10 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:digiExamDetectScript = $digiExamParameters.DetectScript
+            $script:digiExamDescriptionTemplate = $digiExamParameters.DescriptionTemplate
+            $script:digiExamInstallCommand = $digiExamParameters.InstallCommand
+            $script:digiExamUninstallCommand = $digiExamParameters.UninstallCommand
             $script:digiExamLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V3' -AppFolderName 'Digiexam' -Name 'DigiExam'
         }
 
@@ -967,32 +947,25 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             Write-Verbose '[DigiExam] Step 6: Importing DigiExam application into SCCM...'
             Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 Write-Information '::info::[DigiExam] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
-                $detectScript = @'
-$uninstallRoots = @(
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-)
-$app = foreach ($root in $uninstallRoots)
-{
-    if (Test-Path $root)
-    {
-        Get-ChildItem -Path $root |
-            Get-ItemProperty -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like '*DigiExam*' -and $_.DisplayVersion -like '26.1.24*' }
-    }
-}
-if ($app) { Write-Host "Installed" }
-'@
-
-                New-PSADTApplicationWithDeploymentType `
-                    -AppName $script:digiExamAppName `
-                    -Vendor $script:digiExamAppVendor `
-                    -Version $script:digiExamAppVersion `
-                    -DeploymentTypeName $script:digiExamDTName `
-                    -ContentUNC $script:digiExamContentUNC `
-                    -PackageDir $script:digiExamPackageDir `
-                    -DetectScript $detectScript `
-                    -Description "PSADT v3 DigiExam template - DigiExam $script:digiExamAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+                $createAppParams = @{
+                    AppName            = $script:digiExamAppName
+                    Vendor             = $script:digiExamAppVendor
+                    Version            = $script:digiExamAppVersion
+                    DeploymentTypeName = $script:digiExamDTName
+                    ContentUNC         = $script:digiExamContentUNC
+                    PackageDir         = $script:digiExamPackageDir
+                    DetectScript       = $script:digiExamDetectScript
+                    Description        = ($script:digiExamDescriptionTemplate -f $script:digiExamAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:digiExamInstallCommand))
+                {
+                    $createAppParams.InstallCommand = $script:digiExamInstallCommand
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:digiExamUninstallCommand))
+                {
+                    $createAppParams.UninstallCommand = $script:digiExamUninstallCommand
+                }
+                New-PSADTApplicationWithDeploymentType @createAppParams
                 Write-Information "::info::[DigiExam] DigiExam application imported into SCCM." -InformationAction Continue
                 # ----------------------------------------------------------------
                 # Step 7 - Distribute content
@@ -1057,14 +1030,8 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
     Context 'Build Everything package from V3 template and deploy into SCCM' {
 
         BeforeAll {
-            $ctx = New-PSADTAppTestContext `
-                -SourceScriptRelativePath '..\V3\Everything\Deploy-Application.ps1' `
-                -PackageDir 'C:\PSADT\Everything' `
-                -AppName 'Everything (PSADT v3 Everything)' `
-                -AppVendor 'voidtools' `
-                -AppVersion '1.4.1.1032' `
-                -DeploymentTypeName 'Everything 1.4.1.1032 (v3 Everything)' `
-                -ContentSubPath 'Everything'
+            $everythingParameters = Get-PSADTEverythingAppParameters
+            $ctx = New-PSADTAppTestContext @everythingParameters
 
             $script:v3Dir = $ctx.V3Dir
             $script:everythingSourceScript = $ctx.SourceScript
@@ -1079,6 +1046,10 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
             $script:siteCode = $ctx.SiteCode
             $script:siteServer = $ctx.SiteServer
             $script:cmModulePath = $ctx.CmModulePath
+            $script:everythingDetectScript = $everythingParameters.DetectScript
+            $script:everythingDescriptionTemplate = $everythingParameters.DescriptionTemplate
+            $script:everythingInstallCommand = $everythingParameters.InstallCommand
+            $script:everythingUninstallCommand = $everythingParameters.UninstallCommand
             $script:everythingLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V3' -AppFolderName 'Everything' -Name 'Everything'
         }
 
@@ -1173,32 +1144,25 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
             Write-Verbose '[Everything] Step 6: Importing Everything application into SCCM...'
             Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
                 Write-Information '::info::[Everything] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
-                $detectScript = @'
-$uninstallRoots = @(
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-)
-$app = foreach ($root in $uninstallRoots)
-{
-    if (Test-Path $root)
-    {
-        Get-ChildItem -Path $root |
-            Get-ItemProperty -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like '*Everything*' -and $_.DisplayVersion -like '1.4.1.1032*' }
-    }
-}
-if ($app) { Write-Host "Installed" }
-'@
-
-                New-PSADTApplicationWithDeploymentType `
-                    -AppName $script:everythingAppName `
-                    -Vendor $script:everythingAppVendor `
-                    -Version $script:everythingAppVersion `
-                    -DeploymentTypeName $script:everythingDTName `
-                    -ContentUNC $script:everythingContentUNC `
-                    -PackageDir $script:everythingPackageDir `
-                    -DetectScript $detectScript `
-                    -Description "PSADT v3 Everything template - Everything $script:everythingAppVersion - auto-created $(Get-Date -Format 'yyyy-MM-dd')"
+                $createAppParams = @{
+                    AppName            = $script:everythingAppName
+                    Vendor             = $script:everythingAppVendor
+                    Version            = $script:everythingAppVersion
+                    DeploymentTypeName = $script:everythingDTName
+                    ContentUNC         = $script:everythingContentUNC
+                    PackageDir         = $script:everythingPackageDir
+                    DetectScript       = $script:everythingDetectScript
+                    Description        = ($script:everythingDescriptionTemplate -f $script:everythingAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:everythingInstallCommand))
+                {
+                    $createAppParams.InstallCommand = $script:everythingInstallCommand
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:everythingUninstallCommand))
+                {
+                    $createAppParams.UninstallCommand = $script:everythingUninstallCommand
+                }
+                New-PSADTApplicationWithDeploymentType @createAppParams
 
                 # ----------------------------------------------------------------
                 # Step 7 - Distribute content
