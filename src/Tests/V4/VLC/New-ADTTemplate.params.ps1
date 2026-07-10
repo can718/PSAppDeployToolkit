@@ -55,6 +55,7 @@ $NewADTTemplateParameters = @{
     }
 
     PostInstallScriptBlock   = {
+        Close-ADTInstallationProgress
         Remove-ADTFile -Path "$envCommonDesktop\VLC media player.lnk", "$envCommonStartMenuPrograms\VideoLAN\Release Notes.lnk", "$envCommonStartMenuPrograms\VideoLAN\Documentation.lnk", "$envCommonStartMenuPrograms\VideoLAN\VideoLAN Website.lnk"
         Copy-ADTFileToUserProfiles -Path "$($adtSession.DirSupportFiles)\vlc" -Destination 'AppData\Roaming' -Recurse
         Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait -Timeout 5
@@ -76,6 +77,7 @@ $NewADTTemplateParameters = @{
     }
 
     PostUninstallScriptBlock = {
+        Close-ADTInstallationProgress
         Stop-AdditionalTestRecording
     }
 

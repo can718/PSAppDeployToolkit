@@ -48,6 +48,7 @@ $NewADTTemplateParameters = @{
     }
 
     PostInstallScriptBlock   = {
+        Close-ADTInstallationProgress
         Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait -Timeout 5
         Stop-AdditionalTestRecording
     }
@@ -67,6 +68,7 @@ $NewADTTemplateParameters = @{
     }
 
     PostUninstallScriptBlock = {
+        Close-ADTInstallationProgress
         Stop-AdditionalTestRecording
     }
 
