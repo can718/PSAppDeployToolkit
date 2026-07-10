@@ -89,6 +89,7 @@ jobs:
 
       # Open PR (or reuse existing open PR) from sync branch to target branch
       - name: Create or reuse pull request
+        id: pr_step
         if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 }}
         uses: actions/github-script@v7
         env:
@@ -99,37 +100,64 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const base = process.env.BASE_BRANCH;
-            const head = `${owner}:${process.env.SYNC_BRANCH}`;
+            const syncBranch = process.env.SYNC_BRANCH;
+            const head = `${owner}:${syncBranch}`;
+            const compareUrl = `${context.serverUrl}/${owner}/${repo}/compare/${base}...${syncBranch}?expand=1`;
 
-            const existing = await github.rest.pulls.list({
-              owner,
-              repo,
-              state: 'open',
-              base,
-              head
-            });
+            core.setOutput('pr_creation_blocked', 'false');
+            core.setOutput('manual_pr_url', compareUrl);
 
-            if (existing.data.length > 0) {
-              core.info(`PR already exists: ${existing.data[0].html_url}`);
-              return;
+            try {
+              const existing = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: 'open',
+                base,
+                head
+              });
+
+              if (existing.data.length > 0) {
+                core.info(`PR already exists: ${existing.data[0].html_url}`);
+                core.setOutput('pr_url', existing.data[0].html_url);
+                return;
+              }
+
+              const created = await github.rest.pulls.create({
+                owner,
+                repo,
+                title: `chore: sync upstream ${base}`,
+                head: syncBranch,
+                base,
+                body: [
+                  'Automated upstream sync created by workflow.',
+                  '',
+                  `- Source: upstream/${base}`,
+                  `- Target: ${base}`,
+                  `- Run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`
+                ].join('\n')
+              });
+
+              core.info(`Created PR: ${created.data.html_url}`);
+              core.setOutput('pr_url', created.data.html_url);
+            } catch (error) {
+              if (error.status === 403 && String(error.message).includes('not permitted to create or approve pull requests')) {
+                core.warning('Repository setting blocks GITHUB_TOKEN from creating PRs.');
+                core.warning(`Create PR manually: ${compareUrl}`);
+                core.setOutput('pr_creation_blocked', 'true');
+                return;
+              }
+
+              throw error;
             }
 
-            const created = await github.rest.pulls.create({
-              owner,
-              repo,
-              title: `chore: sync upstream ${base}`,
-              head: process.env.SYNC_BRANCH,
-              base,
-              body: [
-                'Automated upstream sync created by workflow.',
-                '',
-                `- Source: upstream/${base}`,
-                `- Target: ${base}`,
-                `- Run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`
-              ].join('\n')
-            });
-
-            core.info(`Created PR: ${created.data.html_url}`);
+      - name: Add manual PR link to workflow summary
+        if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 && steps.pr_step.outputs.pr_creation_blocked == 'true' }}
+        run: |
+          echo "### Upstream Sync: Manual PR required" >> "$GITHUB_STEP_SUMMARY"
+          echo "GitHub Actions is not allowed to create PRs in this repository." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open this link to create the PR:" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.pr_step.outputs.manual_pr_url }}" >> "$GITHUB_STEP_SUMMARY"
 
       # Upload diff reports as artifacts with configured retention period
       - name: Upload Diff Reports Artifact
