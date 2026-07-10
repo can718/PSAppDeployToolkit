@@ -1,0 +1,101 @@
+name: Sync Upstream
+
+# Triggers: daily schedule + manual dispatch
+on:
+  # schedule:
+  #   - cron: '0 0 * * *'  # Runs daily at 00:00 UTC (08:00 Beijing time)
+  workflow_dispatch:     # Supports manual run from the Actions page
+
+permissions:
+  contents: write
+
+jobs:
+  sync_and_diff:
+    runs-on: ubuntu-latest
+    # Prevent duplicate workflow runs on the same ref
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout full repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full git history to ensure merge/diff works correctly
+
+      - name: Set environment & timestamp
+        id: env_info
+        run: |
+          # Generate a timestamp for report filenames to avoid overwrite
+          TS=$(date +%Y%m%d_%H%M%S)
+          echo "TIMESTAMP=$TS" >> $GITHUB_OUTPUT
+          echo "REPORT_DIR=diff_reports" >> $GITHUB_OUTPUT
+          mkdir -p diff_reports
+
+      - name: Configure Git & Add Upstream Remote
+        run: |
+          git config --global user.name "GitHub Actions Sync Bot"
+          git config --global user.email "sync-bot@github.com"
+          # Safely remove existing upstream remote to avoid errors
+          git remote remove upstream || true
+          # ==================== Update this upstream repository URL if needed ====================
+          git remote add upstream https://github.com/PSAppDeployToolkit/PSAppDeployToolkit.git
+          # ==================== Update your default target branch (main/master) ====================
+          BRANCH="main"
+          echo "TARGET_BRANCH=$BRANCH" >> $GITHUB_ENV
+          git fetch upstream
+
+      - name: Check if there are upstream updates
+        id: check_updates
+        run: |
+          # Count commits that exist in upstream but not in local HEAD
+          COUNT=$(git rev-list --count HEAD..upstream/$TARGET_BRANCH)
+          echo "commit_count=$COUNT" >> $GITHUB_OUTPUT
+          echo "Found $COUNT new commits from upstream"
+
+      # Only generate diff reports when updates are detected
+      - name: Generate Text Diff Report
+        if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 }}
+        run: |
+          git diff HEAD upstream/$TARGET_BRANCH > ${{ steps.env_info.outputs.REPORT_DIR }}/diff_${{ steps.env_info.outputs.TIMESTAMP }}.txt || true
+
+      - name: Install AHA for HTML report generation
+        if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aha
+
+      - name: Generate HTML Diff Report
+        if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 }}
+        run: |
+          git diff --color=never HEAD upstream/$TARGET_BRANCH | aha > ${{ steps.env_info.outputs.REPORT_DIR }}/diff_${{ steps.env_info.outputs.TIMESTAMP }}.html || true
+
+      # Merge upstream changes; fail workflow on conflicts
+      - name: Merge upstream code
+        if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 }}
+        run: |
+          git merge upstream/$TARGET_BRANCH --no-edit
+        continue-on-error: false
+
+      # Push synced branch back to origin (fork)
+      - name: Push updated code to origin
+        if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 }}
+        run: |
+          git push origin $TARGET_BRANCH
+
+      # Upload diff reports as artifacts with configured retention period
+      - name: Upload Diff Reports Artifact
+        if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-diff-reports_${{ steps.env_info.outputs.TIMESTAMP }}
+          path: ${{ steps.env_info.outputs.REPORT_DIR }}/
+          # Public repos: up to 90 days | Private repos: up to 400 days
+          retention-days: 90
+          # retention-days: 400
+
+      # Clean up temporary files (optional, keeps workspace tidy)
+      - name: Clean temporary files
+        if: always()
+        run: |
+          rm -rf ${{ steps.env_info.outputs.REPORT_DIR }}
