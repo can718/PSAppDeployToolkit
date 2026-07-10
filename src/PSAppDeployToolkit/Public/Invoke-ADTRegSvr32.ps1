@@ -88,7 +88,7 @@ function Invoke-ADTRegSvr32
 
     begin
     {
-        # Define parameters to pass to regsrv32.exe.
+        # Define parameters to pass to regsvr32.exe.
         Initialize-ADTFunction -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
         $ActionParameters = switch ($Action = $Host.CurrentCulture.TextInfo.ToTitleCase($Action.ToLowerInvariant()))
         {
@@ -129,7 +129,7 @@ function Invoke-ADTRegSvr32
                     throw (New-ADTErrorRecord @naerParams)
                 }
 
-                # Get the correct path to regsrv32.exe for the system and DLL file.
+                # Get the correct path to regsvr32.exe for the system and DLL file.
                 $RegSvr32Path = if ([System.Environment]::Is64BitOperatingSystem)
                 {
                     if ($DLLFileBitness -eq [PSADT.Interop.IMAGE_FILE_MACHINE]::IMAGE_FILE_MACHINE_AMD64)
@@ -155,7 +155,7 @@ function Invoke-ADTRegSvr32
                 else
                 {
                     $naerParams = @{
-                        Exception = [System.PlatformNotSupportedException]::new("File [$filePath] cannot be $($Action.ToLowerInvariant()) because it is a 64-bit file on a 32-bit operating system.")
+                        Exception = [System.PlatformNotSupportedException]::new("File [$filePath] cannot be $($Action.ToLowerInvariant())ed because it is a 64-bit file on a 32-bit operating system.")
                         Category = [System.Management.Automation.ErrorCategory]::InvalidOperation
                         ErrorId = 'DllFileArchitectureError'
                         TargetObject = $FilePath
