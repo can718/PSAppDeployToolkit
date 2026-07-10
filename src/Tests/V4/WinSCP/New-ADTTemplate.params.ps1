@@ -53,6 +53,7 @@ $NewADTTemplateParameters = @{
             Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'BetaVersions' -Value 1 -Type DWord -SID $_.SID
             Set-ADTRegistryKey -LiteralPath 'HKCU\Software\Martin Prikryl\WinSCP 2\Configuration\Interface\Updates' -Name 'ShowOnStartup' -Value 0 -Type DWord -SID $_.SID
         }
+        Close-ADTInstallationProgress
         Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) complete." -ButtonRightText 'OK' -NoWait -Timeout 5
         Stop-AdditionalTestRecording
     }
@@ -72,6 +73,7 @@ $NewADTTemplateParameters = @{
     }
 
     PostUninstallScriptBlock = {
+        Close-ADTInstallationProgress
         Stop-AdditionalTestRecording
     }
 

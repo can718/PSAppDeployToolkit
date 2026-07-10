@@ -34,7 +34,7 @@ function script:Invoke-WinSCPPollDeploymentStatus
         [string]$SiteCode,
         [string]$Label = 'Deployment',
         [int]$MaxWaitSeconds = 1800,
-        [int]$PollInterval = 60
+        [int]$PollInterval = 300
     )
 
     $elapsed = 0
@@ -788,6 +788,62 @@ function script:New-PSADTLogValidationAppConfig
     }
 }
 
+function script:Invoke-PSADTApplicationWithDeploymentTypeSafe
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Parameters,
+
+        [string]$LogPrefix = 'PSADT'
+    )
+
+    $command = Get-Command -Name 'New-PSADTApplicationWithDeploymentType' -ErrorAction Stop
+    $supportedParameters = $command.Parameters
+    $filteredParameters = @{}
+
+    foreach ($entry in $Parameters.GetEnumerator())
+    {
+        if ($supportedParameters.ContainsKey($entry.Key))
+        {
+            $filteredParameters[$entry.Key] = $entry.Value
+        }
+        else
+        {
+            Write-Verbose "[$LogPrefix] Skipping unsupported parameter '$($entry.Key)' for New-PSADTApplicationWithDeploymentType."
+        }
+    }
+
+    New-PSADTApplicationWithDeploymentType @filteredParameters
+}
+
+function script:New-PSADTAppTestContextSafe
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Parameters,
+
+        [string]$LogPrefix = 'PSADT'
+    )
+
+    $command = Get-Command -Name 'New-PSADTAppTestContext' -ErrorAction Stop
+    $supportedParameters = $command.Parameters
+    $filteredParameters = @{}
+
+    foreach ($entry in $Parameters.GetEnumerator())
+    {
+        if ($supportedParameters.ContainsKey($entry.Key))
+        {
+            $filteredParameters[$entry.Key] = $entry.Value
+        }
+        else
+        {
+            Write-Verbose "[$LogPrefix] Skipping unsupported parameter '$($entry.Key)' for New-PSADTAppTestContext."
+        }
+    }
+
+    New-PSADTAppTestContext @filteredParameters
+}
+
 function script:Assert-PSADTDeploymentLogValidation
 {
     param (
@@ -1002,7 +1058,11 @@ function script:New-PSADTApplicationWithDeploymentType
         [Parameter(Mandatory = $true)]
         [string]$DetectScript,
         [Parameter(Mandatory = $true)]
-        [string]$Description
+        [string]$Description,
+        [Parameter(Mandatory = $false)]
+        [string]$InstallCommand,
+        [Parameter(Mandatory = $false)]
+        [string]$UninstallCommand
     )
 
     Remove-CMApplicationIfExists -AppName $AppName
@@ -1015,6 +1075,14 @@ function script:New-PSADTApplicationWithDeploymentType
         -Description     $Description | Out-Null
 
     $commands = Get-PSADTDeploymentCommands -PackageDir $PackageDir
+    if ($InstallCommand)
+    {
+        $commands.Install = $InstallCommand
+    }
+    if ($UninstallCommand)
+    {
+        $commands.Uninstall = $UninstallCommand
+    }
     Add-CMScriptDeploymentType `
         -ApplicationName           $AppName `
         -DeploymentTypeName        $DeploymentTypeName `

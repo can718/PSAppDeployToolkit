@@ -235,7 +235,6 @@ function Stop-AdditionalTestRecording
         return
     }
 
-    Start-Sleep -Seconds 3
     $uploadEnvironmentStatus = @(
         "TERRAFORGE_API_BASE_URL=$(-not [System.String]::IsNullOrWhiteSpace($env:TERRAFORGE_API_BASE_URL))"
         "TEST_RUN_ID=$(-not [System.String]::IsNullOrWhiteSpace($env:TEST_RUN_ID))"
@@ -252,7 +251,7 @@ function Stop-AdditionalTestRecording
             [string]$RecordingOutputFile
         )
         #sleep for a few seconds to allow the helper to finalize any pending operations before attempting to stop recording.
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 8
 
         Stop-TerraForgeRecording -RecordingStarted:$RecordingStarted -RecordingOutputFile $RecordingOutputFile
     } $script:recordingStarted $script:recordingOutputFile
