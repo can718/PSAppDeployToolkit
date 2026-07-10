@@ -13,6 +13,10 @@ permissions:
 jobs:
   sync_and_diff:
     runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: main
+      SYNC_BRANCH: sync/upstream-main
+      SYNC_AUTH_TOKEN: ${{ secrets.SYNC_PR_PAT }}
     # Prevent duplicate workflow runs on the same ref
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,6 +28,7 @@ jobs:
         with:
           fetch-depth: 0  # Fetch full git history to ensure merge/diff works correctly
           ref: main  # Ensure the workflow runs on the main branch; adjust if your default branch is different
+          token: ${{ env.SYNC_AUTH_TOKEN != '' && env.SYNC_AUTH_TOKEN || github.token }}
 
       - name: Set environment & timestamp
         id: env_info
@@ -42,10 +47,6 @@ jobs:
           git remote remove upstream || true
           # ==================== Update this upstream repository URL if needed ====================
           git remote add upstream https://github.com/PSAppDeployToolkit/PSAppDeployToolkit.git
-          # ==================== Update your default target branch (main/master) ====================
-          BRANCH="main"
-          echo "TARGET_BRANCH=$BRANCH" >> $GITHUB_ENV
-          echo "SYNC_BRANCH=sync/upstream-$BRANCH" >> $GITHUB_ENV
           git fetch upstream
 
       - name: Check if there are upstream updates
@@ -96,6 +97,7 @@ jobs:
           BASE_BRANCH: ${{ env.TARGET_BRANCH }}
           SYNC_BRANCH: ${{ env.SYNC_BRANCH }}
         with:
+          github-token: ${{ env.SYNC_AUTH_TOKEN != '' && env.SYNC_AUTH_TOKEN || github.token }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -141,7 +143,7 @@ jobs:
               core.setOutput('pr_url', created.data.html_url);
             } catch (error) {
               if (error.status === 403 && String(error.message).includes('not permitted to create or approve pull requests')) {
-                core.warning('Repository setting blocks GITHUB_TOKEN from creating PRs.');
+                core.warning('Repository settings or token permissions block automated PR creation.');
                 core.warning(`Create PR manually: ${compareUrl}`);
                 core.setOutput('pr_creation_blocked', 'true');
                 return;
@@ -154,7 +156,7 @@ jobs:
         if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 && steps.pr_step.outputs.pr_creation_blocked == 'true' }}
         run: |
           echo "### Upstream Sync: Manual PR required" >> "$GITHUB_STEP_SUMMARY"
-          echo "GitHub Actions is not allowed to create PRs in this repository." >> "$GITHUB_STEP_SUMMARY"
+          echo "Automated PR creation is blocked by repository settings or token permissions." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Open this link to create the PR:" >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.pr_step.outputs.manual_pr_url }}" >> "$GITHUB_STEP_SUMMARY"
