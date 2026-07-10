@@ -2009,8 +2009,12 @@ namespace PSADT.Interop
         /// before performing operations that depend on the installation mode.</remarks>
         /// <returns><see langword="true"/> if the system is in Terminal Services application installation mode; otherwise, <see
         /// langword="false"/>.</returns>
-        [DllImport("kernel32.dll", SetLastError = false, ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        internal static extern BOOL TermsrvAppInstallMode();
+        internal static BOOL TermsrvAppInstallMode()
+        {
+            [DllImport("kernel32.dll", SetLastError = false, EntryPoint = "TermsrvAppInstallMode", ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+            static extern BOOL TermsrvAppInstallModeImpl();
+            return TermsrvAppInstallModeImpl();
+        }
 
         /// <summary>
         /// Retrieves system firmware table data for the specified firmware table provider and table ID.
@@ -2625,7 +2629,7 @@ namespace PSADT.Interop
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0099:Use Explicit enum value instead of 0", Justification = "There's no zero value for this enum.")]
         internal static NTSTATUS NtCreateThreadEx(out SafeThreadHandle ThreadHandle, THREAD_ACCESS_RIGHTS DesiredAccess, SafeProcessHandle ProcessHandle, SafeVirtualAllocHandle StartRoutine, nint? Argument = null, THREAD_CREATE_FLAGS CreateFlags = 0, uint ZeroBits = 0, uint StackSize = 0, uint MaximumStackSize = 0)
         {
-            [DllImport("ntdll.dll", ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+            [DllImport("ntdll.dll", SetLastError = false, ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
             static extern NTSTATUS NtCreateThreadEx(out nint ThreadHandle, THREAD_ACCESS_RIGHTS DesiredAccess, nint ObjectAttributes, nint ProcessHandle, nint StartRoutine, nint Argument, THREAD_CREATE_FLAGS CreateFlags, uint ZeroBits, uint StackSize, uint MaximumStackSize, nint AttributeList);
             ArgumentException.ThrowIfNullOrClosed(ProcessHandle);
             ArgumentException.ThrowIfNullOrInvalid(StartRoutine);
@@ -2667,7 +2671,7 @@ namespace PSADT.Interop
         /// <exception cref="ArgumentNullException">Thrown if ThreadHandle is null or has already been closed.</exception>
         internal static NTSTATUS NtTerminateThread(SafeThreadHandle ThreadHandle, NTSTATUS ExitStatus)
         {
-            [DllImport("ntdll.dll", ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+            [DllImport("ntdll.dll", SetLastError = false, ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
             static extern NTSTATUS NtTerminateThread(nint ThreadHandle, NTSTATUS ExitStatus);
             ArgumentException.ThrowIfNullOrInvalid(ThreadHandle);
             bool ThreadHandleAddRef = false;
@@ -2948,7 +2952,7 @@ namespace PSADT.Interop
         /// <returns>An HRESULT value indicating the success or failure of the operation.</returns>
         internal static HRESULT SHGetStockIconInfo(SHSTOCKICONID siid, SHGSI_FLAGS uFlags, out SHSTOCKICONINFO psii)
         {
-            [DllImport("shell32.dll", CharSet = CharSet.Unicode), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+            [DllImport("shell32.dll", SetLastError = false, ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
             static extern HRESULT SHGetStockIconInfo(SHSTOCKICONID siid, SHGSI_FLAGS uFlags, ref SHSTOCKICONINFO psii);
             psii = new() { cbSize = (uint)Unsafe.SizeOf<SHSTOCKICONINFO>() };
             HRESULT res = SHGetStockIconInfo(siid, uFlags, ref psii);
@@ -3159,7 +3163,7 @@ namespace PSADT.Interop
                 ArgumentNullException.ThrowIfNull(hWnd.Value, nameof(hWnd));
                 fixed (uint* p = &lpdwProcessId)
                 {
-                    [DllImport("USER32.dll", ExactSpelling = true, SetLastError = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+                    [DllImport("USER32.dll", SetLastError = true, ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
                     static extern uint GetWindowThreadProcessId(HWND hWnd, uint* lpdwProcessId);
                     if ((res = GetWindowThreadProcessId(hWnd, p)) == 0)
                     {
@@ -3187,7 +3191,7 @@ namespace PSADT.Interop
         /// mechanisms were successfully attached or detached; otherwise, <see langword="false"/>.</returns>
         internal static BOOL AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach)
         {
-            [DllImport("USER32.dll", ExactSpelling = true, SetLastError = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+            [DllImport("USER32.dll", SetLastError = true, ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
             static extern BOOL AttachThreadInput(uint idAttach, uint idAttachTo, BOOL fAttach);
             BOOL res = AttachThreadInput(idAttach, idAttachTo, fAttach);
             return !res ? throw ExceptionUtilities.GetExceptionForLastWin32Error() : res;
@@ -3485,7 +3489,7 @@ namespace PSADT.Interop
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0099:Use Explicit enum value instead of 0", Justification = "There's no zero value for this enum.")]
         internal static MESSAGEBOX_RESULT MessageBoxTimeout(string lpText, string lpCaption, MESSAGEBOX_STYLE uType, uint dwTimeout)
         {
-            [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+            [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
             static extern MESSAGEBOX_RESULT MessageBoxTimeoutW(HWND hWnd, string lpText, string lpCaption, MESSAGEBOX_STYLE uType, ushort wLanguageId, uint dwMilliseconds);
             ArgumentException.ThrowIfNullOrWhiteSpace(lpText); ArgumentException.ThrowIfNullOrWhiteSpace(lpCaption);
             MESSAGEBOX_RESULT res = MessageBoxTimeoutW(default, lpText, lpCaption, uType, 0, dwTimeout);
@@ -4168,7 +4172,7 @@ namespace PSADT.Interop
         /// other codes indicate errors or special conditions.</returns>
         internal static NTSTATUS RtlExpandEnvironmentStrings_U(SafeEnvironmentBlockHandle Environment, in UNICODE_STRING SourceString, ref UNICODE_STRING DestinationString, out uint RequiredBytes)
         {
-            [DllImport("ntdll.dll", ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+            [DllImport("ntdll.dll", SetLastError = false, ExactSpelling = true), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
             static extern NTSTATUS RtlExpandEnvironmentStrings_U(nint Environment, in UNICODE_STRING SourceString, ref UNICODE_STRING DestinationString, out uint RequiredBytes);
             ArgumentException.ThrowIfNullOrInvalid(Environment); ArgumentException.ThrowIfNullOrInvalid(SourceString); ArgumentException.ThrowIfInvalid(DestinationString);
             bool EnvironmentAddRef = false;
