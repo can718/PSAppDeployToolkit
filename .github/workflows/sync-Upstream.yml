@@ -52,6 +52,39 @@ jobs:
           git remote add upstream https://github.com/PSAppDeployToolkit/PSAppDeployToolkit.git
           git fetch upstream
 
+      - name: Diagnostics (safe)
+        env:
+          GIT_USER_NAME: ${{ secrets.SYNC_GIT_USER_NAME }}
+          GIT_USER_EMAIL: ${{ secrets.SYNC_GIT_USER_EMAIL }}
+        run: |
+          mask_value () {
+            local v="$1"
+            if [ -z "$v" ]; then
+              echo "(empty)"
+            elif [ ${#v} -le 4 ]; then
+              echo "****"
+            else
+              echo "${v:0:2}***${v: -2}"
+            fi
+          }
+
+          if [ -n "$SYNC_AUTH_TOKEN" ]; then
+            TOKEN_SOURCE="SYNC_PR_PAT"
+          else
+            TOKEN_SOURCE="github.token"
+          fi
+
+          EFFECTIVE_USER_NAME="${GIT_USER_NAME:-GitHub Actions Sync Bot}"
+          EFFECTIVE_USER_EMAIL="${GIT_USER_EMAIL:-sync-bot@github.com}"
+          CURRENT_USER_NAME="$(git config user.name || true)"
+          CURRENT_USER_EMAIL="$(git config user.email || true)"
+
+          echo "Token source: $TOKEN_SOURCE"
+          echo "PAT configured: $([ -n "$SYNC_AUTH_TOKEN" ] && echo yes || echo no)"
+          echo "Configured git user.name (masked): $(mask_value "$EFFECTIVE_USER_NAME")"
+          echo "Configured git user.email (masked): $(mask_value "$EFFECTIVE_USER_EMAIL")"
+          echo "Git identity in repo (masked): $(mask_value "$CURRENT_USER_NAME") <$(mask_value "$CURRENT_USER_EMAIL")>"
+
       - name: Check if there are upstream updates
         id: check_updates
         run: |
