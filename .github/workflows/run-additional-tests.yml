@@ -833,17 +833,6 @@ jobs:
         # Use AppendAllText with LF (not CRLF) so the value is not corrupted when consumed on Linux runners
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($stepsJson | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
 
-    - name: Reset Azure Session VM
-      id: reset-sessionvm
-      if: false #always()
-      shell: pwsh
-      run: |
-        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
-        if (-not (Test-Path -LiteralPath $tfHelper)) {
-          throw "TerraForge helper script not found: $tfHelper"
-        }
-        . $tfHelper
-        Invoke-TFResetSessionVM
     - name: ResultSummary (Collect)
       id: result-summary-collect
       if: always()
@@ -1294,6 +1283,29 @@ jobs:
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_markdown<<$delimMarkdown`n$markdownText`n$delimMarkdown`n", [System.Text.Encoding]::UTF8)
         Write-Host 'Result summary payload, console text, and markdown prepared.'
         Write-Host 'Result summary payload collected.'
+
+    - name: Reset Azure Session VM
+      id: reset-sessionvm
+      if: false #always()
+      shell: pwsh
+      run: |
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
+          $testResultXmlPaths = @(Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -File -ErrorAction SilentlyContinue |
+            Sort-Object Name |
+            ForEach-Object { $_.FullName })
+
+          if ($testResultXmlPaths.Count -eq 0) {
+            Write-Warning 'No AdditionalTests XML files were found for VM reset status evaluation.'
+          }
+          else {
+            Write-Host "Passing $($testResultXmlPaths.Count) result XML file(s) to Invoke-TFResetSessionVM."
+          }
+
+          Invoke-TFResetSessionVM -TestResultXmlPath $testResultXmlPaths
 
   result-summary:
     name: Result Summary
