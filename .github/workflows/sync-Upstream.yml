@@ -142,8 +142,56 @@ jobs:
             const head = `${owner}:${syncBranch}`;
             const compareUrl = `${context.serverUrl}/${owner}/${repo}/compare/${base}...${syncBranch}?expand=1`;
 
+            async function enableAutoMerge(pullRequest) {
+              const pullRequestId = pullRequest.node_id;
+
+              if (!pullRequestId) {
+                core.warning('Unable to enable auto-merge because the pull request node ID is missing.');
+                core.setOutput('auto_merge_blocked', 'true');
+                return;
+              }
+
+              try {
+                await github.graphql(
+                  `mutation EnableAutoMerge($pullRequestId: ID!) {
+                    enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, mergeMethod: MERGE }) {
+                      pullRequest {
+                        number
+                        autoMergeRequest {
+                          enabledAt
+                        }
+                      }
+                    }
+                  }`,
+                  { pullRequestId }
+                );
+
+                core.info(`Auto-merge enabled for PR #${pullRequest.number}.`);
+                core.setOutput('auto_merge_enabled', 'true');
+              } catch (error) {
+                const message = String(error.message || error);
+                const knownBlockers = [
+                  'Pull request Auto merge is disabled for this repository',
+                  'Resource not accessible by integration',
+                  'not permitted',
+                  'is in clean status',
+                  'Only pull requests that are open can be modified'
+                ];
+
+                if (knownBlockers.some((text) => message.includes(text))) {
+                  core.warning(`Unable to enable auto-merge automatically: ${message}`);
+                  core.setOutput('auto_merge_blocked', 'true');
+                  return;
+                }
+
+                throw error;
+              }
+            }
+
             core.setOutput('pr_creation_blocked', 'false');
             core.setOutput('manual_pr_url', compareUrl);
+            core.setOutput('auto_merge_enabled', 'false');
+            core.setOutput('auto_merge_blocked', 'false');
 
             try {
               const existing = await github.rest.pulls.list({
@@ -157,6 +205,7 @@ jobs:
               if (existing.data.length > 0) {
                 core.info(`PR already exists: ${existing.data[0].html_url}`);
                 core.setOutput('pr_url', existing.data[0].html_url);
+                await enableAutoMerge(existing.data[0]);
                 return;
               }
 
@@ -177,6 +226,7 @@ jobs:
 
               core.info(`Created PR: ${created.data.html_url}`);
               core.setOutput('pr_url', created.data.html_url);
+              await enableAutoMerge(created.data);
             } catch (error) {
               if (error.status === 403 && String(error.message).includes('not permitted to create or approve pull requests')) {
                 core.warning('Repository settings or token permissions block automated PR creation.');
@@ -187,6 +237,15 @@ jobs:
 
               throw error;
             }
+
+      - name: Add auto-merge warning to workflow summary
+        if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 && steps.pr_step.outputs.auto_merge_blocked == 'true' }}
+        run: |
+          echo "### Upstream Sync: Auto-merge not enabled" >> "$GITHUB_STEP_SUMMARY"
+          echo "The pull request was created or reused, but enabling auto-merge was blocked by repository settings, branch protection, or token permissions." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open the PR and enable auto-merge manually if required:" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.pr_step.outputs.pr_url }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Add manual PR link to workflow summary
         if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 && steps.pr_step.outputs.pr_creation_blocked == 'true' }}
