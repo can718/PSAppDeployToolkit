@@ -40,9 +40,12 @@ jobs:
           mkdir -p diff_reports
 
       - name: Configure Git & Add Upstream Remote
+        env:
+          GIT_USER_NAME: ${{ secrets.SYNC_GIT_USER_NAME }}
+          GIT_USER_EMAIL: ${{ secrets.SYNC_GIT_USER_EMAIL }}
         run: |
-          git config --global user.name "GitHub Actions Sync Bot"
-          git config --global user.email "sync-bot@github.com"
+          git config user.name "${GIT_USER_NAME:-GitHub Actions Sync Bot}"
+          git config user.email "${GIT_USER_EMAIL:-sync-bot@github.com}"
           # Safely remove existing upstream remote to avoid errors
           git remote remove upstream || true
           # ==================== Update this upstream repository URL if needed ====================
