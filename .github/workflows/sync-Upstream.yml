@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch full git history to ensure merge/diff works correctly
+          ref: main  # Ensure the workflow runs on the main branch; adjust if your default branch is different
 
       - name: Set environment & timestamp
         id: env_info
