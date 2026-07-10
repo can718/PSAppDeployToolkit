@@ -1,4 +1,4 @@
-function script:Get-PSADTNotepadPlusPlusAppParameters
+﻿function script:Get-PSADTNotepadPlusPlusAppParameters
 {
     return @{
         SourceScriptRelativePath = 'Notepad++\Invoke-AppDeployToolkit.ps1'
