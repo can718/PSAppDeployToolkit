@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   sync_and_diff:
@@ -44,6 +45,7 @@ jobs:
           # ==================== Update your default target branch (main/master) ====================
           BRANCH="main"
           echo "TARGET_BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "SYNC_BRANCH=sync/upstream-$BRANCH" >> $GITHUB_ENV
           git fetch upstream
 
       - name: Check if there are upstream updates
@@ -78,11 +80,56 @@ jobs:
           git merge upstream/$TARGET_BRANCH --no-edit
         continue-on-error: false
 
-      # Push synced branch back to origin (fork)
-      - name: Push updated code to origin
+      # Push synced code to a dedicated branch (avoids protected-branch direct push)
+      - name: Push synced code to sync branch
         if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 }}
         run: |
-          git push origin $TARGET_BRANCH
+          git switch -C "$SYNC_BRANCH"
+          git push --force-with-lease origin "$SYNC_BRANCH"
+
+      # Open PR (or reuse existing open PR) from sync branch to target branch
+      - name: Create or reuse pull request
+        if: ${{ fromJSON(steps.check_updates.outputs.commit_count) > 0 }}
+        uses: actions/github-script@v7
+        env:
+          BASE_BRANCH: ${{ env.TARGET_BRANCH }}
+          SYNC_BRANCH: ${{ env.SYNC_BRANCH }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const base = process.env.BASE_BRANCH;
+            const head = `${owner}:${process.env.SYNC_BRANCH}`;
+
+            const existing = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              base,
+              head
+            });
+
+            if (existing.data.length > 0) {
+              core.info(`PR already exists: ${existing.data[0].html_url}`);
+              return;
+            }
+
+            const created = await github.rest.pulls.create({
+              owner,
+              repo,
+              title: `chore: sync upstream ${base}`,
+              head: process.env.SYNC_BRANCH,
+              base,
+              body: [
+                'Automated upstream sync created by workflow.',
+                '',
+                `- Source: upstream/${base}`,
+                `- Target: ${base}`,
+                `- Run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`
+              ].join('\n')
+            });
+
+            core.info(`Created PR: ${created.data.html_url}`);
 
       # Upload diff reports as artifacts with configured retention period
       - name: Upload Diff Reports Artifact
