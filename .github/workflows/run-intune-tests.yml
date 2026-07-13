@@ -536,7 +536,9 @@ jobs:
           throw "TerraForge helper script not found: $tfHelper"
         }
         . $tfHelper
-        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml' -BlobPathBase "testruns/$env:TEST_RUN_ID"
+        $sessionID = Get-SessionID
+        $machineID = Get-MachineID
+        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml' -BlobPathBase "testruns/$sessionID/$machineID/$env:TEST_RUN_ID"
 
         $publicRecordingEntries = @()
 
@@ -544,7 +546,7 @@ jobs:
         if ($recordFile) {
           Write-Host "Uploading recording file(s) to blob storage: $recordFile"
           $recordFiles = $recordFile -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "testruns/$env:TEST_RUN_ID"
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "testruns/$sessionID/$machineID/$env:TEST_RUN_ID"
           Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "psadt/$env:TEST_RUN_ID" -ContainerName "tfp-public"
 
           foreach ($recordPath in $recordFiles) {
