@@ -2,8 +2,8 @@ name: Sync Upstream
 
 # Triggers: daily schedule + manual dispatch
 on:
-  # schedule:
-  #   - cron: '0 0 * * *'  # Runs daily at 00:00 UTC (08:00 Beijing time)
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at 00:00 UTC (08:00 Beijing time)
   workflow_dispatch:     # Supports manual run from the Actions page
 
 permissions:
@@ -212,7 +212,7 @@ jobs:
               const created = await github.rest.pulls.create({
                 owner,
                 repo,
-                title: `chore: sync upstream ${base}`,
+                title: `Test: sync upstream ${base}`,
                 head: syncBranch,
                 base,
                 body: [
