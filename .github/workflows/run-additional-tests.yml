@@ -661,7 +661,20 @@ jobs:
         . $tfHelper
         $sessionID = Get-SessionID
         $machineID = Get-MachineID
-        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml' -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
+
+        # Collect all AdditionalTests*.xml result files (main + per-tag suites) for upload.
+        $testResultXmlPaths = @(Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -File -ErrorAction SilentlyContinue |
+          Sort-Object Name |
+          ForEach-Object { $_.FullName })
+
+        if ($testResultXmlPaths.Count -eq 0) {
+          Write-Warning 'No AdditionalTests XML files were found to upload.'
+        }
+        else {
+          Write-Host "Uploading $($testResultXmlPaths.Count) test result XML file(s) to blob storage:"
+          $testResultXmlPaths | ForEach-Object { Write-Host "  - $_" }
+          Invoke-TFUploadTestResults -TestResultXmlPath $testResultXmlPaths -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
+        }
 
         $publicRecordingEntries = @()
          
