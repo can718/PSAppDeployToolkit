@@ -659,7 +659,9 @@ jobs:
           throw "TerraForge helper script not found: $tfHelper"
         }
         . $tfHelper
-        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml' -BlobPathBase "testruns/$env:TEST_RUN_ID"
+        $sessionID = Get-SessionID
+        $machineID = Get-MachineID
+        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\AdditionalTests.xml' -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
 
         $publicRecordingEntries = @()
          
@@ -667,8 +669,8 @@ jobs:
         if ($recordFile) {
           Write-Host "Uploading recording file(s) to blob storage: $recordFile"
           $recordFiles = $recordFile -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "testruns/$env:TEST_RUN_ID"
-          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "psadt/$env:TEST_RUN_ID" -ContainerName "tfp-public"
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "psadt/$env:TEST_RUN_ID/$sessionID/$machineID" -ContainerName "tfp-public"
 
           foreach ($recordPath in $recordFiles) {
             $recordName = [System.IO.Path]::GetFileName([string]$recordPath)
@@ -677,7 +679,7 @@ jobs:
             }
 
             $encodedName = [System.Uri]::EscapeDataString($recordName)
-            $publicUrl = "https://tfpfsstorage.blob.core.windows.net/tfp-public/psadt/$env:TEST_RUN_ID/$encodedName"
+            $publicUrl = "https://tfpfsstorage.blob.core.windows.net/tfp-public/psadt/$env:TEST_RUN_ID/$sessionID/$machineID/$encodedName"
             $publicRecordingEntries += [ordered]@{
               Name = $recordName
               Url  = $publicUrl
