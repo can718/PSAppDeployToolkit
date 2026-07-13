@@ -96,7 +96,7 @@ function Update-ADTGroupPolicy
 
             dynamicparam
             {
-                # Return early if we've been given directory input.
+                # Return early when targeting Computer because no dynamic RunAsActiveUser parameter is needed.
                 if ($PSBoundParameters.Target -eq 'Computer')
                 {
                     return
@@ -190,9 +190,8 @@ function Update-ADTGroupPolicy
             if (!($runAsActiveUser = Get-ADTClientServerUser))
             {
                 Write-ADTLogEntry -Message "Bypassing Group Policy update for the User as there is no active user logged onto the system."
+                return
             }
-
-            # Set up the parameters for Invoke-ADTClientServerOperation.
             Update-ADTGroupPolicyImpl -Target User -Force:$Force -NoWait:$NoWait -RunAsActiveUser $runAsActiveUser
         }
     }
