@@ -974,10 +974,33 @@ function script:Invoke-PSADTInCMSiteContext
         [scriptblock]$ScriptBlock
     )
 
-    $originalLocation = Enter-CMSiteContext -SiteCode $SiteCode -SiteServer $SiteServer -CmModulePath $CmModulePath
+    $originalLocation = $null
     try
     {
-        & $ScriptBlock
+        $originalLocation = Enter-CMSiteContext -SiteCode $SiteCode -SiteServer $SiteServer -CmModulePath $CmModulePath
+    }
+    catch
+    {
+        $contextErrorMessage = $_.Exception.Message
+        $isCmsiteConnectivityError = $contextErrorMessage -match 'SMS Provider reported an error|Cannot find drive|RPC server is unavailable|Access is denied|Configuration Manager site'
+
+        if ($isCmsiteConnectivityError)
+        {
+            $skipReason = "SCCM site context unavailable for '$SiteCode' on '$SiteServer': $contextErrorMessage"
+            if (Get-Command -Name Set-ItResult -ErrorAction SilentlyContinue)
+            {
+                Set-ItResult -Skipped -Because $skipReason
+                Write-Warning $skipReason
+                return $null
+            }
+        }
+
+        throw
+    }
+
+    try
+    {
+        return (& $ScriptBlock)
     }
     finally
     {
