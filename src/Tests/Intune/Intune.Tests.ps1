@@ -145,12 +145,12 @@ Describe 'Intune Tests' {
     Context 'Parallel Install - V3,V4 - Batch Upload, Single Sync, Parallel Poll install and uninstall of multiple apps' {
         # Define all apps to install in parallel.
         # Body-level assignment executes during Pester 5 Discovery (needed for -ForEach).
-        $script:ParallelApps = & (Join-Path $PSScriptRoot 'IntuneTestApps.ps1')
+        $script:ParallelApps = & (Join-Path $PSScriptRoot '..\_Shared\TestApps.ps1')
 
         BeforeAll {
             # Re-assign during Run phase to guarantee availability in It blocks.
             # Pester 5 may isolate Discovery-time $script: variables from the Run phase.
-            $script:ParallelApps = & (Join-Path $PSScriptRoot 'IntuneTestApps.ps1')
+            $script:ParallelApps = & (Join-Path $PSScriptRoot '..\_Shared\TestApps.ps1')
             $script:ParallelInstallResults = @{}
         }
 
@@ -175,7 +175,19 @@ Describe 'Intune Tests' {
                     WorkDir = $env.WorkDir
                     IntuneWinAppUtilPath = $script:IntuneWinAppUtil
                 }
-                if ($app.SetupFileName) { $packageParams.SetupFileName = $app.SetupFileName }
+                $effectiveSetupFileName = if ($app.SetupFileName)
+                {
+                    $app.SetupFileName
+                }
+                elseif ($app.TemplateVersion -eq 'V3')
+                {
+                    'Deploy-Application.exe'
+                }
+                else
+                {
+                    $null
+                }
+                if ($effectiveSetupFileName) { $packageParams.SetupFileName = $effectiveSetupFileName }
                 $package = New-IntuneWinPackage @packageParams
                 $package.IntuneWinPath | Should -Not -BeNullOrEmpty
 
@@ -190,8 +202,41 @@ Describe 'Intune Tests' {
                     DisplayName = $intuneDisplayName
                     DetectionRule = $DetectionRule
                 }
-                if ($app.InstallCmd) { $publishParams.InstallCmd = $app.InstallCmd }
-                if ($app.UninstallCmd) { $publishParams.UninstallCmd = $app.UninstallCmd }
+                $effectiveInstallCmd = if ($app.InstallCmd)
+                {
+                    $app.InstallCmd
+                }
+                elseif ($app.InstallCommand)
+                {
+                    $app.InstallCommand
+                }
+                elseif ($app.TemplateVersion -eq 'V3')
+                {
+                    "Deploy-Application.exe -DeploymentType 'Install'"
+                }
+                else
+                {
+                    $null
+                }
+                $effectiveUninstallCmd = if ($app.UninstallCmd)
+                {
+                    $app.UninstallCmd
+                }
+                elseif ($app.UninstallCommand)
+                {
+                    $app.UninstallCommand
+                }
+                elseif ($app.TemplateVersion -eq 'V3')
+                {
+                    "Deploy-Application.exe -DeploymentType 'Uninstall'"
+                }
+                else
+                {
+                    $null
+                }
+
+                if ($effectiveInstallCmd) { $publishParams.InstallCmd = $effectiveInstallCmd }
+                if ($effectiveUninstallCmd) { $publishParams.UninstallCmd = $effectiveUninstallCmd }
                 $win32App = Publish-IntuneWin32App @publishParams
                 $win32App | Should -Not -BeNullOrEmpty
 
@@ -202,9 +247,9 @@ Describe 'Intune Tests' {
                 $script:UploadedApps[$app.Name] = @{
                     Win32AppId = $win32App.id
                     DisplayName = $intuneDisplayName
-                    RegDisplayName = $app.RegDisplayName
-                    RegVersionValue = $app.RegVersionValue
-                    RegVersionName = $app.RegVersionName
+                    RegDisplayName = if ($app.RegDisplayName) { $app.RegDisplayName } else { $app.Name }
+                    RegVersionValue = if ($app.RegVersionValue) { $app.RegVersionValue } else { $app.AppVersion }
+                    RegVersionName = if ($app.RegVersionName) { $app.RegVersionName } else { 'DisplayVersion' }
                 }
                 Write-Information "[$($app.Name)] Uploaded and assigned successfully." -InformationAction Continue
             }

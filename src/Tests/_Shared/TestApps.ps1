@@ -1,19 +1,22 @@
-﻿#pragma warning disable PSPlaceOpenBrace
+#pragma warning disable PSPlaceOpenBrace
 <#
 .SYNOPSIS
-    Returns the array of app configurations used in parallel install/uninstall tests.
+    Returns the array of shared app configurations used by Additional and Intune tests.
 .DESCRIPTION
-    Extracted to a separate file so it can be sourced during both Pester 5 Discovery
-    (for -ForEach) and Run phase (for runtime iteration in It blocks).
+    Uses the Intune-style array/hashtable format and includes additional fields
+    required by SCCM Additional tests.
 #>
 @(
     @{
         Name = 'VLC'
         TemplateVersion = 'V4'
         AppFolderName = 'VLC'
+        SourceFolderRelativePath = 'VLC'
+        AppName = 'VLC media player (PSADT v4 VLC)'
+        AppVendor = 'VideoLAN'
+        AppVersion = '3.0.23'
         RegDisplayName = 'VLC media player'
         RegVersionValue = '3.0.23'
-        RegVersionName = 'DisplayVersion'
         DetectionRuleBuilder = {
             param($FilesDir)
             $null = $FilesDir
@@ -26,9 +29,11 @@
         Name = 'WinSCP'
         TemplateVersion = 'V4'
         AppFolderName = 'WinSCP'
-        RegDisplayName = 'WinSCP'
+        AppName = 'WinSCP (PSADT v4 winSCP)'
+        AppVendor = 'Martin Prikryl'
+        AppVersion = '6.5.6'
+        ContentSubPath = 'winSCP'
         RegVersionValue = '6.5.6'
-        RegVersionName = 'DisplayVersion'
         DetectionRuleBuilder = {
             param($FilesDir)
             $msiFile = Get-ChildItem -Path $FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -42,11 +47,24 @@
         SkipUninstall = $true
         TemplateVersion = 'V4'
         AppFolderName = 'Notepad++'
-        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
-        UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
-        RegDisplayName = 'Notepad++'
+        AppName = 'Notepad++ (PSADT v4 Notepad++)'
+        AppVendor = 'Don HO don.h@free.fr'
+        AppVersion = '6.6.4'
+        ContentSubPath = 'NotepadPlusPlus'
+        DetectScript = @'
+$uninstallKey = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++'
+if (Test-Path $uninstallKey)
+{
+    $app = Get-ItemProperty -Path $uninstallKey -ErrorAction SilentlyContinue
+    if ($app.DisplayVersion -like '6.6.4*')
+    {
+        Write-Host "Installed"
+    }
+}
+'@
+        InstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+        UninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
         RegVersionValue = '6.6.4'
-        RegVersionName = 'DisplayVersion'
         PreInstallScript = {
             # Install lower version as prerequisite for upgrade test.
             $installerDir = 'C:\Tools\Intune\Notepad6.2.3'
@@ -112,13 +130,12 @@
         Name = 'Digiexam'
         TemplateVersion = 'V3'
         AppFolderName = 'Digiexam'
+        AppName = 'Digiexam (PSADT v3 Digiexam)'
+        AppVendor = 'DigiExam'
+        AppVersion = '26.1.24'
+        ContentSubPath = 'DigiExam'
         InstallerSourceFile = 'C:\Tools\Intune\Digiexam_26.1.24_x64_en-US.msi'
-        SetupFileName = 'Deploy-Application.exe'
-        InstallCmd = "Deploy-Application.exe -DeploymentType 'Install'"
-        UninstallCmd = "Deploy-Application.exe -DeploymentType 'Uninstall'"
-        RegDisplayName = 'Digiexam'
         RegVersionValue = '26.1.24'
-        RegVersionName = 'DisplayVersion'
         DetectionRuleBuilder = {
             param($FilesDir)
             $msiFile = Get-ChildItem -Path $FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -131,13 +148,28 @@
         Name = 'Everything'
         TemplateVersion = 'V3'
         AppFolderName = 'Everything'
+        AppName = 'Everything (PSADT v3 Everything)'
+        AppVendor = 'voidtools'
+        AppVersion = '1.4.1.1032'
+        DetectScript = @'
+$uninstallRoots = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+$app = foreach ($root in $uninstallRoots)
+{
+    if (Test-Path $root)
+    {
+        Get-ChildItem -Path $root |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like '*Everything*' -and $_.DisplayVersion -like '1.4.1.1032*' }
+    }
+}
+if ($app) { Write-Host "Installed" }
+'@
         InstallerSourceFile = 'C:\Tools\Intune\Everything-1.4.1.1032.x64-Setup.exe'
-        SetupFileName = 'Deploy-Application.exe'
-        InstallCmd = "Deploy-Application.exe -DeploymentType 'Install'"
-        UninstallCmd = "Deploy-Application.exe -DeploymentType 'Uninstall'"
         RegDisplayName = 'Everything 1.4.1.1032'
         RegVersionValue = '1.4.1.1032'
-        RegVersionName = 'DisplayVersion'
         DetectionRuleBuilder = {
             param($FilesDir)
             $null = $FilesDir

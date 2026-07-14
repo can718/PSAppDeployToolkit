@@ -242,12 +242,114 @@ BeforeAll {
     }
     . $script:AdditionalHelpersPath
 
-    $script:AppParameterHelpPath = Join-Path $script:_tfScriptRoot 'APPParameterHelp.ps1'
-    if (-not (Test-Path $script:AppParameterHelpPath))
+    $script:SharedTestAppsPath = Join-Path $script:_tfScriptRoot '..\_Shared\TestApps.ps1'
+    if (-not (Test-Path $script:SharedTestAppsPath))
     {
-        throw "Required app parameter helper file not found: $script:AppParameterHelpPath"
+        throw "Required shared app configuration file not found: $script:SharedTestAppsPath"
     }
-    . $script:AppParameterHelpPath
+    $script:SharedTestApps = & $script:SharedTestAppsPath
+    function script:Resolve-SharedPSADTAppParameters
+    {
+        param(
+            [Parameter(Mandatory = $true)]
+            [hashtable]$App
+        )
+
+        $resolved = @{}
+        foreach ($entry in $App.GetEnumerator())
+        {
+            $resolved[$entry.Key] = $entry.Value
+        }
+
+        $templateToken = if ($resolved.TemplateVersion) { $resolved.TemplateVersion.ToString().TrimStart('V', 'v') } else { '' }
+        $appName = if ($resolved.Name) { $resolved.Name } else { '' }
+
+        if (-not $resolved.ContentSubPath -and $resolved.AppFolderName)
+        {
+            $resolved.ContentSubPath = $resolved.AppFolderName
+        }
+
+        if (-not $resolved.PackageDir -and $resolved.ContentSubPath)
+        {
+            $resolved.PackageDir = "C:\PSADT\$($resolved.ContentSubPath)"
+        }
+
+        if (-not $resolved.SourceScriptRelativePath -and $resolved.TemplateVersion -and $resolved.AppFolderName)
+        {
+            if ($resolved.TemplateVersion -eq 'V3')
+            {
+                $resolved.SourceScriptRelativePath = "..\V3\$($resolved.AppFolderName)\Deploy-Application.ps1"
+            }
+            else
+            {
+                $resolved.SourceScriptRelativePath = "$($resolved.AppFolderName)\Invoke-AppDeployToolkit.ps1"
+            }
+        }
+
+        if (-not $resolved.AppName -and $appName -and $templateToken)
+        {
+            $resolved.AppName = "$appName (PSADT v$templateToken $appName)"
+        }
+
+        if (-not $resolved.DeploymentTypeName -and $appName -and $resolved.AppVersion -and $templateToken)
+        {
+            $resolved.DeploymentTypeName = "$appName $($resolved.AppVersion) (v$templateToken $appName)"
+        }
+
+        if (-not $resolved.DescriptionTemplate -and $appName -and $templateToken)
+        {
+            $resolved.DescriptionTemplate = "PSADT v$templateToken $appName template - $appName {0} - auto-created {1}"
+        }
+
+        if (-not $resolved.InstallCommand -and $resolved.InstallCmd)
+        {
+            $resolved.InstallCommand = $resolved.InstallCmd
+        }
+
+        if (-not $resolved.UninstallCommand -and $resolved.UninstallCmd)
+        {
+            $resolved.UninstallCommand = $resolved.UninstallCmd
+        }
+
+        if (-not $resolved.DetectScript)
+        {
+            $displayNamePattern = if ($resolved.RegDisplayName) { "*$($resolved.RegDisplayName)*" } else { "*$appName*" }
+            $versionPattern = if ($resolved.AppVersion) { "$($resolved.AppVersion)*" } elseif ($resolved.RegVersionValue) { "$($resolved.RegVersionValue)*" } else { '*' }
+            $resolved.DetectScript = @"
+`$uninstallRoots = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+`$app = foreach (`$root in `$uninstallRoots)
+{
+    if (Test-Path `$root)
+    {
+        Get-ChildItem -Path `$root |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { `$_.DisplayName -like '$displayNamePattern' -and `$_.DisplayVersion -like '$versionPattern' }
+    }
+}
+if (`$app) { Write-Host "Installed" }
+"@
+        }
+
+        return $resolved
+    }
+
+    function script:Get-SharedPSADTAppParameters
+    {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name
+        )
+
+        $app = $script:SharedTestApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+        if (-not $app)
+        {
+            throw "Shared app configuration not found for '$Name'."
+        }
+        return (Resolve-SharedPSADTAppParameters -App $app)
+    }
 
 }
 
@@ -306,7 +408,7 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
     Context 'Build winSCP package from V4 template and deploy into SCCM' {
 
         BeforeAll {
-            $winSCPParameters = Get-PSADTWinSCPAppParameters
+            $winSCPParameters = Get-SharedPSADTAppParameters -Name 'WinSCP'
             $ctx = New-PSADTAppTestContextSafe -Parameters $winSCPParameters -LogPrefix 'winSCP'
 
             $script:v4Dir = $ctx.V4Dir
@@ -481,7 +583,7 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
     Context 'Build VLC package from V4 template and deploy into SCCM' {
 
         BeforeAll {
-            $vlcParameters = Get-PSADTVLCAppParameters
+            $vlcParameters = Get-SharedPSADTAppParameters -Name 'VLC'
             $ctx = New-PSADTAppTestContextSafe -Parameters $vlcParameters -LogPrefix 'VLC'
 
             $script:v4Dir = $ctx.V4Dir
@@ -653,7 +755,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
     Context 'Build Notepad++ package from V4 template and deploy into SCCM' {
 
         BeforeAll {
-            $notepadParameters = Get-PSADTNotepadPlusPlusAppParameters
+            $notepadParameters = Get-SharedPSADTAppParameters -Name 'Notepad++'
             $ctx = New-PSADTAppTestContextSafe -Parameters $notepadParameters -LogPrefix 'Notepad++'
 
             $script:v4Dir = $ctx.V4Dir
@@ -827,7 +929,7 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
     Context 'Build DigiExam package from V3 template and deploy into SCCM' {
 
         BeforeAll {
-            $digiExamParameters = Get-PSADTDigiExamAppParameters
+            $digiExamParameters = Get-SharedPSADTAppParameters -Name 'Digiexam'
             $ctx = New-PSADTAppTestContextSafe -Parameters $digiExamParameters -LogPrefix 'DigiExam'
 
             $script:v3Dir = $ctx.V3Dir
@@ -1030,7 +1132,7 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
     Context 'Build Everything package from V3 template and deploy into SCCM' {
 
         BeforeAll {
-            $everythingParameters = Get-PSADTEverythingAppParameters
+            $everythingParameters = Get-SharedPSADTAppParameters -Name 'Everything'
             $ctx = New-PSADTAppTestContextSafe -Parameters $everythingParameters -LogPrefix 'Everything'
 
             $script:v3Dir = $ctx.V3Dir
