@@ -137,7 +137,7 @@ jobs:
             Write-Host "Preloaded module: $moduleName"
           }
           catch {
-            Write-Warning "Failed to preload $moduleName: $($_.Exception.Message)"
+            Write-Warning "Failed to preload $moduleName: $($PSItem.Exception.Message)"
           }
         }
 
