@@ -100,11 +100,16 @@ jobs:
         $recordingPathpsd1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psd1'
         Copy-Item -LiteralPath $recordingPathpsd1 -Destination $RecordingScriptsDir -Force
 
-        # add module into machine-level PSModulePath
-        $moduleRoot = $RecordingScriptsDir
+        # Add module parent path into PSModulePath.
+        # PSModulePath entries should point to parent folders that contain module directories.
+        $moduleRoot = $tfScriptsDir
         $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+        $processPath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Process')
         if ([string]::IsNullOrWhiteSpace($machinePath)) {
           $machinePath = ''
+        }
+        if ([string]::IsNullOrWhiteSpace($processPath)) {
+          $processPath = ''
         }
         
         # Check if module path is already in Machine PSModulePath
@@ -116,28 +121,60 @@ jobs:
             break
           }
         }
-        
+
+        # Preserve current process module paths (including user-scope paths) and append moduleRoot once.
+        $combinedSegments = @($processPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($combinedSegments -notcontains $moduleRoot) {
+          $combinedSegments += $moduleRoot
+        }
+        $newProcessPath = ($combinedSegments | Select-Object -Unique) -join ';'
+        [Environment]::SetEnvironmentVariable('PSModulePath', $newProcessPath, 'Process')
+
         if (-not $moduleExists) {
-          # Set both Machine and Process level to ensure it takes effect immediately
+          # Persist module root at machine scope for future sessions.
           $newPath = if ([string]::IsNullOrWhiteSpace($machinePath)) { $moduleRoot } else { "$machinePath;$moduleRoot" }
           [Environment]::SetEnvironmentVariable('PSModulePath', $newPath, 'Machine')
-          [Environment]::SetEnvironmentVariable('PSModulePath', $newPath, 'Process')
-          Write-Host "PSModulePath updated: $newPath"
+          Write-Host "Machine PSModulePath updated: $newPath"
         }
         else {
-          Write-Host "Module path already exists in PSModulePath"
+          Write-Host "Module path already exists in Machine PSModulePath"
+        }
+        Write-Host "Process PSModulePath updated: $newProcessPath"
+
+        function Ensure-AzModule {
+          param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name
+          )
+
+          if (-not (Get-Module -ListAvailable -Name $Name)) {
+            Write-Warning ("Module {0} not found. Installing from PSGallery..." -f $Name)
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+            Install-Module -Name $Name -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+          }
+
+          Import-Module -Name $Name -ErrorAction Stop -Force
+          Write-Host "Preloaded module: $Name"
         }
 
-        # Preload critical Azure modules before calling TerraForge helper
-        $modulesToLoad = @('Az.Accounts', 'Az.KeyVault', 'Az.Storage', 'PSAppDeployToolkit.Recording')
+        # Ensure critical Azure modules are available before calling TerraForge helper
+        $modulesToLoad = @('Az.Accounts', 'Az.KeyVault', 'Az.Storage')
         foreach ($moduleName in $modulesToLoad) {
           try {
-            Import-Module -Name $moduleName -ErrorAction Stop -Force
-            Write-Host "Preloaded module: $moduleName"
+            Ensure-AzModule -Name $moduleName
           }
           catch {
-            Write-Warning ("Failed to preload {0}: {1}" -f $moduleName, $PSItem.Exception.Message)
+            Write-Warning ("Failed to ensure module {0}: {1}" -f $moduleName, $PSItem.Exception.Message)
           }
+        }
+
+        $recordingManifest = Join-Path $RecordingScriptsDir 'PSAppDeployToolkit.Recording.psd1'
+        try {
+          Import-Module -Name $recordingManifest -ErrorAction Stop -Force
+          Write-Host "Preloaded module from manifest: $recordingManifest"
+        }
+        catch {
+          Write-Warning ("Failed to preload recording module from {0}: {1}" -f $recordingManifest, $PSItem.Exception.Message)
         }
 
         . $tfHelper
