@@ -129,6 +129,17 @@ jobs:
           Write-Host "Module path already exists in PSModulePath"
         }
 
+        # Preload critical Azure modules before calling TerraForge helper
+        $modulesToLoad = @('Az.Accounts', 'Az.KeyVault', 'Az.Storage', 'PSAppDeployToolkit.Recording')
+        foreach ($moduleName in $modulesToLoad) {
+          try {
+            Import-Module -Name $moduleName -ErrorAction Stop -Force
+            Write-Host "Preloaded module: $moduleName"
+          }
+          catch {
+            Write-Warning "Failed to preload $moduleName: $($_.Exception.Message)"
+          }
+        }
 
         . $tfHelper
 
