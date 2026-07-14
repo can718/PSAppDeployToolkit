@@ -1200,8 +1200,7 @@ jobs:
         Write-Host 'Result summary payload collected.'
     - name: Reset Azure Session VM
       id: reset-sessionvm
-      if: false
-        #always()
+      if: always()
       shell: pwsh
       run: |
         $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
