@@ -106,11 +106,27 @@ jobs:
         if ([string]::IsNullOrWhiteSpace($machinePath)) {
           $machinePath = ''
         }
-        $segments = $machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-        if ($segments -notcontains $moduleRoot) {
-          [Environment]::SetEnvironmentVariable('PSModulePath', "$machinePath;$moduleRoot", 'Machine')
+        
+        # Check if module path is already in Machine PSModulePath
+        $segments = @($machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        $moduleExists = $false
+        foreach ($segment in $segments) {
+          if ($segment -eq $moduleRoot) {
+            $moduleExists = $true
+            break
+          }
         }
-        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+        
+        if (-not $moduleExists) {
+          # Set both Machine and Process level to ensure it takes effect immediately
+          $newPath = if ([string]::IsNullOrWhiteSpace($machinePath)) { $moduleRoot } else { "$machinePath;$moduleRoot" }
+          [Environment]::SetEnvironmentVariable('PSModulePath', $newPath, 'Machine')
+          [Environment]::SetEnvironmentVariable('PSModulePath', $newPath, 'Process')
+          Write-Host "PSModulePath updated: $newPath"
+        }
+        else {
+          Write-Host "Module path already exists in PSModulePath"
+        }
 
         . $tfHelper
 
