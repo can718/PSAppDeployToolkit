@@ -1,4 +1,4 @@
-#pragma warning disable PSPlaceOpenBrace
+﻿#pragma warning disable PSPlaceOpenBrace
 <#
 .SYNOPSIS
     Returns the array of shared app configurations used by Additional and Intune tests.
