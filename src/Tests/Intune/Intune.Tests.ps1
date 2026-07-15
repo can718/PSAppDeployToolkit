@@ -206,10 +206,6 @@ Describe 'Intune Tests' {
                 {
                     $app.InstallCmd
                 }
-                elseif ($app.InstallCommand)
-                {
-                    $app.InstallCommand
-                }
                 elseif ($app.TemplateVersion -eq 'V3')
                 {
                     "Deploy-Application.exe -DeploymentType 'Install'"
@@ -221,10 +217,6 @@ Describe 'Intune Tests' {
                 $effectiveUninstallCmd = if ($app.UninstallCmd)
                 {
                     $app.UninstallCmd
-                }
-                elseif ($app.UninstallCommand)
-                {
-                    $app.UninstallCommand
                 }
                 elseif ($app.TemplateVersion -eq 'V3')
                 {

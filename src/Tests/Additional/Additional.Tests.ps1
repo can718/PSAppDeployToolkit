@@ -301,14 +301,14 @@ BeforeAll {
             $resolved.DescriptionTemplate = "PSADT v$templateToken $appName template - $appName {0} - auto-created {1}"
         }
 
-        if (-not $resolved.InstallCommand -and $resolved.InstallCmd)
+        if (-not $resolved.InstallCmd)
         {
-            $resolved.InstallCommand = $resolved.InstallCmd
+            throw "InstallCmd must be explicitly defined for app '$appName'. Found: $($resolved.InstallCmd | Out-String)"
         }
 
-        if (-not $resolved.UninstallCommand -and $resolved.UninstallCmd)
+        if (-not $resolved.UninstallCmd)
         {
-            $resolved.UninstallCommand = $resolved.UninstallCmd
+            throw "UninstallCmd must be explicitly defined for app '$appName'. Found: $($resolved.UninstallCmd | Out-String)"
         }
 
         if (-not $resolved.DetectScript)
@@ -426,8 +426,8 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
             $script:cmModulePath = $ctx.CmModulePath
             $script:winscpDetectScript = $winSCPParameters.DetectScript
             $script:winscpDescriptionTemplate = $winSCPParameters.DescriptionTemplate
-            $script:winscpInstallCommand = $winSCPParameters.InstallCommand
-            $script:winscpUninstallCommand = $winSCPParameters.UninstallCommand
+            $script:winscpInstallCmd = $winSCPParameters.InstallCmd
+            $script:winscpUninstallCmd = $winSCPParameters.UninstallCmd
             $script:winscpLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'WinSCP' -Name 'WinSCP'
         }
 
@@ -510,13 +510,13 @@ Describe 'winSCP SCCM Deployment' -Tag 'WinSCP' {
                     DetectScript       = $script:winscpDetectScript
                     Description        = ($script:winscpDescriptionTemplate -f $script:winscpAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:winscpInstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:winscpInstallCmd))
                 {
-                    $createAppParams.InstallCommand = $script:winscpInstallCommand
+                    $createAppParams.InstallCmd = $script:winscpInstallCmd
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:winscpUninstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:winscpUninstallCmd))
                 {
-                    $createAppParams.UninstallCommand = $script:winscpUninstallCommand
+                    $createAppParams.UninstallCmd = $script:winscpUninstallCmd
                 }
                 Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'winSCP'
 
@@ -602,8 +602,8 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
             $script:cmModulePath = $ctx.CmModulePath
             $script:vlcDetectScript = $vlcParameters.DetectScript
             $script:vlcDescriptionTemplate = $vlcParameters.DescriptionTemplate
-            $script:vlcInstallCommand = $vlcParameters.InstallCommand
-            $script:vlcUninstallCommand = $vlcParameters.UninstallCommand
+            $script:vlcInstallCmd = $vlcParameters.InstallCmd
+            $script:vlcUninstallCmd = $vlcParameters.UninstallCmd
             $script:vlcLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'VLC' -Name 'VLC'
         }
 
@@ -682,13 +682,13 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
                     DetectScript       = $script:vlcDetectScript
                     Description        = ($script:vlcDescriptionTemplate -f $script:vlcAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:vlcInstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:vlcInstallCmd))
                 {
-                    $createAppParams.InstallCommand = $script:vlcInstallCommand
+                    $createAppParams.InstallCmd = $script:vlcInstallCmd
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:vlcUninstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:vlcUninstallCmd))
                 {
-                    $createAppParams.UninstallCommand = $script:vlcUninstallCommand
+                    $createAppParams.UninstallCmd = $script:vlcUninstallCmd
                 }
                 Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'VLC'
 
@@ -773,8 +773,8 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             $script:cmModulePath = $ctx.CmModulePath
             $script:notepadDetectScript = $notepadParameters.DetectScript
             $script:notepadDescriptionTemplate = $notepadParameters.DescriptionTemplate
-            $script:notepadInstallCommand = $notepadParameters.InstallCommand
-            $script:notepadUninstallCommand = $notepadParameters.UninstallCommand
+            $script:notepadInstallCmd = $notepadParameters.InstallCmd
+            $script:notepadUninstallCmd = $notepadParameters.UninstallCmd
             $script:notepadLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'Notepad++' -Name 'Notepad++'
         }
 
@@ -868,13 +868,13 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                     DetectScript       = $script:notepadDetectScript
                     Description        = ($script:notepadDescriptionTemplate -f $script:notepadAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:notepadInstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:notepadInstallCmd))
                 {
-                    $createAppParams.InstallCommand = $script:notepadInstallCommand
+                    $createAppParams.InstallCmd = $script:notepadInstallCmd
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:notepadUninstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:notepadUninstallCmd))
                 {
-                    $createAppParams.UninstallCommand = $script:notepadUninstallCommand
+                    $createAppParams.UninstallCmd = $script:notepadUninstallCmd
                 }
                 Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'Notepad++'
 
@@ -947,8 +947,8 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
             $script:cmModulePath = $ctx.CmModulePath
             $script:digiExamDetectScript = $digiExamParameters.DetectScript
             $script:digiExamDescriptionTemplate = $digiExamParameters.DescriptionTemplate
-            $script:digiExamInstallCommand = $digiExamParameters.InstallCommand
-            $script:digiExamUninstallCommand = $digiExamParameters.UninstallCommand
+            $script:digiExamInstallCmd = $digiExamParameters.InstallCmd
+            $script:digiExamUninstallCmd = $digiExamParameters.UninstallCmd
             $script:digiExamLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V3' -AppFolderName 'Digiexam' -Name 'DigiExam'
         }
 
@@ -1059,13 +1059,13 @@ Describe 'DigiExam SCCM Deployment using V3 template and MSI installer' -Tag 'Di
                     DetectScript       = $script:digiExamDetectScript
                     Description        = ($script:digiExamDescriptionTemplate -f $script:digiExamAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:digiExamInstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:digiExamInstallCmd))
                 {
-                    $createAppParams.InstallCommand = $script:digiExamInstallCommand
+                    $createAppParams.InstallCmd = $script:digiExamInstallCmd
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:digiExamUninstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:digiExamUninstallCmd))
                 {
-                    $createAppParams.UninstallCommand = $script:digiExamUninstallCommand
+                    $createAppParams.UninstallCmd = $script:digiExamUninstallCmd
                 }
                 Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'DigiExam'
                 Write-Information "::info::[DigiExam] DigiExam application imported into SCCM." -InformationAction Continue
@@ -1150,8 +1150,8 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
             $script:cmModulePath = $ctx.CmModulePath
             $script:everythingDetectScript = $everythingParameters.DetectScript
             $script:everythingDescriptionTemplate = $everythingParameters.DescriptionTemplate
-            $script:everythingInstallCommand = $everythingParameters.InstallCommand
-            $script:everythingUninstallCommand = $everythingParameters.UninstallCommand
+            $script:everythingInstallCmd = $everythingParameters.InstallCmd
+            $script:everythingUninstallCmd = $everythingParameters.UninstallCmd
             $script:everythingLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V3' -AppFolderName 'Everything' -Name 'Everything'
         }
 
@@ -1256,13 +1256,13 @@ Describe 'Everything SCCM Deployment using V3 template and EXE installer' -Tag '
                     DetectScript       = $script:everythingDetectScript
                     Description        = ($script:everythingDescriptionTemplate -f $script:everythingAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:everythingInstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:everythingInstallCmd))
                 {
-                    $createAppParams.InstallCommand = $script:everythingInstallCommand
+                    $createAppParams.InstallCmd = $script:everythingInstallCmd
                 }
-                if (-not [string]::IsNullOrWhiteSpace($script:everythingUninstallCommand))
+                if (-not [string]::IsNullOrWhiteSpace($script:everythingUninstallCmd))
                 {
-                    $createAppParams.UninstallCommand = $script:everythingUninstallCommand
+                    $createAppParams.UninstallCmd = $script:everythingUninstallCmd
                 }
                 Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'Everything'
 

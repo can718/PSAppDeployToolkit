@@ -17,6 +17,8 @@
         AppVersion = '3.0.23'
         RegDisplayName = 'VLC media player'
         RegVersionValue = '3.0.23'
+        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive',
+        UninstallCmd ='Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
         DetectionRuleBuilder = {
             param($FilesDir)
             $null = $FilesDir
@@ -34,6 +36,8 @@
         AppVersion = '6.5.6'
         ContentSubPath = 'winSCP'
         RegVersionValue = '6.5.6'
+        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive',
+        UninstallCmd ='Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
         DetectionRuleBuilder = {
             param($FilesDir)
             $msiFile = Get-ChildItem -Path $FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -51,19 +55,8 @@
         AppVendor = 'Don HO don.h@free.fr'
         AppVersion = '6.6.4'
         ContentSubPath = 'NotepadPlusPlus'
-        DetectScript = @'
-$uninstallKey = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++'
-if (Test-Path $uninstallKey)
-{
-    $app = Get-ItemProperty -Path $uninstallKey -ErrorAction SilentlyContinue
-    if ($app.DisplayVersion -like '6.6.4*')
-    {
-        Write-Host "Installed"
-    }
-}
-'@
-        InstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
-        UninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+        UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
         RegVersionValue = '6.6.4'
         PreInstallScript = {
             # Install lower version as prerequisite for upgrade test.
@@ -136,6 +129,8 @@ if (Test-Path $uninstallKey)
         ContentSubPath = 'DigiExam'
         InstallerSourceFile = 'C:\Tools\Intune\Digiexam_26.1.24_x64_en-US.msi'
         RegVersionValue = '26.1.24'
+        InstallCmd = "Deploy-Application.exe -DeploymentType 'Install'"
+        UninstallCmd = "Deploy-Application.exe -DeploymentType 'Uninstall'"
         DetectionRuleBuilder = {
             param($FilesDir)
             $msiFile = Get-ChildItem -Path $FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -151,25 +146,11 @@ if (Test-Path $uninstallKey)
         AppName = 'Everything (PSADT v3 Everything)'
         AppVendor = 'voidtools'
         AppVersion = '1.4.1.1032'
-        DetectScript = @'
-$uninstallRoots = @(
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-)
-$app = foreach ($root in $uninstallRoots)
-{
-    if (Test-Path $root)
-    {
-        Get-ChildItem -Path $root |
-            Get-ItemProperty -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like '*Everything*' -and $_.DisplayVersion -like '1.4.1.1032*' }
-    }
-}
-if ($app) { Write-Host "Installed" }
-'@
         InstallerSourceFile = 'C:\Tools\Intune\Everything-1.4.1.1032.x64-Setup.exe'
         RegDisplayName = 'Everything 1.4.1.1032'
         RegVersionValue = '1.4.1.1032'
+        InstallCmd = "Deploy-Application.exe -DeploymentType 'Install'"
+        UninstallCmd = "Deploy-Application.exe -DeploymentType 'Uninstall'"
         DetectionRuleBuilder = {
             param($FilesDir)
             $null = $FilesDir
