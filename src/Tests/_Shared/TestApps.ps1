@@ -17,8 +17,8 @@
         AppVersion = '3.0.23'
         RegDisplayName = 'VLC media player'
         RegVersionValue = '3.0.23'
-        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive',
-        UninstallCmd ='Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
+        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive'
+        UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
         DetectionRuleBuilder = {
             param($FilesDir)
             $null = $FilesDir
@@ -36,8 +36,8 @@
         AppVersion = '6.5.6'
         ContentSubPath = 'winSCP'
         RegVersionValue = '6.5.6'
-        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive',
-        UninstallCmd ='Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
+        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive'
+        UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Interactive'
         DetectionRuleBuilder = {
             param($FilesDir)
             $msiFile = Get-ChildItem -Path $FilesDir -Filter '*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
