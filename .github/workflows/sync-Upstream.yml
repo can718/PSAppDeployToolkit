@@ -119,7 +119,8 @@ jobs:
           echo "API rate limit remaining: ${rate_remaining:-<not reported>}"
 
           has_workflow_scope="false"
-          if [ -n "$oauth_scopes" ] && printf '%s' "$oauth_scopes" | grep -Eq '(^|, )workflow($|, )'; then
+          normalized_scopes=",$(printf '%s' "$oauth_scopes" | tr -d '[:space:]'),"
+          if [ -n "$oauth_scopes" ] && [[ "$normalized_scopes" == *",workflow,"* ]]; then
             has_workflow_scope="true"
           fi
 

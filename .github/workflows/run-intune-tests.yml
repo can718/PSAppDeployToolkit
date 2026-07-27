@@ -324,10 +324,30 @@ jobs:
       if: steps.psmodule-cache.outputs.cache-hit != 'true'
       shell: pwsh
       run: |
-        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
-        Install-Module -Name PowerShellGet -MinimumVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
-        Import-Module PowerShellGet -MinimumVersion 2.2.5 -Force
-        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        $ErrorActionPreference = 'Stop'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+        function Initialize-PSGalleryBootstrap {
+          $nugetProvider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |
+                           Where-Object { $_.Version -ge [version]'2.8.5.201' } |
+                           Sort-Object Version -Descending |
+                           Select-Object -First 1
+          if (-not $nugetProvider) {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope CurrentUser
+          }
+
+          Import-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
+
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        }
+
+        Initialize-PSGalleryBootstrap
+        Install-Module -Name PowerShellGet -RequiredVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
+        Import-Module PowerShellGet -RequiredVersion 2.2.5 -Force
+        Initialize-PSGalleryBootstrap
         Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
         Install-Module -Name Pester -RequiredVersion 5.7.1 -Force -SkipPublisherCheck -Scope CurrentUser
         Install-Module -Name platyPS -RequiredVersion 0.14.2 -Force -Scope CurrentUser

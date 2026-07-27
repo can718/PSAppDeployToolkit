@@ -338,10 +338,14 @@ jobs:
         }
 
         Initialize-PSGalleryBootstrap
-        Install-Module -Name PowerShellGet -MinimumVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
+        Install-Module -Name PowerShellGet -RequiredVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
         # Reload the updated PowerShellGet into current session
-        Import-Module PowerShellGet -MinimumVersion 2.2.5 -Force
+        Import-Module PowerShellGet -RequiredVersion 2.2.5 -Force
         Initialize-PSGalleryBootstrap
+        Write-Host 'pwsh PowerShellGet modules:'
+        Get-Module -ListAvailable PowerShellGet | Sort-Object Version -Descending | Select-Object Name, Version, Path | Format-Table -AutoSize
+        Write-Host 'pwsh NuGet providers:'
+        Get-PackageProvider -ListAvailable | Where-Object Name -eq 'NuGet' | Sort-Object Version -Descending | Select-Object Name, Version | Format-Table -AutoSize
         Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
         Install-Module -Name Pester -RequiredVersion 5.7.1 -Force -SkipPublisherCheck -Scope CurrentUser
         Install-Module -Name platyPS -RequiredVersion 0.14.2 -Force -Scope CurrentUser
@@ -371,9 +375,13 @@ jobs:
         }
 
         Initialize-PSGalleryBootstrap
-        Install-Module -Name PowerShellGet -MinimumVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
-        Import-Module PowerShellGet -MinimumVersion 2.2.5 -Force
+        Install-Module -Name PowerShellGet -RequiredVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
+        Import-Module PowerShellGet -RequiredVersion 2.2.5 -Force
         Initialize-PSGalleryBootstrap
+        Write-Host 'powershell.exe PowerShellGet modules:'
+        Get-Module -ListAvailable PowerShellGet | Sort-Object Version -Descending | Select-Object Name, Version, Path | Format-Table -AutoSize
+        Write-Host 'powershell.exe NuGet providers:'
+        Get-PackageProvider -ListAvailable | Where-Object Name -eq 'NuGet' | Sort-Object Version -Descending | Select-Object Name, Version | Format-Table -AutoSize
         Install-Module -Name Az.Accounts, Az.KeyVault, Az.Storage -Force -Scope CurrentUser -AllowClobber
         '@
 
