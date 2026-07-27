@@ -89,6 +89,51 @@ jobs:
           echo "Configured git user.email (masked): $(mask_value "$EFFECTIVE_USER_EMAIL")"
           echo "Git identity in repo (masked): $(mask_value "$CURRENT_USER_NAME") <$(mask_value "$CURRENT_USER_EMAIL")>"
 
+      - name: Validate token scopes (safe)
+        env:
+          GH_TOKEN_EFFECTIVE: ${{ env.SYNC_AUTH_TOKEN != '' && env.SYNC_AUTH_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN_EFFECTIVE:-}" ]; then
+            echo "No effective token available; skipping scope diagnostics."
+            echo "### Token scope diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "No effective token available; scope diagnostics skipped." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          header_file="$(mktemp)"
+          # Query the authenticated user endpoint to capture OAuth scope headers safely.
+          curl -sS -D "$header_file" -o /dev/null \
+            -H "Authorization: Bearer $GH_TOKEN_EFFECTIVE" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/user
+
+          oauth_scopes="$(grep -i '^x-oauth-scopes:' "$header_file" | cut -d':' -f2- | xargs || true)"
+          accepted_scopes="$(grep -i '^x-accepted-oauth-scopes:' "$header_file" | cut -d':' -f2- | xargs || true)"
+          rate_remaining="$(grep -i '^x-ratelimit-remaining:' "$header_file" | cut -d':' -f2- | xargs || true)"
+
+          echo "Token scopes reported by GitHub: ${oauth_scopes:-<not reported>}"
+          echo "Accepted scopes for endpoint: ${accepted_scopes:-<not reported>}"
+          echo "API rate limit remaining: ${rate_remaining:-<not reported>}"
+
+          has_workflow_scope="false"
+          if [ -n "$oauth_scopes" ] && printf '%s' "$oauth_scopes" | grep -Eq '(^|, )workflow($|, )'; then
+            has_workflow_scope="true"
+          fi
+
+          echo "workflow_scope_present=$has_workflow_scope" >> "$GITHUB_OUTPUT"
+
+          echo "### Token scope diagnostics" >> "$GITHUB_STEP_SUMMARY"
+          echo "Token scopes: ${oauth_scopes:-not reported}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Accepted scopes: ${accepted_scopes:-not reported}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Workflow scope present: $has_workflow_scope" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$has_workflow_scope" != "true" ]; then
+            echo "Warning: workflow scope was not detected. Push may fail when commits include .github/workflows changes."
+          fi
+
       - name: Check if there are upstream updates
         id: check_updates
         run: |
