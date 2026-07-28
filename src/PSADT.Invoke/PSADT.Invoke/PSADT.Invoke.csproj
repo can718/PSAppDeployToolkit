@@ -2,7 +2,6 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>PSADT.Invoke</RootNamespace>
     <AssemblyName>Invoke-AppDeployToolkit</AssemblyName>
     <Product>PSAppDeployToolkit Deployment Script Launcher</Product>
     <AssemblyTitle>PSAppDeployToolkit Deployment Script Launcher</AssemblyTitle>
@@ -13,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Meziantou.Polyfill" Version="1.0.157">
+    <PackageReference Include="Meziantou.Polyfill" Version="1.0.158">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

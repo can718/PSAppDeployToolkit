@@ -2,8 +2,6 @@
   <PropertyGroup>
     <TargetFrameworks>net472;net8.0</TargetFrameworks>
     <OutputType>Library</OutputType>
-    <RootNamespace>PSADT.Interop</RootNamespace>
-    <AssemblyName>PSADT.Interop</AssemblyName>
     <Product>PSAppDeployToolkit Win32 Native Methods Library</Product>
     <AssemblyTitle>PSAppDeployToolkit Win32 Native Methods Library</AssemblyTitle>
     <AssemblyDescription>This assembly provides Win32 library access to all areas of PSAppDeployToolkit.</AssemblyDescription>
@@ -19,17 +17,17 @@
     <InternalsVisibleTo Include="PSADT.ClientServer.Server" />
     <InternalsVisibleTo Include="PSADT.UserInterface" />
     <InternalsVisibleTo Include="PSADT.UserInterface.Interfaces" />
-    <InternalsVisibleTo Include="PSADT.UserInterface.TestHarness" />
+    <InternalsVisibleTo Include="PSADT.UserInterface.Interfaces.TestHarness" />
     <InternalsVisibleTo Include="PSADT.WindowsRuntime" />
     <InternalsVisibleTo Include="PSAppDeployToolkit" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
-    <PackageReference Include="Meziantou.Polyfill" Version="1.0.157">
+    <PackageReference Include="Meziantou.Polyfill" Version="1.0.158">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="System.Collections.Immutable" Version="10.0.9" />
+    <PackageReference Include="System.Collections.Immutable" Version="10.0.10" />
     <PackageReference Include="System.Memory" Version="4.6.3" />
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
   </ItemGroup>
@@ -54,13 +52,16 @@
       M:System.IO.StreamReader.ReadLineAsync|
       M:System.Nullable.GetValueRefOrDefaultRef|
       M:System.ObjectDisposedException.Throw|
+      M:System.String.Create|
       M:System.String.Contains|
+      M:System.String.CopyTo|
       M:System.String.EndsWith|
       M:System.String.GetHashCode|
       M:System.String.IndexOf|
       M:System.String.Join|
       M:System.String.Replace|
       M:System.String.StartsWith|
+      M:System.String.TryCopyTo|
       M:System.StringComparer.FromComparison|
       M:System.Text.Encoding.GetString|
       M:System.Threading.CancellationTokenSource.CancelAsync|
@@ -71,6 +72,9 @@
       T:System.Diagnostics.CodeAnalysis.NotNullWhenAttribute|
       T:System.Diagnostics.StackTraceHiddenAttribute|
       T:System.Runtime.CompilerServices.CallerArgumentExpressionAttribute|
+      T:System.Runtime.CompilerServices.DefaultInterpolatedStringHandler|
+      T:System.Runtime.CompilerServices.InterpolatedStringHandlerArgumentAttribute|
+      T:System.Runtime.CompilerServices.InterpolatedStringHandlerAttribute|
       T:System.Runtime.CompilerServices.ModuleInitializerAttribute|
     </MeziantouPolyfill_IncludedPolyfills>
     <DefineConstants>$(DefineConstants);MEZIANTOU_POLYFILL_SKIP_MICROSOFT_CODEANALYSIS_EMBEDDEDATTRIBUTE</DefineConstants>
