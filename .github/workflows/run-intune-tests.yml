@@ -387,12 +387,14 @@ jobs:
 
         Initialize-PSGalleryBootstrap
         Ensure-ModulePresent -Name PowerShellGet -RequiredVersion ([version]'2.2.5')
+        $requiredPowerShellGetVersionPrefix = '2.2.5'
         $powerShellGetModule = Get-Module -ListAvailable -Name PowerShellGet |
-                              Where-Object Version -eq ([version]'2.2.5') |
+                              Where-Object { $_.Version.ToString().StartsWith($requiredPowerShellGetVersionPrefix) } |
                               Sort-Object Path |
                               Select-Object -First 1
         if (-not $powerShellGetModule) {
-          throw "PowerShellGet 2.2.5 was not found after installation."
+          $availablePowerShellGetVersions = (Get-Module -ListAvailable -Name PowerShellGet | Sort-Object Version -Descending | Select-Object -ExpandProperty Version | ForEach-Object { $_.ToString() }) -join ', '
+          throw "PowerShellGet version prefix $requiredPowerShellGetVersionPrefix was not found after installation. Available versions: $availablePowerShellGetVersions"
         }
         Write-Host "Importing PowerShellGet from: $($powerShellGetModule.Path)"
         Import-Module -Name $powerShellGetModule.Path -Force
