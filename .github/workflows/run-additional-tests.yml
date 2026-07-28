@@ -342,7 +342,8 @@ jobs:
             [Parameter(Mandatory = $true)]
             [string]$Name,
             [Parameter(Mandatory = $false)]
-            [version]$RequiredVersion
+            [version]$RequiredVersion,
+            [switch]$SkipPublisherCheck
           )
 
           $module = Get-Module -ListAvailable -Name $Name |
@@ -354,7 +355,18 @@ jobs:
               Write-Host "Module '$Name' already available at version $($module.Version)."
               return
             }
-            Install-Module -Name $Name -RequiredVersion $RequiredVersion -Force -Scope CurrentUser -AllowClobber -Repository PSGallery
+            $installModuleParams = @{
+              Name = $Name
+              RequiredVersion = $RequiredVersion
+              Force = $true
+              Scope = 'CurrentUser'
+              AllowClobber = $true
+              Repository = 'PSGallery'
+            }
+            if ($SkipPublisherCheck) {
+              $installModuleParams.SkipPublisherCheck = $true
+            }
+            Install-Module @installModuleParams
             return
           }
 
@@ -369,14 +381,22 @@ jobs:
         Initialize-PSGalleryBootstrap
         Ensure-ModulePresent -Name PowerShellGet -RequiredVersion ([version]'2.2.5')
         # Reload the updated PowerShellGet into current session
-        Import-Module PowerShellGet -RequiredVersion 2.2.5 -Force
+        $powerShellGetModule = Get-Module -ListAvailable -Name PowerShellGet |
+                              Where-Object Version -eq ([version]'2.2.5') |
+                              Sort-Object Path |
+                              Select-Object -First 1
+        if (-not $powerShellGetModule) {
+          throw "PowerShellGet 2.2.5 was not found after installation."
+        }
+        Write-Host "Importing PowerShellGet from: $($powerShellGetModule.Path)"
+        Import-Module -Name $powerShellGetModule.Path -Force
         Initialize-PSGalleryBootstrap
         Write-Host 'pwsh PowerShellGet modules:'
         Get-Module -ListAvailable PowerShellGet | Sort-Object Version -Descending | Select-Object Name, Version, Path | Format-Table -AutoSize
         Write-Host 'pwsh NuGet providers:'
         Get-PackageProvider -ListAvailable | Where-Object Name -eq 'NuGet' | Sort-Object Version -Descending | Select-Object Name, Version | Format-Table -AutoSize
         Ensure-ModulePresent -Name PSScriptAnalyzer -RequiredVersion ([version]'1.25.0')
-        Ensure-ModulePresent -Name Pester -RequiredVersion ([version]'5.7.1')
+        Ensure-ModulePresent -Name Pester -RequiredVersion ([version]'5.7.1') -SkipPublisherCheck
         Ensure-ModulePresent -Name platyPS -RequiredVersion ([version]'0.14.2')
         Ensure-ModulePresent -Name Alt3.Docusaurus.Powershell -RequiredVersion ([version]'1.0.37')
         Ensure-ModulePresent -Name Az.Accounts
@@ -410,7 +430,8 @@ jobs:
             [Parameter(Mandatory = $true)]
             [string]$Name,
             [Parameter(Mandatory = $false)]
-            [version]$RequiredVersion
+            [version]$RequiredVersion,
+            [switch]$SkipPublisherCheck
           )
 
           $module = Get-Module -ListAvailable -Name $Name |
@@ -422,7 +443,18 @@ jobs:
               Write-Host "Module '$Name' already available at version $($module.Version)."
               return
             }
-            Install-Module -Name $Name -RequiredVersion $RequiredVersion -Force -Scope CurrentUser -AllowClobber -Repository PSGallery
+            $installModuleParams = @{
+              Name = $Name
+              RequiredVersion = $RequiredVersion
+              Force = $true
+              Scope = 'CurrentUser'
+              AllowClobber = $true
+              Repository = 'PSGallery'
+            }
+            if ($SkipPublisherCheck) {
+              $installModuleParams.SkipPublisherCheck = $true
+            }
+            Install-Module @installModuleParams
             return
           }
 
@@ -436,7 +468,15 @@ jobs:
 
         Initialize-PSGalleryBootstrap
         Ensure-ModulePresent -Name PowerShellGet -RequiredVersion ([version]'2.2.5')
-        Import-Module PowerShellGet -RequiredVersion 2.2.5 -Force
+        $powerShellGetModule = Get-Module -ListAvailable -Name PowerShellGet |
+                              Where-Object Version -eq ([version]'2.2.5') |
+                              Sort-Object Path |
+                              Select-Object -First 1
+        if (-not $powerShellGetModule) {
+          throw "PowerShellGet 2.2.5 was not found after installation."
+        }
+        Write-Host "Importing PowerShellGet from: $($powerShellGetModule.Path)"
+        Import-Module -Name $powerShellGetModule.Path -Force
         Initialize-PSGalleryBootstrap
         Write-Host 'powershell.exe PowerShellGet modules:'
         Get-Module -ListAvailable PowerShellGet | Sort-Object Version -Descending | Select-Object Name, Version, Path | Format-Table -AutoSize
