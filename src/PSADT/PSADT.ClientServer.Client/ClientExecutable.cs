@@ -176,13 +176,13 @@ namespace PSADT.ClientServer
             catch (ClientException ex)
             {
                 // We've caught our own error. Write it out, the error handler will get the exit code out of it.
-                return InvokeMainErrorHandler(ex, $"Failed to perform the requested operation with error code [{ex.HResult.ToString("X8", CultureInfo.InvariantCulture)}].");
+                return InvokeMainErrorHandler(ex, string.Create(CultureInfo.InvariantCulture, $"Failed to perform the requested operation with error code [{ex.HResult:X8}]."));
                 throw;
             }
             catch (Exception ex)
             {
                 // This block is here as a fail-safe and should never be reached.
-                return InvokeMainErrorHandler(ex, $"An unexpected exception occurred with HRESULT [{ex.HResult.ToString("X8", CultureInfo.InvariantCulture)}].", ClientExitCode.Unknown);
+                return InvokeMainErrorHandler(ex, string.Create(CultureInfo.InvariantCulture, $"An unexpected exception occurred with HRESULT [{ex.HResult:X8}]."), ClientExitCode.Unknown);
                 throw;
             }
         }
@@ -505,7 +505,7 @@ namespace PSADT.ClientServer
 
                                         case PipeCommand.GetProcessWindowInfo:
                                             {
-                                                await WriteSuccessAsync(WindowUtilities.GetProcessWindowInfo(DeserializeBytes<GetProcessWindowInfoPayload>(requestBytes, payloadOffset).Options)).ConfigureAwait(false);
+                                                await WriteSuccessAsync(new ReadOnlyCollection<WindowInfo>([.. WindowUtilities.GetProcessWindowInfo(DeserializeBytes<GetProcessWindowInfoPayload>(requestBytes, payloadOffset).Options)])).ConfigureAwait(false);
                                                 break;
                                             }
 
@@ -661,7 +661,7 @@ namespace PSADT.ClientServer
                 }
                 if (arg.Equals("/GetProcessWindowInfo", StringComparison.Ordinal) || arg.Equals("/gpwi", StringComparison.Ordinal))
                 {
-                    Console.WriteLine(SerializeToString(WindowUtilities.GetProcessWindowInfo(DeserializeString<WindowInfoOptions>(GetOptionsFromArguments(ArgvToDictionary(argv))))));
+                    Console.WriteLine(SerializeToString(new ReadOnlyCollection<WindowInfo>([.. WindowUtilities.GetProcessWindowInfo(DeserializeString<WindowInfoOptions>(GetOptionsFromArguments(ArgvToDictionary(argv))))])));
                     return (int)ClientExitCode.Success;
                 }
                 if (arg.Equals("/GetUserNotificationState", StringComparison.Ordinal) || arg.Equals("/guns", StringComparison.Ordinal))
@@ -907,7 +907,7 @@ namespace PSADT.ClientServer
         private static ReadOnlyDictionary<string, string> ArgvToDictionary(string[] argv)
         {
             // Loop through arguments and match argument names to their values.
-            Dictionary<string, string> arguments = [];
+            Dictionary<string, string> arguments = new(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < argv.Length; i++)
             {
                 if (!argv[i].StartsWith("-"))
@@ -936,9 +936,9 @@ namespace PSADT.ClientServer
                         ? throw new ClientException($"The specified ArgumentsDictionary registry key [{argvDictValue}] does not exist or is invalid.", ClientExitCode.InvalidArguments)
                         : DeserializeString<ReadOnlyDictionary<string, string>>(argvDictContent);
                 }
-                return File.Exists(argvDictValue)
-                    ? DeserializeString<ReadOnlyDictionary<string, string>>(File.ReadAllText(argvDictValue))
-                    : DeserializeString<ReadOnlyDictionary<string, string>>(argvDictValue);
+                return DeserializeString<ReadOnlyDictionary<string, string>>(File.Exists(argvDictValue)
+                    ? File.ReadAllText(argvDictValue)
+                    : argvDictValue);
             }
 
             // This data should never change once read, so return read-only.

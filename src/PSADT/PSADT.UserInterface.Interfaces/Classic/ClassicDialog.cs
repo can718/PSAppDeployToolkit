@@ -155,7 +155,7 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// <returns>A string representation of the total hours, minutes, and seconds in the format "HH:MM:SS".</returns>
         private protected static string FormatTime(TimeSpan ts)
         {
-            return $"{((ts.Days * 24) + ts.Hours).ToString(CultureInfo.InvariantCulture)}:{ts.Minutes.ToString("D2", CultureInfo.InvariantCulture)}:{ts.Seconds.ToString("D2", CultureInfo.InvariantCulture)}";
+            return string.Create(CultureInfo.InvariantCulture, $"{(ts.Days * 24) + ts.Hours}:{ts.Minutes:D2}:{ts.Seconds:D2}");
         }
 
         /// <summary>
@@ -599,11 +599,11 @@ namespace PSADT.UserInterface.Interfaces.Classic
         /// <summary>
         /// Cache for icons to avoid loading them multiple times.
         /// </summary>
-        private static readonly Dictionary<string, Icon> iconCache = [];
+        private static readonly Dictionary<string, Icon> iconCache = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Cache for banners to avoid loading them multiple times.
         /// </summary>
-        private static readonly Dictionary<string, Bitmap> imageCache = [];
+        private static readonly Dictionary<string, Bitmap> imageCache = new(StringComparer.OrdinalIgnoreCase);
     }
 }
