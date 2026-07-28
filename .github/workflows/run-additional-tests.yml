@@ -469,16 +469,30 @@ jobs:
         }
 
         Initialize-PSGalleryBootstrap
-        Ensure-ModulePresent -Name PowerShellGet -RequiredVersion ([version]'2.2.5')
         $requiredPowerShellGetVersionPrefix = '2.2.5'
-        $powerShellGetModule = Get-Module -ListAvailable -Name PowerShellGet |
+        try {
+          Ensure-ModulePresent -Name PowerShellGet -RequiredVersion ([version]'2.2.5')
+        }
+        catch {
+          Write-Warning ("Unable to ensure PowerShellGet {0} in powershell.exe: {1}" -f $requiredPowerShellGetVersionPrefix, $PSItem.Exception.Message)
+        }
+
+        $powerShellGetCandidates = Get-Module -ListAvailable -Name PowerShellGet | Sort-Object Version -Descending
+        $powerShellGetModule = $powerShellGetCandidates |
                               Where-Object { $_.Version.ToString().StartsWith($requiredPowerShellGetVersionPrefix) } |
-                              Sort-Object Path |
                               Select-Object -First 1
         if (-not $powerShellGetModule) {
-          $availablePowerShellGetVersions = (Get-Module -ListAvailable -Name PowerShellGet | Sort-Object Version -Descending | Select-Object -ExpandProperty Version | ForEach-Object { $_.ToString() }) -join ', '
-          throw "PowerShellGet version prefix $requiredPowerShellGetVersionPrefix was not found after installation. Available versions: $availablePowerShellGetVersions"
+          $powerShellGetModule = $powerShellGetCandidates | Select-Object -First 1
         }
+        if (-not $powerShellGetModule) {
+          throw 'No PowerShellGet module is available in powershell.exe session.'
+        }
+
+        if (-not $powerShellGetModule.Version.ToString().StartsWith($requiredPowerShellGetVersionPrefix)) {
+          $availablePowerShellGetVersions = ($powerShellGetCandidates | Select-Object -ExpandProperty Version | ForEach-Object { $_.ToString() }) -join ', '
+          Write-Warning ("Preferred PowerShellGet version prefix {0} is unavailable in powershell.exe. Continuing with {1} from {2}. Available versions: {3}" -f $requiredPowerShellGetVersionPrefix, $powerShellGetModule.Version, $powerShellGetModule.Path, $availablePowerShellGetVersions)
+        }
+
         Write-Host "Importing PowerShellGet from: $($powerShellGetModule.Path)"
         Import-Module -Name $powerShellGetModule.Path -Force
         Initialize-PSGalleryBootstrap
