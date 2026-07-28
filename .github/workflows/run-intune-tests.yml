@@ -344,14 +344,43 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
         }
 
+        function Ensure-ModulePresent {
+          param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            [Parameter(Mandatory = $false)]
+            [version]$RequiredVersion
+          )
+
+          $module = Get-Module -ListAvailable -Name $Name |
+                    Sort-Object Version -Descending |
+                    Select-Object -First 1
+
+          if ($RequiredVersion) {
+            if ($module -and $module.Version -ge $RequiredVersion) {
+              Write-Host "Module '$Name' already available at version $($module.Version)."
+              return
+            }
+            Install-Module -Name $Name -RequiredVersion $RequiredVersion -Force -Scope CurrentUser -AllowClobber -Repository PSGallery
+            return
+          }
+
+          if ($module) {
+            Write-Host "Module '$Name' already available at version $($module.Version)."
+            return
+          }
+
+          Install-Module -Name $Name -Force -Scope CurrentUser -AllowClobber -Repository PSGallery
+        }
+
         Initialize-PSGalleryBootstrap
-        Install-Module -Name PowerShellGet -RequiredVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber
+        Ensure-ModulePresent -Name PowerShellGet -RequiredVersion ([version]'2.2.5')
         Import-Module PowerShellGet -RequiredVersion 2.2.5 -Force
         Initialize-PSGalleryBootstrap
-        Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
-        Install-Module -Name Pester -RequiredVersion 5.7.1 -Force -SkipPublisherCheck -Scope CurrentUser
-        Install-Module -Name platyPS -RequiredVersion 0.14.2 -Force -Scope CurrentUser
-        Install-Module -Name Alt3.Docusaurus.Powershell -RequiredVersion 1.0.37 -Force -Scope CurrentUser
+        Ensure-ModulePresent -Name PSScriptAnalyzer -RequiredVersion ([version]'1.25.0')
+        Ensure-ModulePresent -Name Pester -RequiredVersion ([version]'5.7.1')
+        Ensure-ModulePresent -Name platyPS -RequiredVersion ([version]'0.14.2')
+        Ensure-ModulePresent -Name Alt3.Docusaurus.Powershell -RequiredVersion ([version]'1.0.37')
 
     - name: Configure NuGet source
       id: configure-nuget
