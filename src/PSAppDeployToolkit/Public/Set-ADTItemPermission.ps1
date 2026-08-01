@@ -20,7 +20,7 @@ function Set-ADTItemPermission
         The ACL object to apply to the given path.
 
     .PARAMETER User
-        One or more user names (ex: BUILTIN\Users, DOMAIN\Admin) to assign the permissions to. If you want to use a SID, prefix it with an asterisk (`*`), i.e., *S-1-5-18
+        One or more user names (ex: BUILTIN\Users, DOMAIN\Admin) to assign the permissions to. If you want to use a SID, prefix it with an asterisk (`*`), i.e., '*S-1-5-18'
 
     .PARAMETER Permission
         Permission or list of permissions to be set/added/removed/replaced. Permission DeleteSubdirectoriesAndFiles does not apply to files.
@@ -48,11 +48,11 @@ function Set-ADTItemPermission
         Specifies which method will be used to apply the permissions.
 
         Valid values for this parameter are:
-        * `AddAccessRule`: Adds permissions rules but it does not remove previous permissions.
+        * `AddAccessRule`: Adds permission rules but it does not remove previous permissions.
         * `SetAccessRule`: Overwrites matching permission rules with new ones.
-        * `ResetAccessRule`: Removes matching permissions rules and then adds permission rules.
+        * `ResetAccessRule`: Removes matching permission rules and then adds permission rules.
         * `RemoveAccessRule`: Removes matching permission rules.
-        * `RemoveAccessRuleAll`: Removes all permission rules for specified user/s.
+        * `RemoveAccessRuleAll`: Removes all permission rules for specified users.
         * `RemoveAccessRuleSpecific`: Removes specific permissions.
 
     .PARAMETER EnableInheritance
@@ -63,6 +63,9 @@ function Set-ADTItemPermission
 
     .PARAMETER RemoveExplicitRules
         Removes non-inherited permissions from the object when enabling inheritance.
+
+    .PARAMETER Owner
+        The user or group to set as the owner of the item (ex: BUILTIN\Administrators, DOMAIN\Admin). If you want to use a SID, prefix it with an asterisk (`*`), i.e., '*S-1-5-18'. The owner is changed before any permissions are modified.
 
     .INPUTS
         None
@@ -85,9 +88,14 @@ function Set-ADTItemPermission
         Will grant Read permissions to 'John' on 'C:\Temp\pic.png'.
 
     .EXAMPLE
-        Set-ADTItemPermission -LiteralPath 'C:\Temp\Private' -User 'DOMAIN\John' -Permission 'None' -Method 'RemoveAll'
+        Set-ADTItemPermission -LiteralPath 'C:\Temp\Private' -User 'DOMAIN\John' -Permission 'None' -Method 'RemoveAccessRuleAll'
 
         Will remove all permissions to 'John' on 'C:\Temp\Private'.
+
+    .EXAMPLE
+        Set-ADTItemPermission -LiteralPath 'C:\Temp' -Owner 'BUILTIN\Administrators'
+
+        Will set 'BUILTIN\Administrators' as the owner of 'C:\Temp' without modifying its access rules.
 
     .NOTES
         An active ADT session is NOT required to use this function.
@@ -114,6 +122,7 @@ function Set-ADTItemPermission
         [Parameter(Mandatory = $true, HelpMessage = 'Path to the folder or file you want to modify (ex: C:\Temp)', ParameterSetName = 'DisableInheritance')]
         [Parameter(Mandatory = $true, HelpMessage = 'Path to the folder or file you want to modify (ex: C:\Temp)', ParameterSetName = 'EnableInheritance')]
         [Parameter(Mandatory = $true, HelpMessage = 'Path to the folder or file you want to modify (ex: C:\Temp)', ParameterSetName = 'AccessControlList')]
+        [Parameter(Mandatory = $true, HelpMessage = 'Path to the folder or file you want to modify (ex: C:\Temp)', ParameterSetName = 'OwnerOnly')]
         [ValidateScript({
                 if (!(Test-Path -LiteralPath $_))
                 {
@@ -128,7 +137,7 @@ function Set-ADTItemPermission
         [ValidateNotNullOrEmpty()]
         [System.Security.AccessControl.FileSystemSecurity]$AccessControlList,
 
-        [Parameter(Mandatory = $true, HelpMessage = 'One or more user names (ex: BUILTIN\Users, DOMAIN\Admin). If you want to use SID, prefix it with an asterisk * (ex: *S-1-5-18)', ParameterSetName = 'DisableInheritance')]
+        [Parameter(Mandatory = $true, HelpMessage = 'One or more user names (ex: BUILTIN\Users, DOMAIN\Admin). If you want to use SID, prefix it with an asterisk * (ex: ''*S-1-5-18'')', ParameterSetName = 'DisableInheritance')]
         [Alias('Username', 'Users', 'SID', 'Usernames')]
         [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
         [PSAppDeployToolkit.Attributes.ValidateUnique()]
@@ -148,7 +157,7 @@ function Set-ADTItemPermission
         [ValidateNotNullOrEmpty()]
         [System.Security.AccessControl.InheritanceFlags]$Inheritance = [System.Security.AccessControl.InheritanceFlags]::None,
 
-        [Parameter(Mandatory = $false, HelpMessage = 'Sets how to propage inheritance flags', ParameterSetName = 'DisableInheritance')]
+        [Parameter(Mandatory = $false, HelpMessage = 'Sets how to propagate inheritance flags', ParameterSetName = 'DisableInheritance')]
         [ValidateNotNullOrEmpty()]
         [System.Security.AccessControl.PropagationFlags]$Propagation = [System.Security.AccessControl.PropagationFlags]::None,
 
@@ -164,7 +173,14 @@ function Set-ADTItemPermission
         [System.Management.Automation.SwitchParameter]$EnableInheritance,
 
         [Parameter(Mandatory = $false, HelpMessage = 'Removes non-inherited permissions from the object when enabling inheritance.', ParameterSetName = 'EnableInheritance')]
-        [System.Management.Automation.SwitchParameter]$RemoveExplicitRules
+        [System.Management.Automation.SwitchParameter]$RemoveExplicitRules,
+
+        [Parameter(Mandatory = $false, HelpMessage = 'The user or group to set as the owner of the item (ex: BUILTIN\Administrators). If you want to use a SID, prefix it with an asterisk * (ex: ''*S-1-5-18''). The owner is changed before any permissions are modified.', ParameterSetName = 'DisableInheritance')]
+        [Parameter(Mandatory = $false, HelpMessage = 'The user or group to set as the owner of the item (ex: BUILTIN\Administrators). If you want to use a SID, prefix it with an asterisk * (ex: ''*S-1-5-18''). The owner is changed before any permissions are modified.', ParameterSetName = 'EnableInheritance')]
+        [Parameter(Mandatory = $false, HelpMessage = 'The user or group to set as the owner of the item (ex: BUILTIN\Administrators). If you want to use a SID, prefix it with an asterisk * (ex: ''*S-1-5-18''). The owner is changed before any permissions are modified.', ParameterSetName = 'AccessControlList')]
+        [Parameter(Mandatory = $true, HelpMessage = 'The user or group to set as the owner of the item (ex: BUILTIN\Administrators). If you want to use a SID, prefix it with an asterisk * (ex: ''*S-1-5-18'').', ParameterSetName = 'OwnerOnly')]
+        [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
+        [System.String]$Owner
     )
 
     begin
@@ -192,10 +208,33 @@ function Set-ADTItemPermission
                     throw (New-ADTErrorRecord @naerParams)
                 }
 
+                # Set the owner before modifying any ACLs if one was specified.
+                if ($PSBoundParameters.ContainsKey('Owner'))
+                {
+                    $ownerAccount = if ($Owner.StartsWith('*'))
+                    {
+                        ConvertTo-ADTNTAccountOrSID -SID $Owner.Remove(0, 1)
+                    }
+                    else
+                    {
+                        [System.Security.Principal.NTAccount]$Owner
+                    }
+                    Write-ADTLogEntry -Message "Setting owner to [$ownerAccount] on path [$LiteralPath]."
+                    if ($PSCmdlet.ShouldProcess("Path [$LiteralPath]", "Set owner to [$ownerAccount]"))
+                    {
+                        [PSADT.FileSystem.FileSystemUtilities]::SetOwner($pathInfo, $ownerAccount)
+                    }
+                }
+
+                if ($PSCmdlet.ParameterSetName.Equals('OwnerOnly'))
+                {
+                    return
+                }
+
                 # Directly apply the permissions if an ACL object has been provided.
                 if ($PSCmdlet.ParameterSetName.Equals('AccessControlList'))
                 {
-                    Write-ADTLogEntry -Message "Setting specifieds ACL on path [$LiteralPath]."
+                    Write-ADTLogEntry -Message "Setting specified ACL on path [$LiteralPath]."
                     if (!$PSCmdlet.ShouldProcess("Path [$LiteralPath]", 'Set ACL'))
                     {
                         return
