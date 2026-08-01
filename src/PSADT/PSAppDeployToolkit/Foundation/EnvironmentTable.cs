@@ -438,10 +438,10 @@ namespace PSAppDeployToolkit.Foundation
         public DirectoryInfo? EnvSystemRoot { get; } = GetEnvironmentFolderPath(Environment.SpecialFolder.Windows);
 
         /// <summary>
-        /// Gets the current environmental temperature as a string.
+        /// Gets the path to the temporary directory for the current environment.
         /// </summary>
-        /// <remarks>The temperature is represented in degrees Celsius and is updated periodically based
-        /// on environmental changes.</remarks>
+        /// <remarks>This property is initialized from <see cref="Path.GetTempPath"/> and returned as a
+        /// <see cref="DirectoryInfo"/> instance.</remarks>
         public DirectoryInfo EnvTemp { get; } = new(Path.GetTempPath());
 
         /// <summary>
@@ -1049,7 +1049,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <remarks>This property provides a way to access the well-known SID for the local system
         /// account, which is often used in security contexts. The returned NTAccount can be used for identity-related
         /// operations within the system.</remarks>
-        public NTAccount LocalSystemNTAccount { get; } = (NTAccount)new SecurityIdentifier(WellKnownSidType.LocalSystemSid, domainSid: null).Translate(typeof(NTAccount));
+        public NTAccount LocalSystemNTAccount { get; } = (NTAccount)AccountUtilities.LocalSystemSid.Translate(typeof(NTAccount));
 
         /// <summary>
         /// Gets the NTAccount that represents the built-in local users group on the current machine.
