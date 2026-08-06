@@ -815,13 +815,31 @@ jobs:
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_order_json=$casesOrderJson`n", [System.Text.Encoding]::UTF8)
         Write-Host "Collected $($caseEntries.Count) test case result(s)."
 
+    - name: Generate case TRX and HTML report
+      id: generate-case-trx
+      if: always()
+      shell: pwsh
+      run: |
+        $generatorScript = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\Generate-CaseTrxReport.ps1'
+        if (-not (Test-Path -LiteralPath $generatorScript)) {
+          throw "Case TRX generator script not found: $generatorScript"
+        }
+
+        & $generatorScript `
+          -InputPattern '.\src\Artifacts\TestOutput\AdditionalTests*.xml' `
+          -TrxOutputPath '.\src\Artifacts\TestOutput\AdditionalTests-Cases.trx' `
+          -HtmlOutputPath '.\src\Artifacts\TestOutput\AdditionalTests-Cases.html'
+
     - name: Upload additional test results
       id: upload-artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # https://github.com/actions/upload-artifact/releases/tag/v7.0.1
       with:
         name: additional-test-results
-        path: .\src\Artifacts\TestOutput\AdditionalTests*.xml
+        path: |
+          .\src\Artifacts\TestOutput\AdditionalTests*.xml
+          .\src\Artifacts\TestOutput\AdditionalTests-Cases.trx
+          .\src\Artifacts\TestOutput\AdditionalTests-Cases.html
         if-no-files-found: error
         overwrite: true
   # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
@@ -854,18 +872,37 @@ jobs:
         $sessionID = Get-SessionID
         $machineID = Get-MachineID
 
-        # Collect all AdditionalTests*.xml result files (main + per-tag suites) for upload.
-        $testResultXmlPaths = @(Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -File -ErrorAction SilentlyContinue |
+        # Collect NUnit XML files plus generated case TRX/HTML for upload.
+        $testArtifactPaths = [System.Collections.Generic.List[string]]::new()
+
+        $xmlPaths = @(Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -File -ErrorAction SilentlyContinue |
           Sort-Object Name |
           ForEach-Object { $_.FullName })
+        foreach ($path in $xmlPaths) {
+          $testArtifactPaths.Add($path)
+        }
 
-        if ($testResultXmlPaths.Count -eq 0) {
-          Write-Warning 'No AdditionalTests XML files were found to upload.'
+        $extraPatternPaths = @(
+          '.\src\Artifacts\TestOutput\AdditionalTests-Cases.trx',
+          '.\src\Artifacts\TestOutput\AdditionalTests-Cases.html'
+        )
+
+        foreach ($patternPath in $extraPatternPaths) {
+          $resolved = Resolve-Path -Path $patternPath -ErrorAction SilentlyContinue
+          foreach ($item in @($resolved)) {
+            $testArtifactPaths.Add($item.Path)
+          }
+        }
+
+        $uploadPaths = @($testArtifactPaths | Select-Object -Unique)
+
+        if ($uploadPaths.Count -eq 0) {
+          Write-Warning 'No AdditionalTests XML/TRX/HTML files were found to upload.'
         }
         else {
-          Write-Host "Uploading $($testResultXmlPaths.Count) test result XML file(s) to blob storage:"
-          $testResultXmlPaths | ForEach-Object { Write-Host "  - $_" }
-          Invoke-TFUploadTestResults -TestResultXmlPath $testResultXmlPaths -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
+          Write-Host "Uploading $($uploadPaths.Count) test result artifact file(s) to blob storage:"
+          $uploadPaths | ForEach-Object { Write-Host "  - $_" }
+          Invoke-TFUploadTestResults -TestResultXmlPath $uploadPaths -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
         }
 
         $publicRecordingEntries = @()
