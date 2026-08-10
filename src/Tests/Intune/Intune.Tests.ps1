@@ -246,7 +246,7 @@ Describe 'Intune Tests' {
                 Write-Information "[$($app.Name)] Uploaded and assigned successfully." -InformationAction Continue
             }
 
-            $script:UploadedApps.Count | Should -Be -1
+            $script:UploadedApps.Count | Should -Be $script:ParallelApps.Count
         }
 
         It '[INTUNE:InstallSync] MDM sync, then parallel poll for all installations' {

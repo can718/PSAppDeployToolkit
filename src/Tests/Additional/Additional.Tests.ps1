@@ -381,9 +381,8 @@ Describe 'PSADT Build Template Validation' -Tag 'Validation' {
 
         It 'PSADT Build Template Validation' {
             # V3 and V4 environment variables must be set
-            $true | Should -BeFalse -Because 'Forced failure for pipeline validation'
-            1 | Should -Be 2 -Because 'Forced failure for pipeline validation'
-
+            $script:v3Dir | Should -Not -BeNullOrEmpty -Because 'PSADT_TEMPLATE_V3_DIR environment variable must be set'
+            $script:v4Dir | Should -Not -BeNullOrEmpty -Because 'PSADT_TEMPLATE_V4_DIR environment variable must be set'
             # V3 and V4 template directories must exist on disk
             Test-Path $script:v3Dir | Should -BeTrue -Because 'V3 template directory must exist on disk'
             Test-Path $script:v4Dir | Should -BeTrue -Because 'V4 template directory must exist on disk'
