@@ -840,6 +840,9 @@ jobs:
           .\src\Artifacts\TestOutput\AdditionalTests*.xml
           .\src\Artifacts\TestOutput\AdditionalTests-Cases.trx
           .\src\Artifacts\TestOutput\AdditionalTests-Cases.html
+          C:\Windows\Logs\Software\*_Install.log
+          C:\Windows\Logs\Software\*_Uninstall.log
+          C:\Windows\Logs\Software\*_Repair.log
         if-no-files-found: error
         overwrite: true
   # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
@@ -892,6 +895,23 @@ jobs:
           foreach ($item in @($resolved)) {
             $testArtifactPaths.Add($item.Path)
           }
+        }
+
+        # Include PSADT installation logs from the default log folder.
+        $psadtLogRoot = 'C:\Windows\Logs\Software'
+        if (Test-Path -LiteralPath $psadtLogRoot -PathType Container) {
+          $psadtLogPatterns = @('*_Install.log', '*_Uninstall.log', '*_Repair.log')
+          foreach ($pattern in $psadtLogPatterns) {
+            $logPaths = @(Get-ChildItem -Path $psadtLogRoot -Filter $pattern -File -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending |
+              ForEach-Object { $_.FullName })
+            foreach ($logPath in $logPaths) {
+              $testArtifactPaths.Add($logPath)
+            }
+          }
+        }
+        else {
+          Write-Warning "PSADT log directory not found: $psadtLogRoot"
         }
 
         $uploadPaths = @($testArtifactPaths | Select-Object -Unique)

@@ -111,7 +111,7 @@ jobs:
         if ([string]::IsNullOrWhiteSpace($processPath)) {
           $processPath = ''
         }
-        
+
         # Check if module path is already in Machine PSModulePath
         $segments = @($machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         $moduleExists = $false
@@ -661,6 +661,9 @@ jobs:
           .\src\Artifacts\TestOutput\IntuneTests*.xml
           .\src\Artifacts\TestOutput\IntuneTests-Cases.trx
           .\src\Artifacts\TestOutput\IntuneTests-Cases.html
+          C:\Windows\Logs\Software\*_Install.log
+          C:\Windows\Logs\Software\*_Uninstall.log
+          C:\Windows\Logs\Software\*_Repair.log
         if-no-files-found: error
         overwrite: true
 
@@ -713,6 +716,23 @@ jobs:
           foreach ($item in @($resolved)) {
             $testArtifactPaths.Add($item.Path)
           }
+        }
+
+        # Include PSADT installation logs from the default log folder.
+        $psadtLogRoot = 'C:\Windows\Logs\Software'
+        if (Test-Path -LiteralPath $psadtLogRoot -PathType Container) {
+          $psadtLogPatterns = @('*_Install.log', '*_Uninstall.log', '*_Repair.log')
+          foreach ($pattern in $psadtLogPatterns) {
+            $logPaths = @(Get-ChildItem -Path $psadtLogRoot -Filter $pattern -File -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending |
+              ForEach-Object { $_.FullName })
+            foreach ($logPath in $logPaths) {
+              $testArtifactPaths.Add($logPath)
+            }
+          }
+        }
+        else {
+          Write-Warning "PSADT log directory not found: $psadtLogRoot"
         }
 
         $uploadPaths = @($testArtifactPaths | Select-Object -Unique)
@@ -1272,7 +1292,7 @@ jobs:
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('</details>') | Out-Null
         }
-        
+
         if ($steps.Count -gt 0) {
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('<details>') | Out-Null
