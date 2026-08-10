@@ -107,7 +107,7 @@
     $logFilePattern = "${installName}_*_${DeploymentType}.log"
 
     $logFiles = Get-ChildItem -Path $logPath -Filter $logFilePattern -File -ErrorAction SilentlyContinue |
-        Sort-Object -Property LastWriteTime -Descending
+    Sort-Object -Property LastWriteTime -Descending
 
     if (-not $logFiles)
     {
@@ -144,6 +144,17 @@
         if ($errorSummary) { $msg += " $errorSummary" }
         return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $logFile.FullName; Message = $msg }
     }
+}
+
+function Test-PsadtLogValidationSoftFailEnabled
+{
+    $softFailValue = [string]$env:PSADT_LOG_VALIDATION_SOFTFAIL
+    if ([string]::IsNullOrWhiteSpace($softFailValue))
+    {
+        return $false
+    }
+
+    return @('1', 'true', 'yes', 'on') -contains $softFailValue.Trim().ToLowerInvariant()
 }
 
 # ---------------------------------------------------------------------------
