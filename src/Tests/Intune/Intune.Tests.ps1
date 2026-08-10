@@ -289,14 +289,7 @@ Describe 'Intune Tests' {
                 $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Install'
                 if (-not $logValidation.Success)
                 {
-                    if (Test-PsadtLogValidationSoftFailEnabled)
-                    {
-                        Write-Warning "[$Name] Install log validation soft-failed for temporary test submission: $($logValidation.Message)"
-                    }
-                    else
-                    {
-                        $failures += "[Log Validation] $($logValidation.Message)"
-                    }
+                    $failures += "[Log Validation] $($logValidation.Message)"
                 }
             }
 
@@ -367,14 +360,7 @@ Describe 'Intune Tests' {
                 $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Uninstall'
                 if (-not $logValidation.Success)
                 {
-                    if (Test-PsadtLogValidationSoftFailEnabled)
-                    {
-                        Write-Warning "[$Name] Uninstall log validation soft-failed for temporary test submission: $($logValidation.Message)"
-                    }
-                    else
-                    {
-                        $failures += "[Log Validation] $($logValidation.Message)"
-                    }
+                    $failures += "[Log Validation] $($logValidation.Message)"
                 }
             }
 

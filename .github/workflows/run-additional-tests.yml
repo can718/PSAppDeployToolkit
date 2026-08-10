@@ -590,7 +590,6 @@ jobs:
         PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
         PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
         TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
-        PSADT_LOG_VALIDATION_SOFTFAIL: 'true'
       run: |
         # $VerbosePreference = 'Continue'
         # $InformationPreference = 'Continue'

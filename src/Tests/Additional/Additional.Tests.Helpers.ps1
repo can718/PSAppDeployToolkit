@@ -860,13 +860,6 @@ function script:Assert-PSADTDeploymentLogValidation
 
     Write-Information "[$LogPrefix] Validating PSADT $DeploymentType log..." -InformationAction Continue
     $logValidation = Invoke-PsadtLogValidation -App $App -DeploymentType $DeploymentType
-
-    if (-not $logValidation.Success -and (Test-PsadtLogValidationSoftFailEnabled))
-    {
-        Write-Warning "[$LogPrefix] PSADT $DeploymentType log validation soft-failed for temporary test submission: $($logValidation.Message)"
-        return $logValidation
-    }
-
     $logValidation.Success | Should -BeTrue -Because "[$LogPrefix] PSADT log validation: $($logValidation.Message)"
 }
 
