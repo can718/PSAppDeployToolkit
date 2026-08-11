@@ -112,7 +112,7 @@ jobs:
         if ([string]::IsNullOrWhiteSpace($processPath)) {
           $processPath = ''
         }
-        
+
         # Check if module path is already in Machine PSModulePath
         $segments = @($machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         $moduleExists = $false
@@ -574,7 +574,7 @@ jobs:
 
         "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        
+
         $templateEnd = Get-Date
         $duration = $templateEnd - $templateStart
         $mins = [int]($duration.TotalSeconds / 60)
@@ -708,7 +708,7 @@ jobs:
         {
           throw "One or more Additional test suites failed. Failed count: $failed"
         }
-        
+
         $pesterEnd = Get-Date
         $duration = $pesterEnd - $pesterStart
         $mins = [int]($duration.TotalSeconds / 60)
@@ -815,13 +815,58 @@ jobs:
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_order_json=$casesOrderJson`n", [System.Text.Encoding]::UTF8)
         Write-Host "Collected $($caseEntries.Count) test case result(s)."
 
+    - name: Generate case TRX and HTML report
+      id: generate-case-trx
+      if: always()
+      shell: pwsh
+      run: |
+        $generatorScript = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\Generate-CaseTrxReport.ps1'
+        if (-not (Test-Path -LiteralPath $generatorScript)) {
+          throw "Case TRX generator script not found: $generatorScript"
+        }
+
+        & $generatorScript `
+          -InputPattern '.\src\Artifacts\TestOutput\AdditionalTests*.xml' `
+          -TrxOutputPath '.\src\Artifacts\TestOutput\AdditionalTests-Cases.trx' `
+          -HtmlOutputPath '.\src\Artifacts\TestOutput\AdditionalTests-Cases.html'
+
+    - name: Stage PSADT logs for artifact upload
+      id: stage-psadt-logs
+      if: always()
+      shell: pwsh
+      run: |
+        $logSource = 'C:\Windows\Logs\Software'
+        $logDestination = '.\src\Artifacts\TestOutput\PSADTLogs'
+        New-Item -ItemType Directory -Path $logDestination -Force | Out-Null
+
+        if (-not (Test-Path -LiteralPath $logSource -PathType Container)) {
+          Write-Warning "PSADT log directory not found: $logSource"
+          exit 0
+        }
+
+        $patterns = @('*_Install.log', '*_Uninstall.log', '*_Repair.log')
+        $copiedCount = 0
+        foreach ($pattern in $patterns) {
+          $logs = @(Get-ChildItem -Path $logSource -Filter $pattern -File -ErrorAction SilentlyContinue)
+          foreach ($log in $logs) {
+            Copy-Item -LiteralPath $log.FullName -Destination (Join-Path $logDestination $log.Name) -Force
+            $copiedCount++
+          }
+        }
+
+        Write-Host "Staged $copiedCount PSADT log file(s) to $logDestination"
+
     - name: Upload additional test results
       id: upload-artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # https://github.com/actions/upload-artifact/releases/tag/v7.0.1
       with:
         name: additional-test-results
-        path: .\src\Artifacts\TestOutput\AdditionalTests*.xml
+        path: |
+          .\src\Artifacts\TestOutput\AdditionalTests*.xml
+          .\src\Artifacts\TestOutput\AdditionalTests-Cases.trx
+          .\src\Artifacts\TestOutput\AdditionalTests-Cases.html
+          .\src\Artifacts\TestOutput\PSADTLogs\*.log
         if-no-files-found: error
         overwrite: true
   # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
@@ -854,22 +899,58 @@ jobs:
         $sessionID = Get-SessionID
         $machineID = Get-MachineID
 
-        # Collect all AdditionalTests*.xml result files (main + per-tag suites) for upload.
-        $testResultXmlPaths = @(Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -File -ErrorAction SilentlyContinue |
+        # Collect NUnit XML files plus generated case TRX/HTML for upload.
+        $testArtifactPaths = [System.Collections.Generic.List[string]]::new()
+
+        $xmlPaths = @(Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -File -ErrorAction SilentlyContinue |
           Sort-Object Name |
           ForEach-Object { $_.FullName })
+        foreach ($path in $xmlPaths) {
+          $testArtifactPaths.Add($path)
+        }
 
-        if ($testResultXmlPaths.Count -eq 0) {
-          Write-Warning 'No AdditionalTests XML files were found to upload.'
+        $extraPatternPaths = @(
+          '.\src\Artifacts\TestOutput\AdditionalTests-Cases.trx',
+          '.\src\Artifacts\TestOutput\AdditionalTests-Cases.html'
+        )
+
+        foreach ($patternPath in $extraPatternPaths) {
+          $resolved = Resolve-Path -Path $patternPath -ErrorAction SilentlyContinue
+          foreach ($item in @($resolved)) {
+            $testArtifactPaths.Add($item.Path)
+          }
+        }
+
+        # Include PSADT installation logs from the default log folder.
+        $psadtLogRoot = 'C:\Windows\Logs\Software'
+        if (Test-Path -LiteralPath $psadtLogRoot -PathType Container) {
+          $psadtLogPatterns = @('*_Install.log', '*_Uninstall.log', '*_Repair.log')
+          foreach ($pattern in $psadtLogPatterns) {
+            $logPaths = @(Get-ChildItem -Path $psadtLogRoot -Filter $pattern -File -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending |
+              ForEach-Object { $_.FullName })
+            foreach ($logPath in $logPaths) {
+              $testArtifactPaths.Add($logPath)
+            }
+          }
         }
         else {
-          Write-Host "Uploading $($testResultXmlPaths.Count) test result XML file(s) to blob storage:"
-          $testResultXmlPaths | ForEach-Object { Write-Host "  - $_" }
-          Invoke-TFUploadTestResults -TestResultXmlPath $testResultXmlPaths -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
+          Write-Warning "PSADT log directory not found: $psadtLogRoot"
+        }
+
+        $uploadPaths = @($testArtifactPaths | Select-Object -Unique)
+
+        if ($uploadPaths.Count -eq 0) {
+          Write-Warning 'No AdditionalTests XML/TRX/HTML files were found to upload.'
+        }
+        else {
+          Write-Host "Uploading $($uploadPaths.Count) test result artifact file(s) to blob storage:"
+          $uploadPaths | ForEach-Object { Write-Host "  - $_" }
+          Invoke-TFUploadTestResults -TestResultXmlPath $uploadPaths -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
         }
 
         $publicRecordingEntries = @()
-         
+
         $recordFile = Get-RegistryValue -Name 'RecordingUploadNotRequested'
         if ($recordFile) {
           Write-Host "Uploading recording file(s) to blob storage: $recordFile"
@@ -1019,24 +1100,24 @@ jobs:
           'Complete Test Run'           = @{ outcome = '${{ steps.complete-test-run.outcome }}';   duration = (Resolve-Duration (Get-ApiDuration 'Complete Test Run')) }
           'Upload to Blob Storage'      = @{ outcome = '${{ steps.upload-to-blob.outcome }}';      duration = (Resolve-Duration (Get-ApiDuration 'Upload to Blob Storage')) }
         }
-        
+
         # Build steps JSON with outcome and duration
         $stepsJson = [ordered]@{}
         foreach ($stepName in $steps.Keys) {
           $outcome = $steps[$stepName].outcome
           $duration = $steps[$stepName].duration
-          
+
           if ([string]::IsNullOrWhiteSpace($duration) -or $duration -eq '$null') {
             $duration = '-'
           }
-          
+
           if ($duration -eq '-') {
             $stepsJson[$stepName] = $outcome
           } else {
             $stepsJson[$stepName] = "$outcome | $duration"
           }
         }
-        
+
         # Use AppendAllText with LF (not CRLF) so the value is not corrupted when consumed on Linux runners
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($stepsJson | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
 
@@ -1442,8 +1523,8 @@ jobs:
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('</details>') | Out-Null
         }
-        
-        
+
+
         if ($steps.Count -gt 0) {
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('<details>') | Out-Null

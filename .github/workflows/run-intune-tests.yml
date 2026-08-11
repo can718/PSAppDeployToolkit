@@ -111,7 +111,7 @@ jobs:
         if ([string]::IsNullOrWhiteSpace($processPath)) {
           $processPath = ''
         }
-        
+
         # Check if module path is already in Machine PSModulePath
         $segments = @($machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         $moduleExists = $false
@@ -636,13 +636,58 @@ jobs:
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_order_json=$casesOrderJson`n", [System.Text.Encoding]::UTF8)
         Write-Host "Collected $($caseEntries.Count) test case result(s)."
 
+    - name: Generate case TRX and HTML report
+      id: generate-case-trx
+      if: always()
+      shell: pwsh
+      run: |
+        $generatorScript = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\Generate-CaseTrxReport.ps1'
+        if (-not (Test-Path -LiteralPath $generatorScript)) {
+          throw "Case TRX generator script not found: $generatorScript"
+        }
+
+        & $generatorScript `
+          -InputPattern '.\src\Artifacts\TestOutput\IntuneTests*.xml' `
+          -TrxOutputPath '.\src\Artifacts\TestOutput\IntuneTests-Cases.trx' `
+          -HtmlOutputPath '.\src\Artifacts\TestOutput\IntuneTests-Cases.html'
+
+    - name: Stage PSADT logs for artifact upload
+      id: stage-psadt-logs
+      if: always()
+      shell: pwsh
+      run: |
+        $logSource = 'C:\Windows\Logs\Software'
+        $logDestination = '.\src\Artifacts\TestOutput\PSADTLogs'
+        New-Item -ItemType Directory -Path $logDestination -Force | Out-Null
+
+        if (-not (Test-Path -LiteralPath $logSource -PathType Container)) {
+          Write-Warning "PSADT log directory not found: $logSource"
+          exit 0
+        }
+
+        $patterns = @('*_Install.log', '*_Uninstall.log', '*_Repair.log')
+        $copiedCount = 0
+        foreach ($pattern in $patterns) {
+          $logs = @(Get-ChildItem -Path $logSource -Filter $pattern -File -ErrorAction SilentlyContinue)
+          foreach ($log in $logs) {
+            Copy-Item -LiteralPath $log.FullName -Destination (Join-Path $logDestination $log.Name) -Force
+            $copiedCount++
+          }
+        }
+
+        Write-Host "Staged $copiedCount PSADT log file(s) to $logDestination"
+
     - name: Upload Intune test results
       id: upload-artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # https://github.com/actions/upload-artifact/releases/tag/v7.0.1
       with:
         name: intune-test-results
-        path: .\src\Artifacts\TestOutput\IntuneTests.xml
+        path: |
+          .\src\Artifacts\TestOutput\IntuneTests*.xml
+          .\src\Artifacts\TestOutput\IntuneTests-Cases.trx
+          .\src\Artifacts\TestOutput\IntuneTests-Cases.html
+          .\src\Artifacts\TestOutput\PSADTLogs\*.log
         if-no-files-found: error
         overwrite: true
 
@@ -674,7 +719,56 @@ jobs:
         . $tfHelper
         $sessionID = Get-SessionID
         $machineID = Get-MachineID
-        Invoke-TFUploadTestResults -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml' -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
+
+        # Collect NUnit XML files plus generated case TRX/HTML for upload.
+        $testArtifactPaths = [System.Collections.Generic.List[string]]::new()
+
+        $xmlPaths = @(Get-ChildItem -Path '.\src\Artifacts\TestOutput\IntuneTests*.xml' -File -ErrorAction SilentlyContinue |
+          Sort-Object Name |
+          ForEach-Object { $_.FullName })
+        foreach ($path in $xmlPaths) {
+          $testArtifactPaths.Add($path)
+        }
+
+        $extraPatternPaths = @(
+          '.\src\Artifacts\TestOutput\IntuneTests-Cases.trx',
+          '.\src\Artifacts\TestOutput\IntuneTests-Cases.html'
+        )
+
+        foreach ($patternPath in $extraPatternPaths) {
+          $resolved = Resolve-Path -Path $patternPath -ErrorAction SilentlyContinue
+          foreach ($item in @($resolved)) {
+            $testArtifactPaths.Add($item.Path)
+          }
+        }
+
+        # Include PSADT installation logs from the default log folder.
+        $psadtLogRoot = 'C:\Windows\Logs\Software'
+        if (Test-Path -LiteralPath $psadtLogRoot -PathType Container) {
+          $psadtLogPatterns = @('*_Install.log', '*_Uninstall.log', '*_Repair.log')
+          foreach ($pattern in $psadtLogPatterns) {
+            $logPaths = @(Get-ChildItem -Path $psadtLogRoot -Filter $pattern -File -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending |
+              ForEach-Object { $_.FullName })
+            foreach ($logPath in $logPaths) {
+              $testArtifactPaths.Add($logPath)
+            }
+          }
+        }
+        else {
+          Write-Warning "PSADT log directory not found: $psadtLogRoot"
+        }
+
+        $uploadPaths = @($testArtifactPaths | Select-Object -Unique)
+
+        if ($uploadPaths.Count -eq 0) {
+          Write-Warning 'No IntuneTests XML/TRX/HTML files were found to upload.'
+        }
+        else {
+          Write-Host "Uploading $($uploadPaths.Count) test result artifact file(s) to blob storage:"
+          $uploadPaths | ForEach-Object { Write-Host "  - $_" }
+          Invoke-TFUploadTestResults -TestResultXmlPath $uploadPaths -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
+        }
 
         $publicRecordingEntries = @()
 
@@ -1222,7 +1316,7 @@ jobs:
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('</details>') | Out-Null
         }
-        
+
         if ($steps.Count -gt 0) {
           $summaryLines.Add('') | Out-Null
           $summaryLines.Add('<details>') | Out-Null
