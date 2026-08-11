@@ -37,6 +37,7 @@ namespace PSADT.UserInterface.Interfaces
         [SuppressMessage("Design", "CA1065:Do not raise exceptions in unexpected locations", Justification = "These exceptions will never fire under normal, expected circumstances.")]
         [SuppressMessage("Usage", "VSTHRD101:Avoid unsupported async delegates", Justification = "An exception throwing in this event is truly exceptional, so we want it to propagate.")]
         [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "Access to System.Windows.Application.Current is appropriate here while we're setting up.")]
+        [SuppressMessage("Usage", "MA0134:Observe result of async calls", Justification = "The result of async calls is intentionally not observed in this context.")]
         static DialogManager()
         {
             // Set up the required dispatcher exception handler first. If it's not present, the setup is wrong and we won't proceed.
@@ -394,14 +395,14 @@ namespace PSADT.UserInterface.Interfaces
         internal static Task ShowNotifyIconAsync(NotifyIconOptions options)
         {
             // Ensure there's not already a notify icon open.
-            return notifyIcon is not null ? throw new InvalidOperationException("Cannot show a notify icon while one is already open.") : InvokeDialogActionAsync(async () =>
+            return notifyIcon is not null ? throw new InvalidOperationException("Cannot show a notify icon while one is already open.") : InvokeDialogActionAsync(() =>
             {
                 // Set the AUMID for this process so the Windows 10 toast has the correct title.
                 _ = NativeMethods.SetCurrentProcessExplicitAppUserModelID(options.AppTitle);
 
                 // Correct the registry data for the AUMID. This can reference stale info from a previous run.
                 string appIconPath = options.AppTaskbarIconImage ?? options.AppIconImage;
-                System.Drawing.Icon iconObj = await Classic.ClassicDialog.GetIconAsync(appIconPath).ConfigureAwait(true);
+                System.Drawing.Icon iconObj = Classic.ClassicDialog.GetIcon(appIconPath);
                 string regKey = $@"{(AccountUtilities.CallerIsAdmin ? "HKEY_CLASSES_ROOT" : @"HKEY_CURRENT_USER\Software\Classes")}\AppUserModelId\{options.AppTitle}";
                 Registry.SetValue(regKey, "DisplayName", options.AppTitle, RegistryValueKind.String);
                 if (MiscUtilities.GetBase64StringBytes(appIconPath) is not null)
@@ -631,17 +632,6 @@ namespace PSADT.UserInterface.Interfaces
         private static Task InvokeDialogActionAsync(Action callback)
         {
             return System.Windows.Application.Current.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal, default).Task;
-        }
-
-        /// <summary>
-        /// Invokes the specified asynchronous action on the WPF UI thread.
-        /// </summary>
-        /// <param name="callback">The asynchronous action to invoke on the WPF UI thread.</param>
-        /// <returns>A task that represents the asynchronous operation.</returns>
-        [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "This is our safe implementation.")]
-        private static Task InvokeDialogActionAsync(Func<Task> callback)
-        {
-            return System.Windows.Application.Current.Dispatcher.InvokeAsync(callback, System.Windows.Threading.DispatcherPriority.Normal, default).Task.Unwrap();
         }
 
         /// <summary>

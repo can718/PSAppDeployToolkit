@@ -479,8 +479,9 @@ namespace PSADT.Interop
             InvalidOperationException.ThrowIfInvalid(lpStartupInfoEx.StartupInfo.hStdOutput, "The hStdOutput handle in the STARTUPINFO structure is invalid.");
             InvalidOperationException.ThrowIfInvalid(lpStartupInfoEx.StartupInfo.hStdError, "The hStdError handle in the STARTUPINFO structure is invalid.");
             InvalidOperationException.ThrowIfInvalid(lpStartupInfoEx.StartupInfo.hStdInput, "The hStdInput handle in the STARTUPINFO structure is invalid.");
-            bool hTokenAddRef = false;
             bool lpEnvironmentAddRef = false;
+            bool hTokenAddRef = false;
+            BOOL res;
             try
             {
                 unsafe
@@ -493,13 +494,11 @@ namespace PSADT.Interop
                             {
                                 hToken.DangerousAddRef(ref hTokenAddRef);
                                 lpEnvironment?.DangerousAddRef(ref lpEnvironmentAddRef);
-                                BOOL res = PInvoke.CreateProcessAsUser((HANDLE)hToken.DangerousGetHandle(), lpApplicationNameLocal, plpCommandLine, lpProcessAttributes.ToPointer(), lpThreadAttributes.ToPointer(), bInheritHandles, dwCreationFlags, lpEnvironment?.DangerousGetHandle().ToPointer(), lpCurrentDirectoryLocal, (STARTUPINFOW*)lpStartupInfoExLocal, lpProcessInformationLocal);
-                                if (!res)
+                                if (!(res = PInvoke.CreateProcessAsUser((HANDLE)hToken.DangerousGetHandle(), lpApplicationNameLocal, plpCommandLine, lpProcessAttributes.ToPointer(), lpThreadAttributes.ToPointer(), bInheritHandles, dwCreationFlags, lpEnvironment?.DangerousGetHandle().ToPointer(), lpCurrentDirectoryLocal, (STARTUPINFOW*)lpStartupInfoExLocal, lpProcessInformationLocal)))
                                 {
                                     throw ExceptionUtilities.GetExceptionForLastWin32Error();
                                 }
                                 lpCommandLine = lpCommandLine[..((PWSTR)plpCommandLine).Length];
-                                return res;
                             }
                         }
                     }
@@ -516,6 +515,7 @@ namespace PSADT.Interop
                     hToken.DangerousRelease();
                 }
             }
+            return res;
         }
 
         /// <summary>
@@ -1229,25 +1229,6 @@ namespace PSADT.Interop
         }
 
         /// <summary>
-        /// Renames a subkey of the specified registry key.
-        /// </summary>
-        /// <param name="hKey">A handle to an open registry key. This handle must have the appropriate access rights for the operation.</param>
-        /// <param name="lpSubKeyName">The name of the subkey to be renamed. This cannot be <see langword="null"/> or an empty string.</param>
-        /// <param name="lpNewKeyName">The new name for the subkey. This cannot be <see langword="null"/> or an empty string.</param>
-        /// <returns>A <see cref="WIN32_ERROR"/> value indicating the result of the operation. Returns <see
-        /// cref="WIN32_ERROR.ERROR_SUCCESS"/> if the operation succeeds.</returns>
-        internal static WIN32_ERROR RegRenameKey(SafeHandle hKey, string? lpSubKeyName, string lpNewKeyName)
-        {
-            ArgumentException.ThrowIfNullOrInvalid(hKey);
-            ArgumentException.ThrowIfNullOrWhiteSpace(lpNewKeyName);
-            if (lpSubKeyName is not null)
-            {
-                ArgumentException.ThrowIfNullOrWhiteSpace(lpSubKeyName);
-            }
-            return PInvoke.RegRenameKey(hKey, lpSubKeyName, lpNewKeyName).ThrowOnFailure();
-        }
-
-        /// <summary>
         /// Opens a handle to the Local Security Authority (LSA) Policy object on a specified system.
         /// </summary>
         /// <remarks>This method wraps the native LsaOpenPolicy function and provides error handling by
@@ -1752,6 +1733,7 @@ namespace PSADT.Interop
             InvalidOperationException.ThrowIfInvalid(lpStartupInfoEx.StartupInfo.hStdError, "The hStdError handle in the STARTUPINFO structure is invalid.");
             InvalidOperationException.ThrowIfInvalid(lpStartupInfoEx.StartupInfo.hStdInput, "The hStdInput handle in the STARTUPINFO structure is invalid.");
             bool lpEnvironmentAddRef = false;
+            BOOL res;
             try
             {
                 unsafe
@@ -1763,13 +1745,11 @@ namespace PSADT.Interop
                             fixed (STARTUPINFOEXW* lpStartupInfoExLocal = &lpStartupInfoEx)
                             {
                                 lpEnvironment?.DangerousAddRef(ref lpEnvironmentAddRef);
-                                BOOL res = PInvoke.CreateProcess(lpApplicationNameLocal, plpCommandLine, lpProcessAttributes.ToPointer(), lpThreadAttributes.ToPointer(), bInheritHandles, dwCreationFlags, lpEnvironment?.DangerousGetHandle().ToPointer(), lpCurrentDirectoryLocal, (STARTUPINFOW*)lpStartupInfoExLocal, lpProcessInformationLocal);
-                                if (!res)
+                                if (!(res = PInvoke.CreateProcess(lpApplicationNameLocal, plpCommandLine, lpProcessAttributes.ToPointer(), lpThreadAttributes.ToPointer(), bInheritHandles, dwCreationFlags, lpEnvironment?.DangerousGetHandle().ToPointer(), lpCurrentDirectoryLocal, (STARTUPINFOW*)lpStartupInfoExLocal, lpProcessInformationLocal)))
                                 {
                                     throw ExceptionUtilities.GetExceptionForLastWin32Error();
                                 }
                                 lpCommandLine = lpCommandLine[..((PWSTR)plpCommandLine).Length];
-                                return res;
                             }
                         }
                     }
@@ -1782,6 +1762,7 @@ namespace PSADT.Interop
                     lpEnvironment?.DangerousRelease();
                 }
             }
+            return res;
         }
 
         /// <summary>
@@ -1834,16 +1815,16 @@ namespace PSADT.Interop
         internal static BOOL GetQueuedCompletionStatus(SafeHandle CompletionPort, out uint lpCompletionCode, out nuint lpCompletionKey, out nuint lpOverlapped, uint dwMilliseconds)
         {
             ArgumentException.ThrowIfNullOrClosed(CompletionPort);
+            BOOL res;
             unsafe
             {
-                BOOL res = PInvoke.GetQueuedCompletionStatus(CompletionPort, out lpCompletionCode, out lpCompletionKey, out NativeOverlapped* pOverlapped, dwMilliseconds);
-                if (!res)
+                if (!(res = PInvoke.GetQueuedCompletionStatus(CompletionPort, out lpCompletionCode, out lpCompletionKey, out NativeOverlapped* pOverlapped, dwMilliseconds)))
                 {
                     throw ExceptionUtilities.GetExceptionForLastWin32Error();
                 }
                 lpOverlapped = (nuint)pOverlapped;
-                return res;
             }
+            return res;
         }
 
         /// <summary>
@@ -2173,7 +2154,9 @@ namespace PSADT.Interop
             uint res = PInvoke.VerLanguageName(wLang, szLang);
             return res == 0
                 ? throw ExceptionUtilities.GetException(WIN32_ERROR.ERROR_GEN_FAILURE, "Failed to retrieve language name.")
-                : res > szLang.Length ? throw ExceptionUtilities.GetException(WIN32_ERROR.ERROR_INSUFFICIENT_BUFFER) : res;
+                : res > szLang.Length
+                ? throw ExceptionUtilities.GetException(WIN32_ERROR.ERROR_INSUFFICIENT_BUFFER)
+                : res;
         }
 
         /// <summary>
@@ -2633,8 +2616,8 @@ namespace PSADT.Interop
             static extern NTSTATUS NtCreateThreadEx(out nint ThreadHandle, THREAD_ACCESS_RIGHTS DesiredAccess, nint ObjectAttributes, nint ProcessHandle, nint StartRoutine, nint Argument, THREAD_CREATE_FLAGS CreateFlags, uint ZeroBits, uint StackSize, uint MaximumStackSize, nint AttributeList);
             ArgumentException.ThrowIfNullOrClosed(ProcessHandle);
             ArgumentException.ThrowIfNullOrInvalid(StartRoutine);
-            bool StartRoutineAddRef = false;
             bool ProcessHandleAddRef = false;
+            bool StartRoutineAddRef = false;
             NTSTATUS res;
             try
             {
@@ -3548,17 +3531,17 @@ namespace PSADT.Interop
         /// langword="false"/>.</returns>
         internal static BOOL CreateEnvironmentBlock(out SafeEnvironmentBlockHandle lpEnvironment, SafeFileHandle hToken, BOOL bInherit)
         {
+            BOOL res;
             unsafe
             {
-                BOOL res = PInvoke.CreateEnvironmentBlock(out void* lpEnvironmentPtr, hToken, bInherit);
-                if (!res)
+                if (!(res = PInvoke.CreateEnvironmentBlock(out void* lpEnvironmentPtr, hToken, bInherit)))
                 {
                     throw ExceptionUtilities.GetExceptionForLastWin32Error();
                 }
                 InvalidOperationException.ThrowIfZeroOrInvalid((nint)lpEnvironmentPtr, "Failed to create environment block handle.");
                 lpEnvironment = new((nint)lpEnvironmentPtr, ownsHandle: true);
-                return res;
             }
+            return res;
         }
 
         /// <summary>
@@ -3578,20 +3561,20 @@ namespace PSADT.Interop
         internal static BOOL VerQueryValue(ReadOnlySpan<byte> pBlock, string lpSubBlock, out nint lplpBuffer, out uint puLen)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(lpSubBlock);
+            BOOL res;
             unsafe
             {
                 fixed (byte* pBlockPtr = pBlock)
                 {
-                    BOOL res = PInvoke.VerQueryValue(pBlockPtr, lpSubBlock, out void* lplpBufferLocal, out puLen);
-                    if (!res)
+                    if (!(res = PInvoke.VerQueryValue(pBlockPtr, lpSubBlock, out void* lplpBufferLocal, out puLen)))
                     {
                         throw ExceptionUtilities.GetException(WIN32_ERROR.ERROR_GEN_FAILURE, $"Failed to query [{lpSubBlock}] version value.");
                     }
                     InvalidOperationException.ThrowIfZeroOrInvalid(lplpBuffer = (nint)lplpBufferLocal, $"The version value for [{lpSubBlock}] is null or invalid.");
                     InvalidOperationException.ThrowIfZero(puLen, $"The length of the version value for [{lpSubBlock}] is zero.");
-                    return res;
                 }
             }
+            return res;
         }
 
         /// <summary>
@@ -3661,18 +3644,18 @@ namespace PSADT.Interop
         /// retrieved successfully; otherwise, <see langword="false"/>.</returns>
         internal static BOOL WTSQueryUserToken(uint SessionId, out SafeFileHandle phToken)
         {
+            HANDLE phTokenLocal;
+            BOOL res;
             unsafe
             {
-                HANDLE phTokenLocal;
-                BOOL res = PInvoke.WTSQueryUserToken(SessionId, &phTokenLocal);
-                if (!res)
+                if (!(res = PInvoke.WTSQueryUserToken(SessionId, &phTokenLocal)))
                 {
                     throw ExceptionUtilities.GetExceptionForLastWin32Error();
                 }
-                InvalidOperationException.ThrowIfZeroOrInvalid((nint)phTokenLocal, "The user token handle returned from 'WTSQueryUserToken()' is null or invalid.");
-                phToken = new((nint)phTokenLocal, ownsHandle: true);
-                return res;
             }
+            InvalidOperationException.ThrowIfZeroOrInvalid((nint)phTokenLocal, "The user token handle returned from 'WTSQueryUserToken()' is null or invalid.");
+            phToken = new((nint)phTokenLocal, ownsHandle: true);
+            return res;
         }
 
         /// <summary>
@@ -3968,7 +3951,12 @@ namespace PSADT.Interop
         internal static HRESULT DWriteCreateFactory<T>(DWRITE_FACTORY_TYPE factoryType, out T factory) where T : class
         {
             HRESULT res = PInvoke.DWriteCreateFactory(factoryType, out factory);
-            return res != HRESULT.S_OK ? throw ExceptionUtilities.GetException(res) : res;
+            if (res != HRESULT.S_OK)
+            {
+                throw ExceptionUtilities.GetException(res);
+            }
+            InvalidOperationException.ThrowIfNull(factory, "The interface pointer returned from 'DWriteCreateFactory()' is null, which indicates an unexpected condition.");
+            return res;
         }
 
         /// <summary>
@@ -4144,7 +4132,6 @@ namespace PSADT.Interop
                     throw ExceptionUtilities.GetException(res);
                 }
                 InvalidOperationException.ThrowIfNullOrInvalid(ppszPathLocal, "The path returned from 'SHGetKnownFolderPath()' is null or invalid.");
-                ppszPath = new(ppszPathLocal, ownsHandle: true);
             }
             catch (Exception ex)
             {
@@ -4152,6 +4139,7 @@ namespace PSADT.Interop
                 ExceptionDispatchInfo.Capture(ex).Throw();
                 throw;
             }
+            ppszPath = new(ppszPathLocal, ownsHandle: true);
             return res;
         }
 
@@ -4176,18 +4164,11 @@ namespace PSADT.Interop
             static extern NTSTATUS RtlExpandEnvironmentStrings_U(nint Environment, in UNICODE_STRING SourceString, ref UNICODE_STRING DestinationString, out uint RequiredBytes);
             ArgumentException.ThrowIfNullOrInvalid(Environment); ArgumentException.ThrowIfNullOrInvalid(SourceString); ArgumentException.ThrowIfInvalid(DestinationString);
             bool EnvironmentAddRef = false;
+            NTSTATUS res;
             try
             {
                 Environment.DangerousAddRef(ref EnvironmentAddRef);
-                NTSTATUS res = RtlExpandEnvironmentStrings_U(Environment.DangerousGetHandle(), in SourceString, ref DestinationString, out RequiredBytes);
-                if (res != NTSTATUS.STATUS_SUCCESS && (res != NTSTATUS.STATUS_BUFFER_TOO_SMALL || DestinationString.MaximumLength is not 0))
-                {
-                    throw ExceptionUtilities.GetException(res);
-                }
-                InvalidOperationException.ThrowIfZero(RequiredBytes, "The required length returned from 'RtlExpandEnvironmentStrings_U()' is zero, which indicates an unexpected condition.");
-                InvalidOperationException.ThrowIfNotEven(RequiredBytes, "The required length returned from 'RtlExpandEnvironmentStrings_U()' is not a valid character count.");
-                InvalidOperationException.ThrowIfGreaterThan(RequiredBytes, ushort.MaxValue, "The required length returned from 'RtlExpandEnvironmentStrings_U()' exceeds the maximum allowed size for a UNICODE_STRING.");
-                return res;
+                res = RtlExpandEnvironmentStrings_U(Environment.DangerousGetHandle(), in SourceString, ref DestinationString, out RequiredBytes);
             }
             finally
             {
@@ -4196,6 +4177,14 @@ namespace PSADT.Interop
                     Environment.DangerousRelease();
                 }
             }
+            if (res != NTSTATUS.STATUS_SUCCESS && (res != NTSTATUS.STATUS_BUFFER_TOO_SMALL || DestinationString.MaximumLength is not 0))
+            {
+                throw ExceptionUtilities.GetException(res);
+            }
+            InvalidOperationException.ThrowIfZero(RequiredBytes, "The required length returned from 'RtlExpandEnvironmentStrings_U()' is zero, which indicates an unexpected condition.");
+            InvalidOperationException.ThrowIfNotEven(RequiredBytes, "The required length returned from 'RtlExpandEnvironmentStrings_U()' is not a valid character count.");
+            InvalidOperationException.ThrowIfGreaterThan(RequiredBytes, ushort.MaxValue, "The required length returned from 'RtlExpandEnvironmentStrings_U()' exceeds the maximum allowed size for a UNICODE_STRING.");
+            return res;
         }
 
         /// <summary>
@@ -4225,18 +4214,19 @@ namespace PSADT.Interop
         /// structures. The caller is responsible for releasing the handle when it is no longer needed.</param>
         internal static BOOL WTSEnumerateSessionsEx(out SafeWtsExHandle pSessionInfo)
         {
+            uint pLevel = 1;
+            BOOL res;
             unsafe
             {
-                uint pLevel = 1; BOOL res = PInvoke.WTSEnumerateSessionsEx(hServer: null, ref pLevel, 0, out WTS_SESSION_INFO_1W* ppSessionInfo, out uint pCount);
-                if (!res)
+                if (!(res = PInvoke.WTSEnumerateSessionsEx(hServer: null, ref pLevel, 0, out WTS_SESSION_INFO_1W* ppSessionInfo, out uint pCount)))
                 {
                     throw ExceptionUtilities.GetExceptionForLastWin32Error();
                 }
                 InvalidOperationException.ThrowIfZeroOrInvalid((nint)ppSessionInfo, "The session information buffer returned from 'WTSEnumerateSessionsEx()' is null or invalid.");
                 InvalidOperationException.ThrowIfZero(pCount, "The session count returned from 'WTSEnumerateSessionsEx()' is zero.");
                 pSessionInfo = new((nint)ppSessionInfo, WTS_TYPE_CLASS.WTSTypeSessionInfoLevel1, (int)pCount * sizeof(WTS_SESSION_INFO_1W), ownsHandle: true);
-                return res;
             }
+            return res;
         }
 
         /// <summary>
@@ -4254,7 +4244,12 @@ namespace PSADT.Interop
         internal static HRESULT CoCreateInstance<T>(in Guid rclsid, CLSCTX dwClsContext, out T ppv) where T : class
         {
             HRESULT res = PInvoke.CoCreateInstance(in rclsid, pUnkOuter: null, dwClsContext, out ppv);
-            return res != HRESULT.S_OK ? throw ExceptionUtilities.GetException(res) : res;
+            if (res != HRESULT.S_OK)
+            {
+                throw ExceptionUtilities.GetException(res);
+            }
+            InvalidOperationException.ThrowIfNull(ppv, "The interface pointer returned from 'CoCreateInstance()' is null, which indicates an unexpected condition.");
+            return res;
         }
 
         /// <summary>
@@ -4271,7 +4266,12 @@ namespace PSADT.Interop
         internal static HRESULT SHCreateStreamOnFileEx(string pszFile, STGM grfMode, FileAttributes dwAttributes, BOOL fCreate, [Optional] IStream? pstmTemplate, out IStream ppstm)
         {
             HRESULT res = PInvoke.SHCreateStreamOnFileEx(pszFile.ThrowIfFileDoesNotExist(), (uint)grfMode, (uint)dwAttributes, fCreate, pstmTemplate, out ppstm);
-            return res != HRESULT.S_OK ? throw ExceptionUtilities.GetException(res) : res;
+            if (res != HRESULT.S_OK)
+            {
+                throw ExceptionUtilities.GetException(res);
+            }
+            InvalidOperationException.ThrowIfNull(ppstm, "The stream interface pointer returned from 'SHCreateStreamOnFileEx()' is null, which indicates an unexpected condition.");
+            return res;
         }
 
         /// <summary>

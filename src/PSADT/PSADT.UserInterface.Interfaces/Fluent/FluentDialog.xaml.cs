@@ -7,7 +7,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -53,8 +52,6 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// dialog.</param>
         /// <param name="countdownStopwatch">An optional Stopwatch instance used to track the countdown duration. If not provided, a new Stopwatch is
         /// created.</param>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "Synchronous wait is necessary for constructor initialization.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0056:Do not call overridable members in constructor", Justification = "This is OK here.")]
         private protected FluentDialog(BaseDialogOptions options, IDialogResult dialogResult, string? customMessageText = null, TimeSpan? countdownDuration = null, TimeSpan? countdownWarningDuration = null, Stopwatch? countdownStopwatch = null)
         {
@@ -151,16 +148,16 @@ namespace PSADT.UserInterface.Interfaces.Fluent
             // Set up the app's tray icon if an override has been specified.
             if (options.AppTaskbarIconImage is not null)
             {
-                Icon = _appTaskbarIcon = GetIconAsync(options.AppTaskbarIconImage).ConfigureAwait(false).GetAwaiter().GetResult();
+                Icon = _appTaskbarIcon = GetIcon(options.AppTaskbarIconImage);
             }
 
             // Set up everything related to the dialog icon.
             _dialogBitmapCache = new(new Dictionary<ApplicationTheme, BitmapSource>
             {
-                { ApplicationTheme.Light, GetIconAsync(options.AppIconImage).ConfigureAwait(false).GetAwaiter().GetResult() },
-                { ApplicationTheme.Dark, GetIconAsync(options.AppIconDarkImage ?? options.AppIconImage).ConfigureAwait(false).GetAwaiter().GetResult() },
-                { ApplicationTheme.HighContrast, GetIconAsync(options.AppIconDarkImage ?? options.AppIconImage).ConfigureAwait(false).GetAwaiter().GetResult() },
-                { ApplicationTheme.Auto, GetIconAsync(options.AppIconImage).ConfigureAwait(false).GetAwaiter().GetResult() },
+                { ApplicationTheme.Light, GetIcon(options.AppIconImage) },
+                { ApplicationTheme.Dark, GetIcon(options.AppIconDarkImage ?? options.AppIconImage) },
+                { ApplicationTheme.HighContrast, GetIcon(options.AppIconDarkImage ?? options.AppIconImage) },
+                { ApplicationTheme.Auto, GetIcon(options.AppIconImage) },
 
             });
 
@@ -723,13 +720,13 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// <param name="dialogIconPath">The absolute file path to the icon. This can be a path to an .ico file or another image format.</param>
         /// <returns>A <see cref="BitmapSource"/> representing the icon. If the icon is an .ico file, the highest resolution
         /// frame is returned.</returns>
-        private static async ValueTask<BitmapSource> GetIconAsync(string dialogIconPath)
+        private static BitmapSource GetIcon(string dialogIconPath)
         {
             // Try to get from cache first.
             if (!_dialogIconCache.TryGetValue(dialogIconPath, out BitmapSource? bitmapSource))
             {
                 using Stream stream = MiscUtilities.GetBase64StringBytes(dialogIconPath) is not byte[] bytes ? new FileStream(dialogIconPath, FileMode.Open, FileAccess.Read, FileShare.Read) : new MemoryStream(bytes, writable: false);
-                if (!await DrawingUtilities.IsStreamAnIconAsync(stream).ConfigureAwait(false))
+                if (!DrawingUtilities.IsStreamAnIcon(stream))
                 {
                     BitmapImage bitmapImage = new();
                     bitmapImage.BeginInit();
@@ -1015,8 +1012,8 @@ namespace PSADT.UserInterface.Interfaces.Fluent
             }
 
             // Format the remaining time as hh:mm:ss
-            CountdownValueTextBlock.Text = $"{((_countdownRemainingTime.Days * 24) + _countdownRemainingTime.Hours).ToString(CultureInfo.InvariantCulture)}h {_countdownRemainingTime.Minutes.ToString(CultureInfo.InvariantCulture)}m {_countdownRemainingTime.Seconds.ToString(CultureInfo.InvariantCulture)}s";
-            AutomationProperties.SetName(CountdownValueTextBlock, $"Time remaining: {((_countdownRemainingTime.Days * 24) + _countdownRemainingTime.Hours).ToString(CultureInfo.InvariantCulture)} hours, {_countdownRemainingTime.Minutes.ToString(CultureInfo.InvariantCulture)} minutes, {_countdownRemainingTime.Seconds.ToString(CultureInfo.InvariantCulture)} seconds");
+            CountdownValueTextBlock.Text = string.Create(CultureInfo.InvariantCulture, $"{(_countdownRemainingTime.Days * 24) + _countdownRemainingTime.Hours}h {_countdownRemainingTime.Minutes}m {_countdownRemainingTime.Seconds}s");
+            AutomationProperties.SetName(CountdownValueTextBlock, string.Create(CultureInfo.InvariantCulture, $"Time remaining: {(_countdownRemainingTime.Days * 24) + _countdownRemainingTime.Hours} hours, {_countdownRemainingTime.Minutes} minutes, {_countdownRemainingTime.Seconds} seconds"));
 
             // Update text color based on remaining time using style application
             if (_countdownRemainingTime.TotalSeconds <= 60)
@@ -1157,7 +1154,7 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// <summary>
         /// Dialog icon cache for improved performance.
         /// </summary>
-        private static readonly Dictionary<string, BitmapSource> _dialogIconCache = [];
+        private static readonly Dictionary<string, BitmapSource> _dialogIconCache = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// A read-only dictionary that caches accent colors for different application themes.
