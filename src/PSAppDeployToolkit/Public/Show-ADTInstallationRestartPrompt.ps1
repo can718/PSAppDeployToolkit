@@ -13,14 +13,14 @@ function Show-ADTInstallationRestartPrompt
     .DESCRIPTION
         The `Show-ADTInstallationRestartPrompt` function displays a restart prompt with a countdown to a forced restart. The prompt can be customized with a title, countdown duration, and whether it should be topmost. It also supports silent mode where the restart can be triggered without user interaction.
 
-    .PARAMETER CountdownSeconds
-        Specifies the number of seconds to display the restart prompt.
+    .PARAMETER Countdown
+        Specifies how long to display the restart prompt. Accepts TimeSpan objects, but also interprets numerical values as seconds.
 
-    .PARAMETER CountdownNoHideSeconds
-        Specifies the number of seconds to display the restart prompt without allowing the window to be hidden.
+    .PARAMETER CountdownNoHide
+        Specifies how long to display the restart prompt without allowing the window to be hidden. Accepts TimeSpan objects, but also interprets numerical values as seconds.
 
-    .PARAMETER SilentCountdownSeconds
-        Specifies number of seconds to countdown for the restart when the toolkit is running in silent mode and `-SilentRestart` is specified.
+    .PARAMETER SilentCountdown
+        Specifies how long to countdown for the restart when the toolkit is running in silent mode and `-SilentRestart` is specified. Accepts TimeSpan objects, but also interprets numerical values as seconds.
 
     .PARAMETER SilentRestart
         Specifies whether the restart should be triggered when DeployMode is silent or very silent.
@@ -68,12 +68,12 @@ function Show-ADTInstallationRestartPrompt
         Displays a restart prompt without a countdown.
 
     .EXAMPLE
-        Show-ADTInstallationRestartPrompt -CountdownSeconds 300
+        Show-ADTInstallationRestartPrompt -Countdown 300
 
         Displays a restart prompt with a 300-second countdown.
 
     .EXAMPLE
-        Show-ADTInstallationRestartPrompt -CountdownSeconds 600 -CountdownNoHideSeconds 60
+        Show-ADTInstallationRestartPrompt -Countdown 600 -CountdownNoHide 60
 
         Displays a restart prompt with a 600-second countdown, removing the ability to hide/minimise the dialog for the last 60 seconds.
 
@@ -99,40 +99,46 @@ function Show-ADTInstallationRestartPrompt
         [System.Management.Automation.SwitchParameter]$NoCountdown,
 
         [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
+        [Alias('CountdownSeconds')]
+        [PSAppDeployToolkit.Attributes.TimeSpanTransformation()]
         [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
         [ValidateScript({
-                if ($_ -gt 86400)
+                if ($_.TotalSeconds -gt 86400)
                 {
-                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName CountdownSeconds -ProvidedValue $_ -ExceptionMessage 'The specified CountdownSeconds interval cannot exceed 86,400 seconds.'))
+                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName Countdown -ProvidedValue $_ -ExceptionMessage 'The specified Countdown interval cannot exceed 86,400 seconds.'))
                 }
                 return !!$_
             })]
-        [System.UInt32]$CountdownSeconds = 60,
+        [System.TimeSpan]$Countdown = [System.TimeSpan]::FromSeconds(60),
 
         [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
+        [Alias('CountdownNoHideSeconds')]
+        [PSAppDeployToolkit.Attributes.TimeSpanTransformation()]
         [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
         [ValidateScript({
-                if ($_ -gt 86400)
+                if ($_.TotalSeconds -gt 86400)
                 {
-                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName CountdownNoHideSeconds -ProvidedValue $_ -ExceptionMessage 'The specified CountdownNoHideSeconds interval cannot exceed 86,400 seconds.'))
+                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName CountdownNoHide -ProvidedValue $_ -ExceptionMessage 'The specified CountdownNoHide interval cannot exceed 86,400 seconds.'))
                 }
                 return !!$_
             })]
-        [System.UInt32]$CountdownNoHideSeconds = 30,
+        [System.TimeSpan]$CountdownNoHide = [System.TimeSpan]::FromSeconds(30),
 
         [Parameter(Mandatory = $true, ParameterSetName = 'SilentRestart')]
         [System.Management.Automation.SwitchParameter]$SilentRestart,
 
         [Parameter(Mandatory = $false, ParameterSetName = 'SilentRestart')]
+        [Alias('SilentCountdownSeconds')]
+        [PSAppDeployToolkit.Attributes.TimeSpanTransformation()]
         [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
         [ValidateScript({
-                if ($_ -gt 86400)
+                if ($_.TotalSeconds -gt 86400)
                 {
-                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName SilentCountdownSeconds -ProvidedValue $_ -ExceptionMessage 'The specified SilentCountdownSeconds interval cannot exceed 86,400 seconds.'))
+                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName SilentCountdown -ProvidedValue $_ -ExceptionMessage 'The specified SilentCountdown interval cannot exceed 86,400 seconds.'))
                 }
                 return !!$_
             })]
-        [System.UInt32]$SilentCountdownSeconds = 5,
+        [System.TimeSpan]$SilentCountdown = [System.TimeSpan]::FromSeconds(5),
 
         [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
         [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
@@ -240,13 +246,13 @@ function Show-ADTInstallationRestartPrompt
         {
             $PSBoundParameters.Add('Subtitle', $adtStrings.RestartPrompt.Subtitle.$deploymentType)
         }
-        if (!$PSBoundParameters.ContainsKey('CountdownSeconds'))
+        if (!$PSBoundParameters.ContainsKey('Countdown'))
         {
-            $PSBoundParameters.Add('CountdownSeconds', $CountdownSeconds)
+            $PSBoundParameters.Add('Countdown', $Countdown)
         }
-        if (!$PSBoundParameters.ContainsKey('CountdownNoHideSeconds'))
+        if (!$PSBoundParameters.ContainsKey('CountdownNoHide'))
         {
-            $PSBoundParameters.Add('CountdownNoHideSeconds', $CountdownNoHideSeconds)
+            $PSBoundParameters.Add('CountdownNoHide', $CountdownNoHide)
         }
     }
 
@@ -264,8 +270,8 @@ function Show-ADTInstallationRestartPrompt
         {
             if ($SilentRestart)
             {
-                Write-ADTLogEntry -Message "Triggering restart silently because the deploy mode is set to [$($adtSession.DeployMode)] and [-SilentRestart] has been specified. Timeout is set to [$SilentCountdownSeconds] seconds."
-                $Script:ADT.RestartOnExitCountdown = $SilentCountdownSeconds
+                Write-ADTLogEntry -Message "Triggering restart silently because the deploy mode is set to [$($adtSession.DeployMode)] and [-SilentRestart] has been specified. Timeout is set to [$($SilentCountdown.TotalSeconds)] seconds."
+                $Script:ADT.RestartOnExitCountdown = $SilentCountdown
                 if ($PSBoundParameters.ContainsKey('ShutdownReasonText'))
                 {
                     $Script:ADT.ShutdownReasonText = $ShutdownReasonText
@@ -284,7 +290,7 @@ function Show-ADTInstallationRestartPrompt
             Write-ADTLogEntry -Message "Triggering restart silently because there is no active user logged onto the system."
             if ($adtSession)
             {
-                $Script:ADT.RestartOnExitCountdown = $SilentCountdownSeconds
+                $Script:ADT.RestartOnExitCountdown = $SilentCountdown
                 if ($PSBoundParameters.ContainsKey('ShutdownReasonText'))
                 {
                     $Script:ADT.ShutdownReasonText = $ShutdownReasonText
@@ -292,7 +298,7 @@ function Show-ADTInstallationRestartPrompt
             }
             else
             {
-                Invoke-ADTClientServerOperation -User ([PSADT.AccountManagement.AccountUtilities]::CallerRunAsActiveUser) -SilentRestart -Delay $SilentCountdownSeconds -NoWait
+                Invoke-ADTClientServerOperation -User ([PSADT.AccountManagement.AccountUtilities]::CallerRunAsActiveUser) -SilentRestart -Delay $SilentCountdown -NoWait
             }
             return
         }
@@ -316,8 +322,8 @@ function Show-ADTInstallationRestartPrompt
                 }
                 if (!$NoCountdown)
                 {
-                    $dialogOptions.Add('CountdownDuration', [System.TimeSpan]::FromSeconds($CountdownSeconds))
-                    $dialogOptions.Add('CountdownNoMinimizeDuration', [System.TimeSpan]::FromSeconds($CountdownNoHideSeconds))
+                    $dialogOptions.Add('CountdownDuration', $Countdown)
+                    $dialogOptions.Add('CountdownNoMinimizeDuration', $CountdownNoHide)
                 }
                 if ($PSBoundParameters.ContainsKey('ShutdownReasonText'))
                 {
@@ -369,14 +375,14 @@ function Show-ADTInstallationRestartPrompt
                     }
                     else
                     {
-                        Write-ADTLogEntry -Message "Invoking $($MyInvocation.MyCommand.Name) asynchronously with a [$CountdownSeconds] second countdown..."
+                        Write-ADTLogEntry -Message "Invoking $($MyInvocation.MyCommand.Name) asynchronously with a [$($Countdown.TotalSeconds)] second countdown..."
                     }
                     Invoke-ADTClientServerOperation -ShowModalDialog -User $runAsActiveUser -DialogType RestartDialog -DialogStyle $adtConfig.UI.DialogStyle -Options $dialogOptions -NoWait
                     return
                 }
 
                 # Call the underlying function to open the restart prompt.
-                Write-ADTLogEntry -Message "Displaying restart prompt with $(if ($NoCountdown) { 'no' } else { "a [$CountdownSeconds] second" }) countdown."
+                Write-ADTLogEntry -Message "Displaying restart prompt with $(if ($NoCountdown) { 'no' } else { "a [$($Countdown.TotalSeconds)] second" }) countdown."
                 $null = Invoke-ADTClientServerOperation -ShowModalDialog -User $runAsActiveUser -DialogType RestartDialog -DialogStyle $adtConfig.UI.DialogStyle -Options $dialogOptions
             }
             catch

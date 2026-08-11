@@ -98,6 +98,7 @@ function Private:Invoke-ADTClientServerOperation
         [PSADT.ProcessManagement.ProcessDefinition[]]$CloseProcesses,
 
         [Parameter(Mandatory = $true, ParameterSetName = 'PromptToCloseApps')]
+        [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
         [ValidateNotNullOrEmpty()]
         [System.TimeSpan]$PromptToCloseTimeout,
 
@@ -161,7 +162,7 @@ function Private:Invoke-ADTClientServerOperation
 
         [Parameter(Mandatory = $true, ParameterSetName = 'SilentRestart')]
         [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
-        [System.UInt32]$Delay,
+        [System.TimeSpan]$Delay,
 
         [Parameter(Mandatory = $false, ParameterSetName = 'SilentRestart')]
         [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
@@ -170,6 +171,7 @@ function Private:Invoke-ADTClientServerOperation
         [Parameter(Mandatory = $false, ParameterSetName = 'ShowModalDialog')]
         [Parameter(Mandatory = $false, ParameterSetName = 'ShowBalloonTip')]
         [Parameter(Mandatory = $false, ParameterSetName = 'ShellExecuteProcess')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'SilentRestart')]
         [System.Management.Automation.SwitchParameter]$NoWait
     )
 

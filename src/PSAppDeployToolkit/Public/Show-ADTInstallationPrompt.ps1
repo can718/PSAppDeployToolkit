@@ -101,7 +101,7 @@ function Show-ADTInstallationPrompt
         Show-ADTInstallationPrompt -Title 'Funny Prompt' -Message 'How are you feeling today?' -ButtonLeftText 'Good' -ButtonRightText 'Bad' -ButtonMiddleText 'Indifferent'
 
     .EXAMPLE
-        Show-ADTInstallationPrompt -Message 'You can customize text to appear at the end of an install, or remove it completely for unattended installations.' -ButtonLeftText 'OK' -Icon Information -NoWait
+        Show-ADTInstallationPrompt -Message 'You can customize text to appear at the end of an install, or remove it completely for unattended installations.' -ButtonLeftText 'OK' -Icon Information -NoWait -Timeout (New-TimeSpan -Hours 1)
 
     .EXAMPLE
         Show-ADTInstallationPrompt -RequestInput -Message 'Tell us why you think PSADT is the best thing since sliced bread.' -ButtonRightText 'Submit'
@@ -232,11 +232,12 @@ function Show-ADTInstallationPrompt
                 )
             ))
         $paramDictionary.Add('Timeout', [System.Management.Automation.RuntimeDefinedParameter]::new(
-                'Timeout', [System.UInt32], $(
+                'Timeout', [System.TimeSpan], $(
                     [System.Management.Automation.ParameterAttribute]@{ Mandatory = $false; HelpMessage = 'Specifies how long to show the message prompt before aborting.' }
+                    [PSAppDeployToolkit.Attributes.TimeSpanTransformationAttribute]::new()
                     [PSAppDeployToolkit.Attributes.ValidateGreaterThanZeroAttribute]::new()
                     [System.Management.Automation.ValidateScriptAttribute]::new({
-                            if ($_ -gt $adtConfig.UI.DefaultTimeout)
+                            if (!($PSBoundParameters.ContainsKey('NoWait') -and $PSBoundParameters.NoWait) -and ($_.TotalSeconds -gt $adtConfig.UI.DefaultTimeout))
                             {
                                 $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName Timeout -ProvidedValue $_ -ExceptionMessage 'The installation UI dialog timeout cannot be longer than the timeout specified in the config.psd1 file.'))
                             }
@@ -339,10 +340,6 @@ function Show-ADTInstallationPrompt
         if (!$PSBoundParameters.ContainsKey('Timeout'))
         {
             $PSBoundParameters.Add('Timeout', [System.TimeSpan]::FromSeconds($adtConfig.UI.DefaultTimeout))
-        }
-        else
-        {
-            $PSBoundParameters.Timeout = [System.TimeSpan]::FromSeconds($PSBoundParameters.Timeout)
         }
     }
 
