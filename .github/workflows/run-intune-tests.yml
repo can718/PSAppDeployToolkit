@@ -1363,18 +1363,6 @@ jobs:
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_markdown<<$delimMarkdown`n$markdownText`n$delimMarkdown`n", [System.Text.Encoding]::UTF8)
         Write-Host 'Result summary payload, console text, and markdown prepared.'
         Write-Host 'Result summary payload collected.'
-    - name: Reset Azure Session VM
-      id: reset-sessionvm
-      if: always()
-      shell: pwsh
-      run: |
-        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
-        if (-not (Test-Path -LiteralPath $tfHelper)) {
-          throw "TerraForge helper script not found: $tfHelper"
-        }
-        . $tfHelper
-        Invoke-TFResetSessionVM -TestResultXmlPath '.\src\Artifacts\TestOutput\IntuneTests.xml'
-
   result-summary:
     name: Result Summary
     needs: run-intune-tests
@@ -1412,3 +1400,47 @@ jobs:
       pester_notrun:     ${{ needs.run-intune-tests.outputs.pester_notrun || '0' }}
       cases_json:        ${{ needs.run-intune-tests.outputs.cases_json || '{}' }}
     secrets: inherit
+
+  reset-session-vm:
+    name: Reset Azure Session VM
+    needs: [discover-agent, run-intune-tests, result-summary, notify-teams]
+    if: ${{ always() }}
+    runs-on: ${{ needs.discover-agent.outputs.runner-label }}
+    env:
+      INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+      TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+      TERRAFORGE_HELPER_PATH: 'C:\PSADTScripts\TerraForge-AgentHelper.ps1'
+      PESTER_TOTAL: ${{ needs.run-intune-tests.outputs.pester_total || '0' }}
+      PESTER_FAILED: ${{ needs.run-intune-tests.outputs.pester_failed || '0' }}
+      PESTER_SKIPPED: ${{ needs.run-intune-tests.outputs.pester_skipped || '0' }}
+      PESTER_NOTRUN: ${{ needs.run-intune-tests.outputs.pester_notrun || '0' }}
+    steps:
+    - name: Reset session VM (finalizer)
+      shell: pwsh
+      run: |
+        $tfHelper = $env:TERRAFORGE_HELPER_PATH
+        if ([string]::IsNullOrWhiteSpace($tfHelper) -or -not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found at path: $tfHelper"
+        }
+
+        . $tfHelper
+
+        $total = 0
+        $failed = 0
+        $skipped = 0
+        $notRun = 0
+        [void][int]::TryParse([string]$env:PESTER_TOTAL, [ref]$total)
+        [void][int]::TryParse([string]$env:PESTER_FAILED, [ref]$failed)
+        [void][int]::TryParse([string]$env:PESTER_SKIPPED, [ref]$skipped)
+        [void][int]::TryParse([string]$env:PESTER_NOTRUN, [ref]$notRun)
+        $ignored = [math]::Max($skipped + $notRun, 0)
+
+        $statusXmlPath = Join-Path $env:RUNNER_TEMP 'IntuneTests-ResetStatus.xml'
+        $statusXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?><test-results total=`"$total`" failures=`"$failed`" errors=`"0`" ignored=`"$ignored`"></test-results>"
+
+        [System.IO.File]::WriteAllText($statusXmlPath, $statusXml, [System.Text.Encoding]::UTF8)
+        Write-Host "Generated reset status XML at: $statusXmlPath"
+
+        Invoke-TFResetSessionVM -TestResultXmlPath $statusXmlPath
