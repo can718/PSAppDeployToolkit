@@ -11,11 +11,10 @@ using PSADT.ProcessManagement;
 using PSADT.UserInterface.DialogOptions;
 using PSADT.UserInterface.DialogResults;
 using PSADT.UserInterface.DialogState;
-using PSADT.UserInterface.Interfaces;
 using PSADT.Utilities;
 using PSAppDeployToolkit.Foundation;
 
-namespace PSADT.UserInterface.TestHarness
+namespace PSADT.UserInterface.Interfaces.TestHarness
 {
     internal static class Program
     {
@@ -41,7 +40,7 @@ namespace PSADT.UserInterface.TestHarness
             const DialogStyle dialogStyle = DialogStyle.Fluent; // or DialogStyle.Classic
 
             // Read PSADT's string table into memory.
-            ScriptBlockAst stringsAst = Parser.ParseFile(Path.GetFullPath($@"{AppDomain.CurrentDomain.BaseDirectory}\..\..\..\..\..\PSAppDeployToolkit\ImportsLast.ps1"), out Token[]? tokens, out ParseError[]? errors);
+            ScriptBlockAst stringsAst = Parser.ParseFile(Path.GetFullPath($@"{AppDomain.CurrentDomain.BaseDirectory}\..\..\..\..\..\PSAppDeployToolkit\ImportsLast.ps1"), out _, out ParseError[]? errors);
             if (errors.Length > 0)
             {
                 throw new InvalidDataException("Error parsing strings.psd1 file.");
