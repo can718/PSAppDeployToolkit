@@ -158,9 +158,7 @@ function script:Invoke-WinSCPPollDeploymentStatus
     if (-not $summary -and -not [string]::IsNullOrWhiteSpace($SiteCode))
     {
         $summary = Invoke-SCCMQueryWithRetry -OperationName ("Final Get-CimInstance SMS_DeploymentSummary in '{0}' for '{1}'" -f $cimNamespace, $AppName) -SuppressFinalThrow -ScriptBlock {
-            Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction Stop |
-            Where-Object { $_.ApplicationName -eq $AppName } |
-            Select-Object -First 1
+            Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction Stop | Where-Object { $_.ApplicationName -eq $AppName } | Select-Object -First 1
         }
     }
     return $summary
