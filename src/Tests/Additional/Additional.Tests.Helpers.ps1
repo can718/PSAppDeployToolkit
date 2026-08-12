@@ -117,8 +117,8 @@ function script:Invoke-WinSCPPollDeploymentStatus
         $deployments | ForEach-Object {
             $deploymentId = $_.DeploymentId
             [void](Invoke-SCCMQueryWithRetry -OperationName ("Invoke-CMDeploymentSummarization for DeploymentId '{0}'" -f $deploymentId) -SuppressFinalThrow -ScriptBlock {
-                Invoke-CMDeploymentSummarization -DeploymentId $deploymentId -ErrorAction Stop
-            })
+                    Invoke-CMDeploymentSummarization -DeploymentId $deploymentId -ErrorAction Stop
+                })
         }
 
         $summary = $null
@@ -159,8 +159,8 @@ function script:Invoke-WinSCPPollDeploymentStatus
     {
         $summary = Invoke-SCCMQueryWithRetry -OperationName ("Final Get-CimInstance SMS_DeploymentSummary in '{0}' for '{1}'" -f $cimNamespace, $AppName) -SuppressFinalThrow -ScriptBlock {
             Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction Stop |
-                Where-Object { $_.ApplicationName -eq $AppName } |
-                Select-Object -First 1
+            Where-Object { $_.ApplicationName -eq $AppName } |
+            Select-Object -First 1
         }
     }
     return $summary
