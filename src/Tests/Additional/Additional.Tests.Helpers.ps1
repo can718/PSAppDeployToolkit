@@ -41,15 +41,94 @@ function script:Invoke-WinSCPPollDeploymentStatus
     $summary = $null
     $cimNamespace = "root\SMS\Site_$SiteCode"
 
+    $queryMaxAttempts = 4
+    $queryDelaySeconds = 15
+    $envQueryMaxAttempts = 0
+    if ([int]::TryParse([string]$env:PSADT_SCCM_QUERY_MAX_ATTEMPTS, [ref]$envQueryMaxAttempts) -and $envQueryMaxAttempts -ge 1)
+    {
+        $queryMaxAttempts = $envQueryMaxAttempts
+    }
+
+    $envQueryDelaySeconds = 0
+    if ([int]::TryParse([string]$env:PSADT_SCCM_QUERY_DELAY_SECONDS, [ref]$envQueryDelaySeconds) -and $envQueryDelaySeconds -ge 1)
+    {
+        $queryDelaySeconds = $envQueryDelaySeconds
+    }
+
+    function Invoke-SCCMQueryWithRetry
+    {
+        param(
+            [Parameter(Mandatory = $true)]
+            [scriptblock]$ScriptBlock,
+            [Parameter(Mandatory = $true)]
+            [string]$OperationName,
+            [switch]$SuppressFinalThrow
+        )
+
+        for ($attempt = 1; $attempt -le $queryMaxAttempts; $attempt++)
+        {
+            try
+            {
+                return (& $ScriptBlock)
+            }
+            catch
+            {
+                $exception = $_.Exception
+                $errorMessage = $exception.Message
+                $innerMessage = if ($exception.InnerException) { $exception.InnerException.Message } else { '' }
+                $hResultHex = ('0x{0:X8}' -f ($exception.HResult -band 0xFFFFFFFF))
+                $isTransientConnectivityError = $errorMessage -match 'SMS Provider reported an error|RPC server is unavailable|The network path was not found|The server is unavailable|timed out|timeout|WinRM|Cannot connect|connection.*failed|provider.*not available|Generic failure'
+
+                Write-Warning ("[SCCM] {0} failed on attempt {1}/{2}. HResult={3}, Message='{4}', Inner='{5}'" -f $OperationName, $attempt, $queryMaxAttempts, $hResultHex, $errorMessage, $innerMessage)
+
+                if (-not $isTransientConnectivityError)
+                {
+                    if ($SuppressFinalThrow)
+                    {
+                        return $null
+                    }
+                    throw
+                }
+
+                if ($attempt -ge $queryMaxAttempts)
+                {
+                    if ($SuppressFinalThrow)
+                    {
+                        Write-Warning ("[SCCM] {0} exhausted retry attempts ({1}). Continuing with null result." -f $OperationName, $queryMaxAttempts)
+                        return $null
+                    }
+                    throw
+                }
+
+                Write-Information ("[SCCM] Transient failure in {0}. Retrying in {1} second(s)..." -f $OperationName, $queryDelaySeconds) -InformationAction Continue
+                Start-Sleep -Seconds $queryDelaySeconds
+            }
+        }
+
+        return $null
+    }
+
     do
     {
-        $deployments = Get-CMDeployment -SoftwareName $AppName -ErrorAction SilentlyContinue
-        $deployments | ForEach-Object { Invoke-CMDeploymentSummarization -DeploymentId $_.DeploymentId | Out-Null }
+        $deployments = Invoke-SCCMQueryWithRetry -OperationName ("Get-CMDeployment for '{0}'" -f $AppName) -SuppressFinalThrow -ScriptBlock {
+            Get-CMDeployment -SoftwareName $AppName -ErrorAction Stop
+        }
+
+        $deployments | ForEach-Object {
+            $deploymentId = $_.DeploymentId
+            [void](Invoke-SCCMQueryWithRetry -OperationName ("Invoke-CMDeploymentSummarization for DeploymentId '{0}'" -f $deploymentId) -SuppressFinalThrow -ScriptBlock {
+                    Invoke-CMDeploymentSummarization -DeploymentId $deploymentId -ErrorAction Stop
+                })
+        }
 
         $summary = $null
         if (-not [string]::IsNullOrWhiteSpace($SiteCode))
         {
-            $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $AppName } | Select-Object -First 1
+            $summary = Invoke-SCCMQueryWithRetry -OperationName ("Get-CimInstance SMS_DeploymentSummary in '{0}' for '{1}'" -f $cimNamespace, $AppName) -SuppressFinalThrow -ScriptBlock {
+                Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction Stop |
+                    Where-Object { $_.ApplicationName -eq $AppName } |
+                    Select-Object -First 1
+            }
         }
 
         if ($summary)
@@ -78,7 +157,9 @@ function script:Invoke-WinSCPPollDeploymentStatus
     # Final authoritative read - only if the loop did not already capture a result
     if (-not $summary -and -not [string]::IsNullOrWhiteSpace($SiteCode))
     {
-        $summary = Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction SilentlyContinue | Where-Object { $_.ApplicationName -eq $AppName } | Select-Object -First 1
+        $summary = Invoke-SCCMQueryWithRetry -OperationName ("Final Get-CimInstance SMS_DeploymentSummary in '{0}' for '{1}'" -f $cimNamespace, $AppName) -SuppressFinalThrow -ScriptBlock {
+            Get-CimInstance -Namespace $cimNamespace -ClassName SMS_DeploymentSummary -ErrorAction Stop | Where-Object { $_.ApplicationName -eq $AppName } | Select-Object -First 1
+        }
     }
     return $summary
 }
@@ -930,13 +1011,79 @@ function script:Enter-CMSiteContext
     }
 
     Import-Module $CmModulePath -ErrorAction Stop
+
+    $siteServerRaw = [string]$SiteServer
+    $siteServerHost = $siteServerRaw.Trim()
+    $siteServerHost = $siteServerHost -replace '^\\\\', ''
+    if ($siteServerHost -match '^([^\\]+)')
+    {
+        $siteServerHost = $matches[1]
+    }
+
+    $maxAttempts = 4
+    $retryDelaySeconds = 15
+
+    $envMaxAttempts = 0
+    if ([int]::TryParse([string]$env:PSADT_CMSITE_CONNECT_MAX_ATTEMPTS, [ref]$envMaxAttempts) -and $envMaxAttempts -ge 1)
+    {
+        $maxAttempts = $envMaxAttempts
+    }
+
+    $envRetryDelay = 0
+    if ([int]::TryParse([string]$env:PSADT_CMSITE_CONNECT_DELAY_SECONDS, [ref]$envRetryDelay) -and $envRetryDelay -ge 1)
+    {
+        $retryDelaySeconds = $envRetryDelay
+    }
+
+    Write-Information ("[SCCM] Entering CMSite context. SiteCode='{0}', SiteServer='{1}', SiteServerHost='{2}', CmModulePath='{3}', MaxAttempts={4}, RetryDelaySeconds={5}" -f $SiteCode, $siteServerRaw, $siteServerHost, $CmModulePath, $maxAttempts, $retryDelaySeconds) -InformationAction Continue
+
+    try
+    {
+        $dnsAddresses = [System.Net.Dns]::GetHostAddresses($siteServerHost) | ForEach-Object { $_.IPAddressToString }
+        if ($dnsAddresses)
+        {
+            Write-Information ("[SCCM] DNS resolve for '{0}': {1}" -f $siteServerHost, ($dnsAddresses -join ', ')) -InformationAction Continue
+        }
+    }
+    catch
+    {
+        Write-Warning ("[SCCM] DNS resolve failed for '{0}': {1}" -f $siteServerHost, $_.Exception.Message)
+    }
+
     $originalLocation = Get-Location
     if (-not (Get-PSDrive -Name $SiteCode -ErrorAction SilentlyContinue))
     {
         # -Scope Global is required: without it, the PSDrive is scoped to this
         # function and is automatically removed when Enter-CMSiteContext returns,
         # causing all subsequent SCCM cmdlets to fail with 'Cannot find drive'.
-        New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $SiteServer -Scope Global | Out-Null
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++)
+        {
+            try
+            {
+                Write-Information ("[SCCM] Creating CMSite PSDrive attempt {0}/{1}: Name='{2}', Root='{3}'" -f $attempt, $maxAttempts, $SiteCode, $siteServerRaw) -InformationAction Continue
+                New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $SiteServer -Scope Global -ErrorAction Stop | Out-Null
+                Write-Information ("[SCCM] CMSite PSDrive '{0}' created successfully." -f $SiteCode) -InformationAction Continue
+                break
+            }
+            catch
+            {
+                $exception = $_.Exception
+                $errorMessage = $exception.Message
+                $innerMessage = if ($exception.InnerException) { $exception.InnerException.Message } else { '' }
+                $hResultHex = ('0x{0:X8}' -f ($exception.HResult -band 0xFFFFFFFF))
+
+                Write-Warning ("[SCCM] New-PSDrive failed on attempt {0}/{1}. SiteCode='{2}', SiteServer='{3}', HResult={4}, Message='{5}', Inner='{6}'" -f $attempt, $maxAttempts, $SiteCode, $siteServerRaw, $hResultHex, $errorMessage, $innerMessage)
+
+                $isTransientConnectivityError = $errorMessage -match 'SMS Provider reported an error|RPC server is unavailable|The network path was not found|The server is unavailable|timed out|timeout|WinRM|Cannot connect|connection.*failed|provider.*not available'
+                if (-not $isTransientConnectivityError -or $attempt -ge $maxAttempts)
+                {
+                    throw
+                }
+
+                Write-Information ("[SCCM] Transient connectivity issue detected. Retrying in {0} second(s)..." -f $retryDelaySeconds) -InformationAction Continue
+                Start-Sleep -Seconds $retryDelaySeconds
+            }
+        }
     }
     $siteDrive = [string]::Concat($SiteCode, [char]58)
     Set-Location -Path $siteDrive
@@ -982,7 +1129,7 @@ function script:Invoke-PSADTInCMSiteContext
     catch
     {
         $contextErrorMessage = $_.Exception.Message
-        $isCmsiteConnectivityError = $contextErrorMessage -match 'SMS Provider reported an error|Cannot find drive|RPC server is unavailable|Access is denied|Configuration Manager site'
+        $isCmsiteConnectivityError = $contextErrorMessage -match 'SMS Provider reported an error|Cannot find drive|RPC server is unavailable|Access is denied|Configuration Manager site|The network path was not found|The server is unavailable|timed out|timeout|WinRM|Cannot connect|connection.*failed|provider.*not available'
 
         if ($isCmsiteConnectivityError)
         {
