@@ -85,6 +85,9 @@ function Uninstall-ADTApplication
     .PARAMETER PassThru
         Returns an object with ExitCode, StdOut, and StdErr output from the process. Note that a failed execution will only return an object if either `-ErrorAction` is set to `SilentlyContinue`/`Ignore`, or if `-SuccessExitCodes` is used.
 
+    .PARAMETER Force
+        Allows the retrieval and/or removal of uninstall entries flagged as NoRemove or SystemComponent.
+
     .INPUTS
         PSADT.AppManagement.InstalledApplication
 
@@ -226,8 +229,10 @@ function Uninstall-ADTApplication
         [System.Management.Automation.SwitchParameter]$ExitOnProcessFailure,
 
         [Parameter(Mandatory = $false)]
-        [ValidateNotNullOrEmpty()]
-        [System.Management.Automation.SwitchParameter]$PassThru
+        [System.Management.Automation.SwitchParameter]$PassThru,
+
+        [Parameter(Mandatory = $false)]
+        [System.Management.Automation.SwitchParameter]$Force
     )
 
     begin
@@ -293,13 +298,26 @@ function Uninstall-ADTApplication
 
         foreach ($removeApplication in $InstalledApplication)
         {
+            if (!$Force)
+            {
+                if ($removeApplication.NoRemove)
+                {
+                    Write-ADTLogEntry -Message "Skipping uninstallation of application [$($removeApplication.DisplayName)] as it's flagged as [NoRemove] and [-Force] has not been specified." -Severity Warning
+                    continue
+                }
+                if ($removeApplication.SystemComponent)
+                {
+                    Write-ADTLogEntry -Message "Skipping uninstallation of application [$($removeApplication.DisplayName)] as it's flagged as [SystemComponent] and [-Force] has not been specified." -Severity Warning
+                    continue
+                }
+            }
             try
             {
                 if ($removeApplication.WindowsInstaller)
                 {
                     if (!$removeApplication.ProductCode)
                     {
-                        Write-ADTLogEntry -Message "No ProductCode found for MSI application [$($removeApplication.DisplayName) $($removeApplication.DisplayVersion)]. Skipping removal."
+                        Write-ADTLogEntry -Message "No ProductCode found for MSI application [$($removeApplication.DisplayName) $($removeApplication.DisplayVersion)]. Skipping removal." -Severity Warning
                         continue
                     }
                     Write-ADTLogEntry -Message "Removing MSI application [$($removeApplication.DisplayName)$(if ($removeApplication.DisplayVersion -and !$removeApplication.DisplayName.Contains($removeApplication.DisplayVersion)) { " $($removeApplication.DisplayVersion)" })] with ProductCode [$($removeApplication.ProductCode.ToString('B'))]."
@@ -333,7 +351,7 @@ function Uninstall-ADTApplication
                     }
                     else
                     {
-                        Write-ADTLogEntry -Message "No UninstallString found for EXE application [$($removeApplication.DisplayName)$(if ($removeApplication.DisplayVersion -and !$removeApplication.DisplayName.Contains($removeApplication.DisplayVersion)) { " $($removeApplication.DisplayVersion)" })]. Skipping removal."
+                        Write-ADTLogEntry -Message "No UninstallString found for EXE application [$($removeApplication.DisplayName)$(if ($removeApplication.DisplayVersion -and !$removeApplication.DisplayName.Contains($removeApplication.DisplayVersion)) { " $($removeApplication.DisplayVersion)" })]. Skipping removal." -Severity Warning
                         continue
                     }
                     $sapParams.FilePath = $removeApplication."$($uninstallProperty)FilePath"

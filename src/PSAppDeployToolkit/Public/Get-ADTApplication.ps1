@@ -37,6 +37,9 @@ function Get-ADTApplication
     .PARAMETER FilterScript
         A script used to filter the results as they're processed.
 
+    .PARAMETER Force
+        Returns all found applications, even if marked as a system component.
+
     .INPUTS
         None
 
@@ -62,6 +65,7 @@ function Get-ADTApplication
         - EstimatedSize
         - SystemComponent
         - WindowsInstaller
+        - NoRemove
         - Is64BitApplication
 
     .EXAMPLE
@@ -131,7 +135,10 @@ function Get-ADTApplication
 
         [Parameter(Mandatory = $false, Position = 0)]
         [ValidateNotNullOrEmpty()]
-        [System.Management.Automation.ScriptBlock]$FilterScript
+        [System.Management.Automation.ScriptBlock]$FilterScript,
+
+        [Parameter(Mandatory = $false)]
+        [System.Management.Automation.SwitchParameter]$Force
     )
 
     begin
@@ -220,26 +227,20 @@ function Get-ADTApplication
                     $installDate = [System.DateTime]::MinValue
                     $defaultGuid = [System.Guid]::Empty
 
-                    # Exclude anything without any properties.
-                    if (!$item.GetValueNames())
-                    {
-                        continue
-                    }
-
-                    # Exclude anything without a DisplayName field.
+                    # Exclude anything that doesn't match a valid or requested uninstall entry.
                     if (!($appDisplayName = $item.GetValue('DisplayName', $null)) -or [System.String]::IsNullOrWhiteSpace($appDisplayName))
                     {
                         continue
                     }
-
-                    # Bypass any updates or hotfixes.
+                    if (($systemComponent = $item.GetValue('SystemComponent', $false)) -and !$Force)
+                    {
+                        continue
+                    }
                     if (!$IncludeUpdatesAndHotfixes -and $updatesAndHotFixesRegex.Matches($appDisplayName).Count)
                     {
                         $updatesSkippedCounter++
                         continue
                     }
-
-                    # Apply name filter if specified.
                     if ($nameFilterScript -and !(& $nameFilterScript))
                     {
                         continue
@@ -342,8 +343,9 @@ function Get-ADTApplication
                         $appProperties['Publisher'],
                         $appProperties['HelpLink'],
                         $appProperties['EstimatedSize'],
-                        $item.GetValue('SystemComponent', $false),
+                        $systemComponent,
                         $windowsInstaller,
+                        $item.GetValue('NoRemove', $false),
                         $is64bitApplication
                     )
 
