@@ -27,6 +27,7 @@
  */
 
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -64,43 +65,40 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Image_DefaultStyle_TemplatePartsPresent()
+        public Task Image_DefaultStyle_TemplatePartsPresentAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Image image = new();
                 Window w = new() { Content = image, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.Image? inner = FindVisualChildByName<System.Windows.Controls.Image>(image, "PART_Image");
-                Assert.NotNull(inner);
+                System.Windows.Controls.Image inner = Assert.IsAssignableFrom<System.Windows.Controls.Image>(FindVisualChildByName<System.Windows.Controls.Image>(image, "PART_Image"));
 
-                System.Windows.Controls.Border? frame = FindVisualChildByName<System.Windows.Controls.Border>(image, "PART_ImageBorder");
-                Assert.NotNull(frame);
+                System.Windows.Controls.Border frame = Assert.IsAssignableFrom<System.Windows.Controls.Border>(FindVisualChildByName<System.Windows.Controls.Border>(image, "PART_ImageBorder"));
                 w.Close();
             });
         }
 
         [Fact]
-        public void Image_SourceAndStretch_FlowToInnerImage()
+        public Task Image_SourceAndStretch_FlowToInnerImageAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 BitmapSource probe = CreateProbeBitmap();
                 Controls.Image image = new() { Source = probe, Stretch = Stretch.UniformToFill };
                 Window w = new() { Content = image, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.Image? inner = FindVisualChildByName<System.Windows.Controls.Image>(image, "PART_Image");
-                Assert.NotNull(inner);
+                System.Windows.Controls.Image inner = Assert.IsAssignableFrom<System.Windows.Controls.Image>(FindVisualChildByName<System.Windows.Controls.Image>(image, "PART_Image"));
                 Assert.Same(probe, inner.Source);
                 Assert.Equal(Stretch.UniformToFill, inner.Stretch);
                 w.Close();
@@ -108,71 +106,68 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Image_CornerRadius_SetsAndClearsInnerClip()
+        public Task Image_CornerRadius_SetsAndClearsInnerClipAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Image image = new() { Source = CreateProbeBitmap(), CornerRadius = new CornerRadius(8) };
                 Window w = new() { Content = image, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
                 w.UpdateLayout();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.Image? inner = FindVisualChildByName<System.Windows.Controls.Image>(image, "PART_Image");
-                Assert.NotNull(inner);
+                System.Windows.Controls.Image inner = Assert.IsAssignableFrom<System.Windows.Controls.Image>(FindVisualChildByName<System.Windows.Controls.Image>(image, "PART_Image"));
 
-                RectangleGeometry? clip = inner.Clip as RectangleGeometry;
-                Assert.NotNull(clip);
+                RectangleGeometry clip = Assert.IsType<RectangleGeometry>(inner.Clip);
                 Assert.Equal(8.0, clip.RadiusX);
                 Assert.True(clip.IsFrozen, "The clip geometry must be frozen.");
 
                 image.CornerRadius = new CornerRadius(0);
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
                 Assert.Null(inner.Clip);
                 w.Close();
             });
         }
 
         [Fact]
-        public void Image_ThemeCycle_StyleRemainsApplied()
+        public Task Image_ThemeCycle_StyleRemainsAppliedAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Image image = new() { Source = CreateProbeBitmap() };
                 Window w = new() { Content = image, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 ThemeTestHelpers.ApplyStandardThemeCycle();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.Border? frame = FindVisualChildByName<System.Windows.Controls.Border>(image, "PART_ImageBorder");
-                Assert.NotNull(frame);
+                System.Windows.Controls.Border frame = Assert.IsAssignableFrom<System.Windows.Controls.Border>(FindVisualChildByName<System.Windows.Controls.Border>(image, "PART_ImageBorder"));
                 Assert.NotNull(frame.BorderBrush);
                 w.Close();
             });
         }
 
         [Fact]
-        public void Image_AutomationPeer_IsImageAutomationPeer()
+        public Task Image_AutomationPeer_IsImageAutomationPeerAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Image image = new();
                 Window w = new() { Content = image, Width = 200, Height = 200 };
                 w.Show();
                 _ = image.ApplyTemplate();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(image);
                 _ = Assert.IsAssignableFrom<Automation.ImageAutomationPeer>(peer);
@@ -188,18 +183,18 @@ namespace Fluence.Wpf.Tests
         /// stayed in the content view a screen reader would announce an empty image element.
         /// </summary>
         [Fact]
-        public void Image_AutomationPeer_UnnamedImageIsExcludedFromBothViews()
+        public Task Image_AutomationPeer_UnnamedImageIsExcludedFromBothViewsAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Image image = new();
                 Window w = new() { Content = image, Width = 200, Height = 200 };
                 w.Show();
                 _ = image.ApplyTemplate();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(image);
                 Assert.False(peer.IsControlElement(),
@@ -215,11 +210,11 @@ namespace Fluence.Wpf.Tests
         /// both automation views and report that name.
         /// </summary>
         [Fact]
-        public void Image_AutomationPeer_NamedImageIsIncludedInBothViews()
+        public Task Image_AutomationPeer_NamedImageIsIncludedInBothViewsAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Image image = new();
@@ -227,7 +222,7 @@ namespace Fluence.Wpf.Tests
                 Window w = new() { Content = image, Width = 200, Height = 200 };
                 w.Show();
                 _ = image.ApplyTemplate();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(image);
                 Assert.True(peer.IsControlElement(),
@@ -245,11 +240,11 @@ namespace Fluence.Wpf.Tests
         /// tree. This is why the peer checks LabeledBy as well as Name.
         /// </summary>
         [Fact]
-        public void Image_AutomationPeer_LabeledByImageIsIncludedInBothViews()
+        public Task Image_AutomationPeer_LabeledByImageIsIncludedInBothViewsAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 System.Windows.Controls.TextBlock label = new() { Text = "Product photo" };
@@ -261,7 +256,7 @@ namespace Fluence.Wpf.Tests
                 Window w = new() { Content = host, Width = 200, Height = 200 };
                 w.Show();
                 _ = image.ApplyTemplate();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(image);
                 Assert.True(peer.IsControlElement(),

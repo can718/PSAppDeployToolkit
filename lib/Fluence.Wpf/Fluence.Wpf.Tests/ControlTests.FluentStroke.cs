@@ -26,6 +26,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -63,11 +64,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void RadioButton_OuterRing_UsesControlStrongStrokeBrush()
+        public Task RadioButton_OuterRing_UsesControlStrongStrokeBrushAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -83,15 +84,13 @@ namespace Fluence.Wpf.Tests
                     window.Width = 240;
                     window.Height = 80;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     _ = radio.ApplyTemplate();
-                    Ellipse? outerEllipse = FindVisualChildByName<Ellipse>(radio, "OuterEllipse");
-                    Assert.NotNull(outerEllipse);
+                    Ellipse outerEllipse = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(radio, "OuterEllipse"));
 
-                    Brush? expected = radio.FindResource("ControlStrongStrokeColorDefaultBrush") as Brush;
-                    Assert.NotNull(expected);
+                    Brush expected = Assert.IsAssignableFrom<Brush>(radio.FindResource("ControlStrongStrokeColorDefaultBrush"));
                     Assert.Same(expected, outerEllipse.Stroke);
 
                     Color strokeColor = ((SolidColorBrush)outerEllipse.Stroke).Color;
@@ -111,11 +110,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void RadioButton_OuterRing_SwitchesToDisabledStrokeWhenDisabled()
+        public Task RadioButton_OuterRing_SwitchesToDisabledStrokeWhenDisabledAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -131,19 +130,17 @@ namespace Fluence.Wpf.Tests
                     window.Width = 240;
                     window.Height = 80;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     _ = radio.ApplyTemplate();
                     radio.IsEnabled = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    Ellipse? outerEllipse = FindVisualChildByName<Ellipse>(radio, "OuterEllipse");
-                    Assert.NotNull(outerEllipse);
+                    Ellipse outerEllipse = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(radio, "OuterEllipse"));
 
-                    Brush? expected = radio.FindResource("ControlStrongStrokeColorDisabledBrush") as Brush;
-                    Assert.NotNull(expected);
+                    Brush expected = Assert.IsAssignableFrom<Brush>(radio.FindResource("ControlStrongStrokeColorDisabledBrush"));
                     Assert.Same(expected, outerEllipse.Stroke);
                 }
                 finally
@@ -160,11 +157,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void CheckBox_CheckedGlyph_UsesIndeterminateDashStrokeWeight()
+        public Task CheckBox_CheckedGlyph_UsesIndeterminateDashStrokeWeightAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -182,19 +179,17 @@ namespace Fluence.Wpf.Tests
                     window.Width = 240;
                     window.Height = 80;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     _ = checkBox.ApplyTemplate();
-                    Path? checkGlyph = FindVisualChildByName<Path>(checkBox, "CheckGlyph");
-                    Border? indeterminateDash = FindVisualChildByName<Border>(checkBox, "IndeterminateDash");
-                    Assert.NotNull(checkGlyph);
-                    Assert.NotNull(indeterminateDash);
+                    Path checkGlyph = Assert.IsAssignableFrom<Path>(FindVisualChildByName<Path>(checkBox, "CheckGlyph"));
+                    Border indeterminateDash = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(checkBox, "IndeterminateDash"));
 
                     // The check-in storyboard now fades the glyph in, so sample until it
                     // settles at the trigger setter steady state instead of asserting
                     // immediately after the window shows.
-                    Assert.True(WaitUntil(window.Dispatcher, 3000, () => checkGlyph.Opacity >= 0.99),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 3000, () => checkGlyph.Opacity >= 0.99).ConfigureAwait(true),
                         "Checked CheckBox state should show the check glyph once the check-in animation settles.");
                     Assert.Equal(0.0, indeterminateDash.Opacity, 0.01);
                     Assert.Equal(indeterminateDash.Height, checkGlyph.StrokeThickness, 0.01);
@@ -214,11 +209,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void CheckBox_CheckIn_GlyphAnimatesInAndUncheckRevertsInstantly()
+        public Task CheckBox_CheckIn_GlyphAnimatesInAndUncheckRevertsInstantlyAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -236,16 +231,15 @@ namespace Fluence.Wpf.Tests
                     window.Width = 240;
                     window.Height = 80;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     _ = checkBox.ApplyTemplate();
-                    Path? checkGlyph = FindVisualChildByName<Path>(checkBox, "CheckGlyph");
-                    Assert.NotNull(checkGlyph);
+                    Path checkGlyph = Assert.IsAssignableFrom<Path>(FindVisualChildByName<Path>(checkBox, "CheckGlyph"));
                     Assert.Equal(0.0, checkGlyph.Opacity, 0.001);
 
                     checkBox.IsChecked = true;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     // The check-in storyboard uses FillBehavior="Stop", so once the clocks
                     // finish the glyph must fall back to the setter-provided steady state:
@@ -253,22 +247,21 @@ namespace Fluence.Wpf.Tests
                     // ScaleTransform. WPF keeps the finished clocks attached (so
                     // HasAnimatedProperties stays true); the observable contract is that
                     // the stopped clocks hold nothing and the base values win.
-                    bool settled = WaitUntil(window.Dispatcher, 5000, () =>
+                    bool settled = await WaitUntilAsync(window.Dispatcher, 5000, () =>
                         checkGlyph.RenderTransform is ScaleTransform liveScale
                         && checkGlyph.Opacity >= 0.9999
                         && liveScale.ScaleX >= 0.9999
-                        && liveScale.ScaleY >= 0.9999);
+                        && liveScale.ScaleY >= 0.9999).ConfigureAwait(true);
                     Assert.True(settled,
                         "The check-in storyboard should complete and hand the glyph back to the trigger setter steady state.");
 
-                    ScaleTransform? scale = checkGlyph.RenderTransform as ScaleTransform;
-                    Assert.NotNull(scale);
+                    ScaleTransform scale = Assert.IsType<ScaleTransform>(checkGlyph.RenderTransform);
                     Assert.Equal(1.0, checkGlyph.Opacity, 0.001);
                     Assert.Equal(1.0, scale.ScaleX, 0.001);
                     Assert.Equal(1.0, scale.ScaleY, 0.001);
 
                     checkBox.IsChecked = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     // Uncheck is deliberately not animated: the trigger setters revert
                     // instantly and the finished Stop storyboard holds nothing, so the
@@ -280,12 +273,12 @@ namespace Fluence.Wpf.Tests
                     // A second check-in must replay the animation and settle again
                     // (SnapshotAndReplace hands off the finished clocks).
                     checkBox.IsChecked = true;
-                    DrainDispatcher(window.Dispatcher);
-                    bool resettled = WaitUntil(window.Dispatcher, 5000, () =>
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
+                    bool resettled = await WaitUntilAsync(window.Dispatcher, 5000, () =>
                         checkGlyph.RenderTransform is ScaleTransform liveScale
                         && checkGlyph.Opacity >= 0.9999
                         && liveScale.ScaleX >= 0.9999
-                        && liveScale.ScaleY >= 0.9999);
+                        && liveScale.ScaleY >= 0.9999).ConfigureAwait(true);
                     Assert.True(resettled,
                         "Re-checking must replay the check-in storyboard and settle at the steady state again.");
                 }
@@ -303,11 +296,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Card_Click_FiresOnMouseDownThenUp_WhenIsClickable()
+        public Task Card_Click_FiresOnMouseDownThenUp_WhenIsClickableAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -324,7 +317,7 @@ namespace Fluence.Wpf.Tests
                     window.Width = 240;
                     window.Height = 160;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     int clicks = 0;
@@ -355,11 +348,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Card_Click_DoesNotFire_WhenNotClickable()
+        public Task Card_Click_DoesNotFire_WhenNotClickableAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -376,7 +369,7 @@ namespace Fluence.Wpf.Tests
                     window.Width = 240;
                     window.Height = 160;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     int clicks = 0;
@@ -405,11 +398,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void NavigationView_Left_ContentBorder_HasWinUiCornerRadiusAndStroke()
+        public Task NavigationView_Left_ContentBorder_HasWinUiCornerRadiusAndStrokeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -424,15 +417,13 @@ namespace Fluence.Wpf.Tests
                     _ = nav.Items.Add(new Controls.NavigationViewItem { Content = "Home" });
                     window.Content = nav;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     _ = nav.ApplyTemplate();
-                    ContentPresenter? contentPresenter = nav.Template.FindName("PART_ContentPresenter", nav) as ContentPresenter;
-                    Assert.NotNull(contentPresenter);
+                    ContentPresenter contentPresenter = Assert.IsType<ContentPresenter>(nav.Template.FindName("PART_ContentPresenter", nav));
 
-                    Border? contentBorder = VisualTreeHelper.GetParent(contentPresenter) as Border;
-                    Assert.NotNull(contentBorder);
+                    Border contentBorder = Assert.IsType<Border>(VisualTreeHelper.GetParent(contentPresenter));
 
                     Assert.Equal(new CornerRadius(8, 0, 0, 0), contentBorder.CornerRadius);
 
@@ -440,18 +431,15 @@ namespace Fluence.Wpf.Tests
                     // PART_ContentPresenter lines up with the pane column edge.
                     // Wrapping the presenter in a BorderThickness=1 Border introduces
                     // layout-rounding drift at 150% DPI.
-                    Grid? contentGrid = VisualTreeHelper.GetParent(contentBorder) as Grid;
-                    Assert.NotNull(contentGrid);
+                    Grid contentGrid = Assert.IsType<Grid>(VisualTreeHelper.GetParent(contentBorder));
                     Assert.Equal(2, VisualTreeHelper.GetChildrenCount(contentGrid));
 
-                    Border? strokeBorder = VisualTreeHelper.GetChild(contentGrid, 1) as Border;
-                    Assert.NotNull(strokeBorder);
+                    Border strokeBorder = Assert.IsType<Border>(VisualTreeHelper.GetChild(contentGrid, 1));
                     Assert.False(strokeBorder.IsHitTestVisible, "The decorative stroke Border must not capture hit-tests.");
                     Assert.Equal(new CornerRadius(8, 0, 0, 0), strokeBorder.CornerRadius);
                     Assert.Equal(new Thickness(1, 1, 0, 0), strokeBorder.BorderThickness);
 
-                    Brush? expectedStroke = nav.FindResource("NavigationViewContentSeparatorBrush") as Brush;
-                    Assert.NotNull(expectedStroke);
+                    Brush expectedStroke = Assert.IsAssignableFrom<Brush>(nav.FindResource("NavigationViewContentSeparatorBrush"));
                     Assert.Same(expectedStroke, strokeBorder.BorderBrush);
                 }
                 finally
@@ -468,11 +456,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void NavigationView_LeftCompact_ContentBorder_HasWinUiCornerRadiusAndStroke()
+        public Task NavigationView_LeftCompact_ContentBorder_HasWinUiCornerRadiusAndStrokeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -487,33 +475,28 @@ namespace Fluence.Wpf.Tests
                     _ = nav.Items.Add(new Controls.NavigationViewItem { Content = "Home" });
                     window.Content = nav;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     _ = nav.ApplyTemplate();
-                    ContentPresenter? contentPresenter = nav.Template.FindName("PART_ContentPresenter", nav) as ContentPresenter;
-                    Assert.NotNull(contentPresenter);
+                    ContentPresenter contentPresenter = Assert.IsType<ContentPresenter>(nav.Template.FindName("PART_ContentPresenter", nav));
 
-                    Border? contentBorder = VisualTreeHelper.GetParent(contentPresenter) as Border;
-                    Assert.NotNull(contentBorder);
+                    Border contentBorder = Assert.IsType<Border>(VisualTreeHelper.GetParent(contentPresenter));
 
                     Assert.Equal(new CornerRadius(8, 0, 0, 0), contentBorder.CornerRadius);
 
                     // The 1,1,0,0 stroke sits on a sibling decorative Border so
                     // PART_ContentPresenter lines up with the pane column edge without
                     // layout-rounding drift.
-                    Grid? contentGrid = VisualTreeHelper.GetParent(contentBorder) as Grid;
-                    Assert.NotNull(contentGrid);
+                    Grid contentGrid = Assert.IsType<Grid>(VisualTreeHelper.GetParent(contentBorder));
                     Assert.Equal(2, VisualTreeHelper.GetChildrenCount(contentGrid));
 
-                    Border? strokeBorder = VisualTreeHelper.GetChild(contentGrid, 1) as Border;
-                    Assert.NotNull(strokeBorder);
+                    Border strokeBorder = Assert.IsType<Border>(VisualTreeHelper.GetChild(contentGrid, 1));
                     Assert.False(strokeBorder.IsHitTestVisible, "The decorative stroke Border must not capture hit-tests.");
                     Assert.Equal(new CornerRadius(8, 0, 0, 0), strokeBorder.CornerRadius);
                     Assert.Equal(new Thickness(1, 1, 0, 0), strokeBorder.BorderThickness);
 
-                    Brush? expectedStroke = nav.FindResource("NavigationViewContentSeparatorBrush") as Brush;
-                    Assert.NotNull(expectedStroke);
+                    Brush expectedStroke = Assert.IsAssignableFrom<Brush>(nav.FindResource("NavigationViewContentSeparatorBrush"));
                     Assert.Same(expectedStroke, strokeBorder.BorderBrush);
                 }
                 finally
@@ -530,11 +513,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void NavigationView_DefaultStyle_AppliesLeftTemplate()
+        public Task NavigationView_DefaultStyle_AppliesLeftTemplateAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -548,18 +531,16 @@ namespace Fluence.Wpf.Tests
                     _ = nav.Items.Add(new Controls.NavigationViewItem { Content = "Item" });
                     window.Content = nav;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     _ = nav.ApplyTemplate();
 
                     Assert.Equal(NavigationViewPaneDisplayMode.Left, nav.PaneDisplayMode);
 
-                    Button? paneToggle = nav.Template.FindName("PART_PaneToggleButton", nav) as Button;
-                    Assert.NotNull(paneToggle);
+                    Button paneToggle = Assert.IsType<Button>(nav.Template.FindName("PART_PaneToggleButton", nav));
 
-                    Button? backButton = nav.Template.FindName("PART_BackButton", nav) as Button;
-                    Assert.NotNull(backButton);
+                    Button backButton = Assert.IsType<Button>(nav.Template.FindName("PART_BackButton", nav));
                 }
                 finally
                 {

@@ -26,7 +26,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-using System;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Effects;
 using Xunit;
@@ -39,31 +39,11 @@ namespace Fluence.Wpf.Tests
     /// </summary>
     public class ThemeMetricsTests
     {
-        private static void RunOnStaThread(Action action)
-        {
-            Exception? captured = null;
-            WpfTestSta.Dispatcher?.Invoke(new Action(delegate
-            {
-                try { action(); }
-                catch (Exception ex) { captured = ex; }
-            }));
-
-            if (captured is not null)
-            {
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(captured).Throw();
-            }
-        }
-
-        private static Application? EnsureApp()
-        {
-            return WpfTestSta.EnsureApplication();
-        }
-
-        private static void ResetAndApply(ApplicationTheme theme, Application? app = null)
+        private static void ResetAndApply(ApplicationTheme theme, Application app)
         {
             ApplicationThemeManager.ResetForTesting();
             ApplicationAccentColorManager.ResetForTesting();
-            app?.Resources.MergedDictionaries.Clear();
+            app.Resources.MergedDictionaries.Clear();
 
             ApplicationThemeManager.Apply(theme, BackdropType.None, updateAccent: true);
         }
@@ -73,40 +53,37 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void ControlCornerRadius_PresentInLightTheme()
+        public Task ControlCornerRadius_PresentInLightThemeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.Light, app);
-                object? cr = app?.TryFindResource("ControlCornerRadius");
-                Assert.NotNull(cr);
+                object cr = Assert.IsAssignableFrom<object>(app?.TryFindResource("ControlCornerRadius"));
                 Assert.Equal(new CornerRadius(4), (CornerRadius)cr);
             });
         }
 
         [Fact]
-        public void ControlCornerRadius_PresentInDarkTheme()
+        public Task ControlCornerRadius_PresentInDarkThemeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.Dark, app);
-                object? cr = app?.TryFindResource("ControlCornerRadius");
-                Assert.NotNull(cr);
+                object cr = Assert.IsAssignableFrom<object>(app?.TryFindResource("ControlCornerRadius"));
                 Assert.Equal(new CornerRadius(4), (CornerRadius)cr);
             });
         }
 
         [Fact]
-        public void ControlCornerRadius_PresentInHighContrastTheme()
+        public Task ControlCornerRadius_PresentInHighContrastThemeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.HighContrast, app);
-                object? cr = app?.TryFindResource("ControlCornerRadius");
-                Assert.NotNull(cr);
+                object cr = Assert.IsAssignableFrom<object>(app?.TryFindResource("ControlCornerRadius"));
                 Assert.Equal(new CornerRadius(4), (CornerRadius)cr);
             });
         }
@@ -116,40 +93,37 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void OverlayCornerRadius_PresentInLightTheme()
+        public Task OverlayCornerRadius_PresentInLightThemeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.Light, app);
-                object? or_ = app?.TryFindResource("OverlayCornerRadius");
-                Assert.NotNull(or_);
+                object or_ = Assert.IsAssignableFrom<object>(app?.TryFindResource("OverlayCornerRadius"));
                 Assert.Equal(new CornerRadius(8), (CornerRadius)or_);
             });
         }
 
         [Fact]
-        public void OverlayCornerRadius_PresentInDarkTheme()
+        public Task OverlayCornerRadius_PresentInDarkThemeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.Dark, app);
-                object? or_ = app?.TryFindResource("OverlayCornerRadius");
-                Assert.NotNull(or_);
+                object or_ = Assert.IsAssignableFrom<object>(app?.TryFindResource("OverlayCornerRadius"));
                 Assert.Equal(new CornerRadius(8), (CornerRadius)or_);
             });
         }
 
         [Fact]
-        public void OverlayCornerRadius_PresentInHighContrastTheme()
+        public Task OverlayCornerRadius_PresentInHighContrastThemeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.HighContrast, app);
-                object? or_ = app?.TryFindResource("OverlayCornerRadius");
-                Assert.NotNull(or_);
+                object or_ = Assert.IsAssignableFrom<object>(app?.TryFindResource("OverlayCornerRadius"));
                 Assert.Equal(new CornerRadius(8), (CornerRadius)or_);
             });
         }
@@ -159,30 +133,28 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void FlyoutShadowEffect_PresentInAllThemes()
+        public Task FlyoutShadowEffect_PresentInAllThemesAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 foreach (ApplicationTheme theme in new[] { ApplicationTheme.Light, ApplicationTheme.Dark, ApplicationTheme.HighContrast })
                 {
                     ResetAndApply(theme, app);
-                    object? fx = app?.TryFindResource("FlyoutShadowEffect");
-                    Assert.NotNull(fx);
+                    object fx = Assert.IsAssignableFrom<object>(app.TryFindResource("FlyoutShadowEffect"));
                     _ = Assert.IsAssignableFrom<DropShadowEffect>(fx);
                 }
             });
         }
 
         [Fact]
-        public void FlyoutShadowEffect_HasExpectedProperties()
+        public Task FlyoutShadowEffect_HasExpectedPropertiesAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.Light, app);
-                DropShadowEffect? fx = (DropShadowEffect?)app?.TryFindResource("FlyoutShadowEffect");
-                Assert.NotNull(fx);
+                DropShadowEffect fx = Assert.IsAssignableFrom<DropShadowEffect>((DropShadowEffect?)app?.TryFindResource("FlyoutShadowEffect"));
                 Assert.Equal(18.0, fx.BlurRadius, 0.01);
                 Assert.Equal(270.0, fx.Direction, 0.01);
                 Assert.Equal(0.22, fx.Opacity, 0.01);
@@ -195,16 +167,15 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void DefaultControlFocusVisualStyle_PresentInAllThemes()
+        public Task DefaultControlFocusVisualStyle_PresentInAllThemesAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 foreach (ApplicationTheme theme in new[] { ApplicationTheme.Light, ApplicationTheme.Dark, ApplicationTheme.HighContrast })
                 {
                     ResetAndApply(theme, app);
-                    object? style = app?.TryFindResource("DefaultControlFocusVisualStyle");
-                    Assert.NotNull(style);
+                    object style = Assert.IsAssignableFrom<object>(app.TryFindResource("DefaultControlFocusVisualStyle"));
                     _ = Assert.IsAssignableFrom<Style>(style);
                 }
             });
@@ -215,20 +186,18 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void CornerRadiusTokens_SurviveFullThemeCycle()
+        public Task CornerRadiusTokens_SurviveFullThemeCycleAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.Light, app);
 
                 foreach (ApplicationTheme theme in new[] { ApplicationTheme.Dark, ApplicationTheme.HighContrast, ApplicationTheme.Light })
                 {
                     ApplicationThemeManager.Apply(theme, BackdropType.None, updateAccent: true);
-                    object? cr = app?.TryFindResource("ControlCornerRadius");
-                    object? or_ = app?.TryFindResource("OverlayCornerRadius");
-                    Assert.NotNull(cr);
-                    Assert.NotNull(or_);
+                    object cr = Assert.IsAssignableFrom<object>(app?.TryFindResource("ControlCornerRadius"));
+                    object or_ = Assert.IsAssignableFrom<object>(app?.TryFindResource("OverlayCornerRadius"));
                     Assert.Equal(new CornerRadius(4), (CornerRadius)cr);
                     Assert.Equal(new CornerRadius(8), (CornerRadius)or_);
                 }
@@ -240,39 +209,36 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void DefaultCollectionFocusVisualStyle_PresentInLightTheme()
+        public Task DefaultCollectionFocusVisualStyle_PresentInLightThemeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.Light, app);
-                object? style = app?.TryFindResource("DefaultCollectionFocusVisualStyle");
-                Assert.NotNull(style);
+                object style = Assert.IsAssignableFrom<object>(app?.TryFindResource("DefaultCollectionFocusVisualStyle"));
                 _ = Assert.IsAssignableFrom<Style>(style);
             });
         }
 
         [Fact]
-        public void DefaultCollectionFocusVisualStyle_PresentInDarkTheme()
+        public Task DefaultCollectionFocusVisualStyle_PresentInDarkThemeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.Dark, app);
-                object? style = app?.TryFindResource("DefaultCollectionFocusVisualStyle");
-                Assert.NotNull(style);
+                object style = Assert.IsAssignableFrom<object>(app?.TryFindResource("DefaultCollectionFocusVisualStyle"));
             });
         }
 
         [Fact]
-        public void DefaultCollectionFocusVisualStyle_PresentInHighContrastTheme()
+        public Task DefaultCollectionFocusVisualStyle_PresentInHighContrastThemeAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApp();
+                Application app = WpfTestSta.EnsureApplication();
                 ResetAndApply(ApplicationTheme.HighContrast, app);
-                object? style = app?.TryFindResource("DefaultCollectionFocusVisualStyle");
-                Assert.NotNull(style);
+                object style = Assert.IsAssignableFrom<object>(app?.TryFindResource("DefaultCollectionFocusVisualStyle"));
             });
         }
     }

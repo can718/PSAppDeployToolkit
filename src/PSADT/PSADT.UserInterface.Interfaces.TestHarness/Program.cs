@@ -51,7 +51,7 @@ namespace PSADT.UserInterface.Interfaces.TestHarness
             Hashtable configTable = GetModuleDefaultTable(stringsAst, "Config");
             Hashtable assetsTable = (Hashtable)configTable["Assets"]!;
 
-            // Set up parameters for testing
+            // Set up parameters for testing.
             const string appTitle = "Adobe Creative Suite 2.1.45 EN";
             const string subtitle = "EQ Bank Global IT Services - App Installation";
             string appIconImage = (string?)assetsTable["Logo"]!;
@@ -113,7 +113,7 @@ namespace PSADT.UserInterface.Interfaces.TestHarness
             const string inputDialogButtonLeftText = "Continue";
             const string inputDialogButtonRightText = "Cancel";
 
-            // Set up options for the dialogs
+            // Set up options for the dialogs.
             CloseAppsDialogState closeAppsDialogState = new(appsToClose, (_, _, _) => default);
             await using (closeAppsDialogState.ConfigureAwait(false))
             {

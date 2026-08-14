@@ -29,6 +29,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -41,11 +43,11 @@ namespace Fluence.Wpf.Tests
     public partial class ControlTests
     {
         [Fact]
-        public void SelectionControls_OffStateBackgrounds_UseWinUiAltFillRoles()
+        public Task SelectionControls_OffStateBackgrounds_UseWinUiAltFillRolesAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(application);
 
                 Controls.CheckBox checkBox = new() { Content = "Check" };
@@ -67,43 +69,34 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     _ = checkBox.ApplyTemplate();
                     _ = radioButton.ApplyTemplate();
                     _ = toggleSwitch.ApplyTemplate();
 
-                    Border? indicatorFill = FindVisualChildByName<Border>(checkBox, "IndicatorFill");
-                    Border? indicatorHover = FindVisualChildByName<Border>(checkBox, "IndicatorHover");
-                    Border? indicatorPressed = FindVisualChildByName<Border>(checkBox, "IndicatorPressed");
-                    Assert.NotNull(indicatorFill);
-                    Assert.NotNull(indicatorHover);
-                    Assert.NotNull(indicatorPressed);
+                    Border indicatorFill = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(checkBox, "IndicatorFill"));
+                    Border indicatorHover = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(checkBox, "IndicatorHover"));
+                    Border indicatorPressed = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(checkBox, "IndicatorPressed"));
 
                     AssertBrushColor(indicatorFill.Background, "ControlAltFillColorSecondaryBrush");
                     AssertBrushColor(indicatorHover.Background, "ControlAltFillColorTertiaryBrush");
                     AssertBrushColor(indicatorPressed.Background, "ControlAltFillColorQuarternaryBrush");
                     AssertBrushColor(indicatorPressed.BorderBrush, "ControlStrongStrokeColorDisabledBrush");
 
-                    System.Windows.Shapes.Ellipse? outerEllipse = FindVisualChildByName<System.Windows.Shapes.Ellipse>(radioButton, "OuterEllipse");
-                    System.Windows.Shapes.Ellipse? outerEllipseHover = FindVisualChildByName<System.Windows.Shapes.Ellipse>(radioButton, "OuterEllipseHover");
-                    System.Windows.Shapes.Ellipse? outerEllipsePressed = FindVisualChildByName<System.Windows.Shapes.Ellipse>(radioButton, "OuterEllipsePressed");
-                    Assert.NotNull(outerEllipse);
-                    Assert.NotNull(outerEllipseHover);
-                    Assert.NotNull(outerEllipsePressed);
+                    System.Windows.Shapes.Ellipse outerEllipse = Assert.IsAssignableFrom<System.Windows.Shapes.Ellipse>(FindVisualChildByName<System.Windows.Shapes.Ellipse>(radioButton, "OuterEllipse"));
+                    System.Windows.Shapes.Ellipse outerEllipseHover = Assert.IsAssignableFrom<System.Windows.Shapes.Ellipse>(FindVisualChildByName<System.Windows.Shapes.Ellipse>(radioButton, "OuterEllipseHover"));
+                    System.Windows.Shapes.Ellipse outerEllipsePressed = Assert.IsAssignableFrom<System.Windows.Shapes.Ellipse>(FindVisualChildByName<System.Windows.Shapes.Ellipse>(radioButton, "OuterEllipsePressed"));
 
                     AssertBrushColor(outerEllipse.Fill, "ControlAltFillColorSecondaryBrush");
                     AssertBrushColor(outerEllipseHover.Fill, "ControlAltFillColorTertiaryBrush");
                     AssertBrushColor(outerEllipsePressed.Fill, "ControlAltFillColorQuarternaryBrush");
                     AssertBrushColor(outerEllipsePressed.Stroke, "ControlStrongStrokeColorDisabledBrush");
 
-                    Border? trackOff = FindVisualChildByName<Border>(toggleSwitch, "TrackOff");
-                    Border? trackOffHover = FindVisualChildByName<Border>(toggleSwitch, "TrackOffHover");
-                    Border? trackOffPressed = FindVisualChildByName<Border>(toggleSwitch, "TrackOffPressed");
-                    Assert.NotNull(trackOff);
-                    Assert.NotNull(trackOffHover);
-                    Assert.NotNull(trackOffPressed);
+                    Border trackOff = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleSwitch, "TrackOff"));
+                    Border trackOffHover = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleSwitch, "TrackOffHover"));
+                    Border trackOffPressed = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleSwitch, "TrackOffPressed"));
 
                     AssertBrushColor(trackOff.Background, "ControlAltFillColorSecondaryBrush");
                     AssertBrushColor(trackOff.BorderBrush, "ControlStrongStrokeColorDefaultBrush");
@@ -118,11 +111,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ProgressBar_TrackBackground_UsesWinUiStrongStrokeRole()
+        public Task ProgressBar_TrackBackground_UsesWinUiStrongStrokeRoleAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(application);
 
                 Controls.ProgressBar progressBar = new()
@@ -141,11 +134,10 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     _ = progressBar.ApplyTemplate();
 
-                    Border? track = FindVisualChildByName<Border>(progressBar, "PART_Track");
-                    Assert.NotNull(track);
+                    Border track = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(progressBar, "PART_Track"));
                     AssertBrushColor(track.Background, "ControlStrongStrokeColorDefaultBrush");
                 }
                 finally
@@ -156,11 +148,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ScrollBar_RailBackground_UsesWinUiTrackFillRole()
+        public Task ScrollBar_RailBackground_UsesWinUiTrackFillRoleAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(application);
 
                 ScrollBar scrollBar = new()
@@ -184,11 +176,10 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     _ = scrollBar.ApplyTemplate();
 
-                    Border? trackBackground = FindVisualChildByName<Border>(scrollBar, "TrackBackground");
-                    Assert.NotNull(trackBackground);
+                    Border trackBackground = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(scrollBar, "TrackBackground"));
                     AssertBrushColor(trackBackground.Background, "ScrollBarTrackFillBrush");
                 }
                 finally
@@ -199,11 +190,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSampleControl_Chrome_UsesWinUiGalleryBackgroundRoles()
+        public Task DemoSampleControl_Chrome_UsesWinUiGalleryBackgroundRolesAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(application);
                 MergeDemoSharedStyles(application);
                 ApplicationThemeManager.Apply(ApplicationTheme.Dark, BackdropType.None, updateAccent: true);
@@ -226,21 +217,16 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    Border? sampleCard = sample.FindName("SampleCard") as Border;
-                    Controls.Expander? sourceExpander = sample.FindName("SourceExpander") as Controls.Expander;
-                    Assert.NotNull(sampleCard);
-                    Assert.NotNull(sourceExpander);
+                    Border sampleCard = Assert.IsType<Border>(sample.FindName("SampleCard"));
+                    Controls.Expander sourceExpander = Assert.IsType<Controls.Expander>(sample.FindName("SourceExpander"));
 
                     Assert.Equal(new CornerRadius(8, 8, 0, 0), sampleCard.CornerRadius);
-                    Grid? demoRegionGrid = sample.FindName("DemoRegionGrid") as Grid;
-                    Border? rightRail = sample.FindName("RightRailBorder") as Border;
-                    Border? outputRegion = sample.FindName("OutputRegion") as Border;
-                    Assert.NotNull(demoRegionGrid);
-                    Assert.NotNull(rightRail);
-                    Assert.NotNull(outputRegion);
+                    Grid demoRegionGrid = Assert.IsType<Grid>(sample.FindName("DemoRegionGrid"));
+                    Border rightRail = Assert.IsType<Border>(sample.FindName("RightRailBorder"));
+                    Border outputRegion = Assert.IsType<Border>(sample.FindName("OutputRegion"));
 
                     AssertBrushColor(sampleCard.Background, "SolidBackgroundFillColorBaseBrush");
                     Assert.Equal(new Thickness(0), sampleCard.Padding);
@@ -251,13 +237,11 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal("Source code", sourceExpander.Header);
 
                     sourceExpander.IsExpanded = true;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    RichTextBox? sourceViewer = FindVisualChildByName<RichTextBox>(sourceExpander, "SourceTextViewer");
-                    Border? copyButtonHost = FindVisualChildByName<Border>(sourceExpander, "CopySourceButtonHost");
-                    Assert.NotNull(sourceViewer);
-                    Assert.NotNull(copyButtonHost);
+                    RichTextBox sourceViewer = Assert.IsAssignableFrom<RichTextBox>(FindVisualChildByName<RichTextBox>(sourceExpander, "SourceTextViewer"));
+                    Border copyButtonHost = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(sourceExpander, "CopySourceButtonHost"));
                     AssertBrushColor(sourceViewer.Background, "SystemFillColorSolidAttentionBackgroundBrush");
                     AssertBrushColor(copyButtonHost.Background, "CardBackgroundFillColorDefaultBrush");
                 }
@@ -269,11 +253,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSharedResources_DoNotShadowNativeFluenceSurfaceRoles()
+        public Task DemoSharedResources_DoNotShadowNativeFluenceSurfaceRolesAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(application);
                 MergeDemoSharedStyles(application);
 
@@ -288,11 +272,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSharedResources_NativeBrushesResolveInLightAndHighContrast()
+        public Task DemoSharedResources_NativeBrushesResolveInLightAndHighContrastAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(application);
                 MergeDemoSharedStyles(application);
 
@@ -302,8 +286,7 @@ namespace Fluence.Wpf.Tests
 
                     foreach (string key in GetNativeDemoSurfaceBrushKeys())
                     {
-                        SolidColorBrush? brush = application?.TryFindResource(key) as SolidColorBrush;
-                        Assert.NotNull(brush);
+                        SolidColorBrush brush = Assert.IsType<SolidColorBrush>(application?.TryFindResource(key));
                         Assert.NotEqual(Color.FromRgb(0x27, 0x27, 0x27), brush.Color);
                     }
                 }
@@ -311,11 +294,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void BackgroundParityBrushes_ResolveAcrossThemesAndDeterministicAccent()
+        public Task BackgroundParityBrushes_ResolveAcrossThemesAndDeterministicAccentAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(application);
                 MergeDemoSharedStyles(application);
 
@@ -389,7 +372,7 @@ namespace Fluence.Wpf.Tests
         [Fact]
         public void PowerShellDemoScripts_FollowCanonicalBootstrap()
         {
-            string scriptsRoot = Path.Combine(FindRepoRoot(), "Fluence.Wpf.Demo.PowerShell");
+            string scriptsRoot = Path.Join(FindRepoRoot(), "Fluence.Wpf.Demo.PowerShell");
             string[] scriptNames =
             [
                 "01-HelloWorld.ps1",
@@ -407,7 +390,7 @@ namespace Fluence.Wpf.Tests
 
             foreach (string scriptName in scriptNames)
             {
-                string path = Path.Combine(scriptsRoot, scriptName);
+                string path = Path.Join(scriptsRoot, scriptName);
                 if (!File.Exists(path))
                 {
                     violations.Add(scriptName + " is missing.");
@@ -437,12 +420,9 @@ namespace Fluence.Wpf.Tests
             }
 
             // The retired scripts must be gone, and no new script should reference their names.
-            foreach (string retired in retiredScriptNames)
+            foreach (string retired in retiredScriptNames.Where(retired => File.Exists(Path.Join(scriptsRoot, retired))))
             {
-                if (File.Exists(Path.Combine(scriptsRoot, retired)))
-                {
-                    violations.Add(retired + " should have been removed.");
-                }
+                violations.Add(retired + " should have been removed.");
             }
 
             Assert.Empty(violations);
@@ -451,7 +431,7 @@ namespace Fluence.Wpf.Tests
         [Fact]
         public void PowerShellDemoXaml_UsesCurrentFluenceWindowProperties()
         {
-            string path = Path.Combine(FindRepoRoot(), "Fluence.Wpf.Demo.PowerShell", "MainWindow.xaml");
+            string path = Path.Join(FindRepoRoot(), "Fluence.Wpf.Demo.PowerShell", "MainWindow.xaml");
             string source = File.ReadAllText(path);
 
             Assert.False(ContainsOrdinal(source, "WindowCorners"),
@@ -470,8 +450,8 @@ namespace Fluence.Wpf.Tests
             string repoRoot = FindRepoRoot();
             string[] roots =
             [
-                Path.Combine(repoRoot, "Fluence.Wpf", "Themes", "Controls"),
-                Path.Combine(repoRoot, "Fluence.Wpf.Demo"),
+                Path.Join(repoRoot, "Fluence.Wpf", "Themes", "Controls"),
+                Path.Join(repoRoot, "Fluence.Wpf.Demo"),
             ];
             List<string> violations = [];
 
@@ -555,47 +535,21 @@ namespace Fluence.Wpf.Tests
 
         private static bool IsLiteralBackgroundValue(string value)
         {
-            if (value.Length is 0)
-            {
-                return false;
-            }
-
-            if (value[0] == '#')
-            {
-                return true;
-            }
-
-            if (value[0] == '{')
-            {
-                return false;
-            }
-
-            foreach (char character in value)
-            {
-                if (!char.IsLetter(character))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return value.Length is not 0 && (value[0] == '#' || (value[0] != '{' && value.All(char.IsLetter)));
         }
 
         private static void AssertBrushColor(Brush? actualBrush, string resourceKey)
         {
-            SolidColorBrush? actual = actualBrush as SolidColorBrush;
-            Assert.NotNull(actual);
+            SolidColorBrush actual = Assert.IsType<SolidColorBrush>(actualBrush);
 
-            SolidColorBrush? expected = Application.Current?.TryFindResource(resourceKey) as SolidColorBrush;
-            Assert.NotNull(expected);
+            SolidColorBrush expected = Assert.IsType<SolidColorBrush>(Application.Current?.TryFindResource(resourceKey));
 
             Assert.Equal(expected.Color, actual.Color);
         }
 
         private static void AssertBrushResolves(string resourceKey)
         {
-            SolidColorBrush? brush = Application.Current?.TryFindResource(resourceKey) as SolidColorBrush;
-            Assert.NotNull(brush);
+            _ = Assert.IsType<SolidColorBrush>(Application.Current?.TryFindResource(resourceKey));
         }
 
         private static string[] GetNativeDemoSurfaceBrushKeys()
@@ -610,7 +564,7 @@ namespace Fluence.Wpf.Tests
             ];
         }
 
-        private static void MergeDemoSharedStyles(Application? application)
+        private static void MergeDemoSharedStyles(Application application)
         {
             ResourceDictionary demoShared = new()
             {
@@ -644,15 +598,7 @@ namespace Fluence.Wpf.Tests
                 "#FF00E8",
             ];
 
-            foreach (string accentSwatch in accentSwatches)
-            {
-                if (string.Equals(accentSwatch, value, StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return accentSwatches.Any(accentSwitch => string.Equals(accentSwitch, value, StringComparison.Ordinal));
         }
 
         private static string GetRepoRelativePath(string path)
@@ -675,7 +621,7 @@ namespace Fluence.Wpf.Tests
             DirectoryInfo? directory = new(AppContext.BaseDirectory);
             while (directory is not null)
             {
-                if (File.Exists(Path.Combine(directory.FullName, "Fluence.Wpf.sln")))
+                if (File.Exists(Path.Join(directory.FullName, "Fluence.Wpf.sln")))
                 {
                     return directory.FullName;
                 }

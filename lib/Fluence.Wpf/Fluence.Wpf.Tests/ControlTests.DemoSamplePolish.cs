@@ -30,6 +30,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -42,20 +43,16 @@ namespace Fluence.Wpf.Tests
     public partial class ControlTests
     {
         [Fact]
-        public void GalleryButtonsPage_EnableCheckBoxControlsOnlyVisibleButtonVariants()
+        public Task GalleryButtonsPage_EnableCheckBoxControlsOnlyVisibleButtonVariantsAsync()
         {
-            RunDemoPageTest(static () => new GalleryButtonsPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryButtonsPage(), static window =>
             {
-                Controls.CheckBox? enable = FindVisualChildByName<Controls.CheckBox>(window, "ButtonEnableCheckBox");
-                Controls.Button? standard = FindFluentButtonByContent(window, "Standard");
-                Controls.Button? accent = FindFluentButtonByContent(window, "Accent");
-                Controls.Button? subtle = FindFluentButtonByContent(window, "Subtle");
+                Controls.CheckBox enable = Assert.IsAssignableFrom<Controls.CheckBox>(FindVisualChildByName<Controls.CheckBox>(window, "ButtonEnableCheckBox"));
+                Controls.Button standard = Assert.IsAssignableFrom<Controls.Button>(FindFluentButtonByContent(window, "Standard"));
+                Controls.Button accent = Assert.IsAssignableFrom<Controls.Button>(FindFluentButtonByContent(window, "Accent"));
+                Controls.Button subtle = Assert.IsAssignableFrom<Controls.Button>(FindFluentButtonByContent(window, "Subtle"));
                 Controls.Button? disabled = FindFluentButtonByContent(window, "Disabled");
 
-                Assert.NotNull(enable);
-                Assert.NotNull(standard);
-                Assert.NotNull(accent);
-                Assert.NotNull(subtle);
                 Assert.Null(disabled);
 
                 Assert.True(standard.IsEnabled);
@@ -63,7 +60,7 @@ namespace Fluence.Wpf.Tests
                 Assert.True(subtle.IsEnabled);
 
                 enable.IsChecked = false;
-                DrainDispatcher(window.Dispatcher);
+                WpfTestSta.DrainDispatcher(window.Dispatcher);
                 window.UpdateLayout();
 
                 Assert.False(standard.IsEnabled, "Enable toggle should disable the Standard button.");
@@ -73,11 +70,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSampleControl_SourceExpander_ReopensAfterCollapse()
+        public Task DemoSampleControl_SourceExpander_ReopensAfterCollapseAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(application);
                 MergeDemoSharedStyles(application);
 
@@ -98,19 +95,18 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
-                    Controls.Expander? expander = sample.FindName("SourceExpander") as Controls.Expander;
-                    Assert.NotNull(expander);
+                    Controls.Expander expander = Assert.IsType<Controls.Expander>(sample.FindName("SourceExpander"));
 
                     expander.IsExpanded = true;
                     Assert.True(
-                        WaitUntil(window.Dispatcher, milliseconds: 4000, () => SourceContentRowHeight(expander) > 1d),
+                        await WaitUntilAsync(window.Dispatcher, milliseconds: 4000, () => SourceContentRowHeight(expander) > 1d).ConfigureAwait(true),
                         "First expand should open the source content row.");
 
                     expander.IsExpanded = false;
                     Assert.True(
-                        WaitUntil(window.Dispatcher, milliseconds: 4000, () => SourceContentRowHeight(expander) <= 0.5d),
+                        await WaitUntilAsync(window.Dispatcher, milliseconds: 4000, () => SourceContentRowHeight(expander) <= 0.5d).ConfigureAwait(true),
                         "Collapse should close the source content row.");
 
                     // Regression guard: re-expanding after a collapse must reopen the row.
@@ -119,7 +115,7 @@ namespace Fluence.Wpf.Tests
                     // re-animate the row back open or the dropdown never comes back.
                     expander.IsExpanded = true;
                     Assert.True(
-                        WaitUntil(window.Dispatcher, milliseconds: 4000, () => SourceContentRowHeight(expander) > 1d),
+                        await WaitUntilAsync(window.Dispatcher, milliseconds: 4000, () => SourceContentRowHeight(expander) > 1d).ConfigureAwait(true),
                         "Re-expanding after a collapse must reopen the source content row.");
                 }
                 finally
@@ -136,15 +132,13 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GalleryButtonsPage_SubtleButtonsUseWinUiTransparentRestBorderAndToggleButtonSampleIsRemoved()
+        public Task GalleryButtonsPage_SubtleButtonsUseWinUiTransparentRestBorderAndToggleButtonSampleIsRemovedAsync()
         {
-            RunDemoPageTest(static () => new GalleryButtonsPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryButtonsPage(), static window =>
             {
-                Controls.Button? subtle = FindFluentButtonByContent(window, "Subtle");
-                Controls.Button? refresh = FindFluentButtonByContent(window, "Refresh");
+                Controls.Button subtle = Assert.IsAssignableFrom<Controls.Button>(FindFluentButtonByContent(window, "Subtle"));
+                Controls.Button refresh = Assert.IsAssignableFrom<Controls.Button>(FindFluentButtonByContent(window, "Refresh"));
 
-                Assert.NotNull(subtle);
-                Assert.NotNull(refresh);
                 AssertBrushIsTransparent(subtle.BorderBrush);
                 AssertBrushIsTransparent(refresh.BorderBrush);
                 Assert.Null(FindToggleButtonByContent(window, "Bold"));
@@ -153,16 +147,15 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GalleryIconsPage_IconographyHeaderAndSearchFollowWinUiGallery()
+        public Task GalleryIconsPage_IconographyHeaderAndSearchFollowWinUiGalleryAsync()
         {
-            RunDemoPageTest(static () => new GalleryIconsPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryIconsPage(), static window =>
             {
                 List<TextBlock> titles = [.. FindVisualChildren<TextBlock>(window)
                     .Where(static text => string.Equals(text.Text, "Iconography", StringComparison.Ordinal))];
-                Controls.AutoSuggestBox? search = FindVisualChildByName<Controls.AutoSuggestBox>(window, "IconSearchBox");
+                Controls.AutoSuggestBox search = Assert.IsAssignableFrom<Controls.AutoSuggestBox>(FindVisualChildByName<Controls.AutoSuggestBox>(window, "IconSearchBox"));
 
                 _ = Assert.Single(titles);
-                Assert.NotNull(search);
                 Assert.Equal("Search icons by name, code, or tags", search.PlaceholderText, StringComparer.Ordinal);
                 Assert.Equal(420.0, search.Width, 0.1);
                 Assert.Empty(FindVisualChildren<DemoSampleControl>(window));
@@ -170,20 +163,18 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GalleryIconsPage_SearchFiltersCatalogAndSelectsFirstResult()
+        public Task GalleryIconsPage_SearchFiltersCatalogAndSelectsFirstResultAsync()
         {
-            RunDemoPageTest(() => new GalleryIconsPage(), window =>
+            return RunDemoPageTestAsync(() => new GalleryIconsPage(), window =>
             {
-                Controls.AutoSuggestBox? search = FindVisualChildByName<Controls.AutoSuggestBox>(window, "IconSearchBox");
-                Controls.ListView? list = FindVisualChildByName<Controls.ListView>(window, "IconCatalogList");
-                Assert.NotNull(search);
-                Assert.NotNull(list);
+                Controls.AutoSuggestBox search = Assert.IsAssignableFrom<Controls.AutoSuggestBox>(FindVisualChildByName<Controls.AutoSuggestBox>(window, "IconSearchBox"));
+                Controls.ListView list = Assert.IsAssignableFrom<Controls.ListView>(FindVisualChildByName<Controls.ListView>(window, "IconCatalogList"));
 
                 int totalIcons = GetIconCatalogItems(list).Count;
                 Assert.True(totalIcons > 500, "Catalog should load the full Segoe Fluent Icons set before filtering.");
 
                 search.Text = "zoom";
-                DrainDispatcher(window.Dispatcher);
+                WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                 List<GalleryIconsPage.IconCatalogItem> filtered = GetIconCatalogItems(list);
                 Assert.True(filtered.Count > 0, "Searching for zoom should keep matching icons.");
@@ -194,19 +185,17 @@ namespace Fluence.Wpf.Tests
                         "Filtered icons should match the search term: " + item.Name);
                 }
 
-                TextBlock? nameValue = FindVisualChildByName<TextBlock>(window, "IconNameValueText");
-                Assert.NotNull(nameValue);
+                TextBlock nameValue = Assert.IsAssignableFrom<TextBlock>(FindVisualChildByName<TextBlock>(window, "IconNameValueText"));
                 Assert.Equal(filtered[0].Name, nameValue.Text, StringComparer.Ordinal);
             });
         }
 
         [Fact]
-        public void GalleryIconsPage_ClickingTileSelectsIconAndPopulatesSidebar()
+        public Task GalleryIconsPage_ClickingTileSelectsIconAndPopulatesSidebarAsync()
         {
-            RunDemoPageTest(() => new GalleryIconsPage(), window =>
+            return RunDemoPageTestAsync(() => new GalleryIconsPage(), window =>
             {
-                Controls.ListView? list = FindVisualChildByName<Controls.ListView>(window, "IconCatalogList");
-                Assert.NotNull(list);
+                Controls.ListView list = Assert.IsAssignableFrom<Controls.ListView>(FindVisualChildByName<Controls.ListView>(window, "IconCatalogList"));
 
                 List<Button> tiles = [.. FindVisualChildren<Button>(list)
                     .Where(static tile => tile.DataContext is GalleryIconsPage.IconCatalogItem)];
@@ -218,30 +207,27 @@ namespace Fluence.Wpf.Tests
                 Assert.False(second.IsSelected, "The second icon should start unselected.");
 
                 tiles[1].RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-                DrainDispatcher(window.Dispatcher);
+                WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                 Assert.True(second.IsSelected, "Clicking a tile should select its icon.");
                 Assert.False(first.IsSelected, "Selecting a tile should clear the previous selection.");
 
-                TextBlock? nameValue = FindVisualChildByName<TextBlock>(window, "IconNameValueText");
-                Controls.FontIcon? preview = FindVisualChildByName<Controls.FontIcon>(window, "IconPreviewGlyph");
-                Assert.NotNull(nameValue);
-                Assert.NotNull(preview);
+                TextBlock nameValue = Assert.IsAssignableFrom<TextBlock>(FindVisualChildByName<TextBlock>(window, "IconNameValueText"));
+                Controls.FontIcon preview = Assert.IsAssignableFrom<Controls.FontIcon>(FindVisualChildByName<Controls.FontIcon>(window, "IconPreviewGlyph"));
                 Assert.Equal(second.Name, nameValue.Text, StringComparer.Ordinal);
                 Assert.Equal(second.Glyph, preview.Glyph, StringComparer.Ordinal);
             });
         }
 
         [Fact]
-        public void GalleryIconsPage_SidebarGlyphFieldsMatchWinUiGalleryFormats()
+        public Task GalleryIconsPage_SidebarGlyphFieldsMatchWinUiGalleryFormatsAsync()
         {
-            RunDemoPageTest(() => new GalleryIconsPage(), window =>
+            return RunDemoPageTestAsync(() => new GalleryIconsPage(), window =>
             {
-                Controls.AutoSuggestBox? search = FindVisualChildByName<Controls.AutoSuggestBox>(window, "IconSearchBox");
-                Assert.NotNull(search);
+                Controls.AutoSuggestBox search = Assert.IsAssignableFrom<Controls.AutoSuggestBox>(FindVisualChildByName<Controls.AutoSuggestBox>(window, "IconSearchBox"));
 
                 search.Text = "E71F";
-                DrainDispatcher(window.Dispatcher);
+                WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                 AssertIconSidebarValue(window, "IconNameValueText", "CopyIconNameButton", "ZoomOut");
                 AssertIconSidebarValue(window, "IconTextGlyphValueText", "CopyTextGlyphButton", "&#xE71F;");
@@ -268,26 +254,23 @@ namespace Fluence.Wpf.Tests
 
         private static void AssertIconSidebarValue(Window window, string valueName, string buttonName, string expected)
         {
-            TextBlock? value = FindVisualChildByName<TextBlock>(window, valueName);
-            Controls.Button? copy = FindVisualChildByName<Controls.Button>(window, buttonName);
-            Assert.NotNull(value);
-            Assert.NotNull(copy);
+            TextBlock value = Assert.IsAssignableFrom<TextBlock>(FindVisualChildByName<TextBlock>(window, valueName));
+            Controls.Button copy = Assert.IsAssignableFrom<Controls.Button>(FindVisualChildByName<Controls.Button>(window, buttonName));
             Assert.Equal(expected, value.Text, StringComparer.Ordinal);
             Assert.Equal(expected, copy.Tag as string, StringComparer.Ordinal);
         }
 
         [Fact]
-        public void GalleryButtonsPage_DemoContentPresenterCentersButtonGroups()
+        public Task GalleryButtonsPage_DemoContentPresenterCentersButtonGroupsAsync()
         {
-            RunDemoPageTest(static () => new GalleryButtonsPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryButtonsPage(), static window =>
             {
                 List<DemoSampleControl> samples = [.. FindVisualChildren<DemoSampleControl>(window)];
                 Assert.True(samples.Count > 0, "Buttons page should render DemoSampleControl samples.");
 
                 foreach (DemoSampleControl sample in samples)
                 {
-                    ContentPresenter? presenter = sample.FindName("DemoContentPresenter") as ContentPresenter;
-                    Assert.NotNull(presenter);
+                    ContentPresenter presenter = Assert.IsType<ContentPresenter>(sample.FindName("DemoContentPresenter"));
                     Assert.Equal(VerticalAlignment.Center, presenter.VerticalAlignment);
                     Assert.Equal(HorizontalAlignment.Stretch, presenter.HorizontalAlignment);
                 }
@@ -295,17 +278,14 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GallerySelectionPage_BasicRadioGroupStartsAtGroupLeftEdge()
+        public Task GallerySelectionPage_BasicRadioGroupStartsAtGroupLeftEdgeAsync()
         {
-            RunDemoPageTest(static () => new GallerySelectionPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GallerySelectionPage(), static window =>
             {
-                Controls.RadioButton? optionA = FindRadioButtonByContent(window, "Option A");
-                Controls.RadioButton? optionB = FindRadioButtonByContent(window, "Option B");
-                Controls.RadioButton? optionC = FindRadioButtonByContent(window, "Option C");
+                Controls.RadioButton optionA = Assert.IsAssignableFrom<Controls.RadioButton>(FindRadioButtonByContent(window, "Option A"));
+                Controls.RadioButton optionB = Assert.IsAssignableFrom<Controls.RadioButton>(FindRadioButtonByContent(window, "Option B"));
+                Controls.RadioButton optionC = Assert.IsAssignableFrom<Controls.RadioButton>(FindRadioButtonByContent(window, "Option C"));
 
-                Assert.NotNull(optionA);
-                Assert.NotNull(optionB);
-                Assert.NotNull(optionC);
                 Assert.Equal(0.0, optionA.Margin.Left);
                 Assert.Equal(16.0, optionA.Margin.Right);
                 Assert.Equal(0.0, optionB.Margin.Left);
@@ -314,39 +294,33 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GalleryDataBindingPage_AddItemRailIsWider()
+        public Task GalleryDataBindingPage_AddItemRailIsWiderAsync()
         {
-            RunDemoPageTest(static () => new GalleryDataBindingPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryDataBindingPage(), static window =>
             {
-                Controls.TextBox? newItemBox = FindVisualChildByName<Controls.TextBox>(window, "NewItemBox");
-                StackPanel? rightRailStack = newItemBox?.Parent as StackPanel;
+                Controls.TextBox newItemBox = Assert.IsAssignableFrom<Controls.TextBox>(FindVisualChildByName<Controls.TextBox>(window, "NewItemBox"));
+                StackPanel rightRailStack = Assert.IsType<StackPanel>(newItemBox?.Parent);
 
-                Assert.NotNull(newItemBox);
-                Assert.NotNull(rightRailStack);
                 Assert.Equal(320.0, rightRailStack.MinWidth, 0.1);
                 Assert.Equal(320.0, newItemBox.Width, 0.1);
             });
         }
 
         [Fact]
-        public void GalleryNavigationPage_CompactSampleShowsBackAndPaneToggleButtons()
+        public Task GalleryNavigationPage_CompactSampleShowsBackAndPaneToggleButtonsAsync()
         {
-            RunDemoPageTest(static () => new GalleryNavigationPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryNavigationPage(), static window =>
             {
-                Controls.NavigationView? compact = FindVisualChildByName<Controls.NavigationView>(window, "CompactNavigationDemo");
-                Controls.CheckBox? backEnabled = FindVisualChildByName<Controls.CheckBox>(window, "BackEnabledToggle");
+                Controls.NavigationView compact = Assert.IsAssignableFrom<Controls.NavigationView>(FindVisualChildByName<Controls.NavigationView>(window, "CompactNavigationDemo"));
+                Controls.CheckBox backEnabled = Assert.IsAssignableFrom<Controls.CheckBox>(FindVisualChildByName<Controls.CheckBox>(window, "BackEnabledToggle"));
 
-                Assert.NotNull(compact);
-                Assert.NotNull(backEnabled);
                 Assert.True(backEnabled.IsChecked.GetValueOrDefault(),
                     "Compact navigation sample should start with the back button enabled.");
                 Assert.True(compact.IsPaneToggleButtonVisible,
                     "Compact navigation sample should explicitly show the pane toggle button.");
 
-                Button? back = compact.Template.FindName(Controls.NavigationView.PartBackButton, compact) as Button;
-                Button? paneToggle = compact.Template.FindName(Controls.NavigationView.PartPaneToggleButton, compact) as Button;
-                Assert.NotNull(back);
-                Assert.NotNull(paneToggle);
+                Button back = Assert.IsType<Button>(compact.Template.FindName(Controls.NavigationView.PartBackButton, compact));
+                Button paneToggle = Assert.IsType<Button>(compact.Template.FindName(Controls.NavigationView.PartPaneToggleButton, compact));
                 Assert.Equal(Visibility.Visible, back.Visibility);
                 Assert.Equal(Visibility.Visible, paneToggle.Visibility);
                 Assert.Null(FindVisualChildByName<Controls.Button>(window, "CompactPaneToggleButton"));
@@ -354,31 +328,29 @@ namespace Fluence.Wpf.Tests
                 Assert.False(compact.IsPaneOpen,
                     "Compact navigation sample should start with the compact pane closed.");
                 paneToggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, paneToggle));
-                DrainDispatcher(window.Dispatcher);
+                WpfTestSta.DrainDispatcher(window.Dispatcher);
                 Assert.True(compact.IsPaneOpen,
                     "The built-in pane toggle should open the compact pane.");
                 paneToggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, paneToggle));
-                DrainDispatcher(window.Dispatcher);
+                WpfTestSta.DrainDispatcher(window.Dispatcher);
                 Assert.False(compact.IsPaneOpen,
                     "The built-in pane toggle should close the compact pane on subsequent clicks.");
             });
         }
 
         [Fact]
-        public void GalleryFormsPage_ActionsAlignAndOutputHasStableSpace()
+        public Task GalleryFormsPage_ActionsAlignAndOutputHasStableSpaceAsync()
         {
-            RunDemoPageTest(static () => new GalleryFormsPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryFormsPage(), static window =>
             {
-                Controls.Button? signIn = FindVisualChildByName<Controls.Button>(window, "SignInButton");
+                Controls.Button signIn = Assert.IsAssignableFrom<Controls.Button>(FindVisualChildByName<Controls.Button>(window, "SignInButton"));
                 StackPanel? checkoutButtons = FindVisualChildByName<StackPanel>(window, "CheckoutButtonsPanel");
-                Controls.Button? placeOrder = checkoutButtons?.Children.OfType<Controls.Button>().FirstOrDefault();
+                Controls.Button placeOrder = Assert.IsAssignableFrom<Controls.Button>(checkoutButtons?.Children.OfType<Controls.Button>().FirstOrDefault());
                 List<Border> outputRegions = [.. FindVisualChildren<DemoSampleControl>(window)
                     .Select(static sample => sample.FindName("OutputRegion") as Border)
                     .Where(static border => border is not null)
                     .Cast<Border>()];
 
-                Assert.NotNull(signIn);
-                Assert.NotNull(placeOrder);
                 Assert.Equal(0.0, signIn.Margin.Left);
                 Assert.Equal(0.0, placeOrder.Margin.Left);
                 Assert.True(outputRegions.Count > 0, "Forms page should expose output regions.");
@@ -388,35 +360,31 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GalleryPages_RemoveRequestedOutputRegions()
+        public async Task GalleryPages_RemoveRequestedOutputRegionsAsync()
         {
-            RunDemoPageTest(static () => new GalleryInputsPage(), static window =>
-                Assert.Null(FindVisualChildByName<TextBlock>(window, "CharCountLabel")));
+            await RunDemoPageTestAsync(static () => new GalleryInputsPage(), static window =>
+                Assert.Null(FindVisualChildByName<TextBlock>(window, "CharCountLabel"))).ConfigureAwait(true);
 
-            RunDemoPageTest(static () => new GalleryDataBindingPage(), static window =>
-                Assert.Null(FindVisualChildByName<TextBlock>(window, "ItemCountLabel")));
+            await RunDemoPageTestAsync(static () => new GalleryDataBindingPage(), static window =>
+                Assert.Null(FindVisualChildByName<TextBlock>(window, "ItemCountLabel"))).ConfigureAwait(true);
 
-            RunDemoPageTest(static () => new GalleryTreesPage(), static window =>
-                Assert.Null(FindVisualChildByName<TextBlock>(window, "TreeSelectionLabel")));
+            await RunDemoPageTestAsync(static () => new GalleryTreesPage(), static window =>
+                Assert.Null(FindVisualChildByName<TextBlock>(window, "TreeSelectionLabel"))).ConfigureAwait(true);
 
-            RunDemoPageTest(static () => new GalleryNavigationPage(), static window =>
-                Assert.Null(FindVisualChildByName<TextBlock>(window, "CompactNavigationOutputText")));
+            await RunDemoPageTestAsync(static () => new GalleryNavigationPage(), static window =>
+                Assert.Null(FindVisualChildByName<TextBlock>(window, "CompactNavigationOutputText"))).ConfigureAwait(true);
         }
 
         [Fact]
-        public void GalleryStatusPage_NumberBoxDrivesFirstProgressBar()
+        public Task GalleryStatusPage_NumberBoxDrivesFirstProgressBarAsync()
         {
-            RunDemoPageTest(static () => new GalleryStatusPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryStatusPage(), static window =>
             {
-                Controls.NumberBox? numberBox = FindVisualChildByName<Controls.NumberBox>(window, "ProgressValueNumberBox");
-                Controls.ProgressBar? progressBar = FindVisualChildByName<Controls.ProgressBar>(window, "StandardProgressBar");
-                Controls.ToggleSwitch? indeterminateToggle = FindVisualChildByName<Controls.ToggleSwitch>(window, "IndeterminateToggle");
-                Controls.NumberBox? progressRingValueBox = FindVisualChildByName<Controls.NumberBox>(window, "ProgressRingValueBox");
+                Controls.NumberBox numberBox = Assert.IsAssignableFrom<Controls.NumberBox>(FindVisualChildByName<Controls.NumberBox>(window, "ProgressValueNumberBox"));
+                Controls.ProgressBar progressBar = Assert.IsAssignableFrom<Controls.ProgressBar>(FindVisualChildByName<Controls.ProgressBar>(window, "StandardProgressBar"));
+                Controls.ToggleSwitch indeterminateToggle = Assert.IsAssignableFrom<Controls.ToggleSwitch>(FindVisualChildByName<Controls.ToggleSwitch>(window, "IndeterminateToggle"));
+                Controls.NumberBox progressRingValueBox = Assert.IsAssignableFrom<Controls.NumberBox>(FindVisualChildByName<Controls.NumberBox>(window, "ProgressRingValueBox"));
 
-                Assert.NotNull(numberBox);
-                Assert.NotNull(progressBar);
-                Assert.NotNull(indeterminateToggle);
-                Assert.NotNull(progressRingValueBox);
                 Assert.Equal(HorizontalAlignment.Center, numberBox.HorizontalAlignment);
                 Assert.Equal(VerticalAlignment.Center, numberBox.VerticalAlignment);
                 Assert.Equal(HorizontalAlignment.Center, indeterminateToggle.HorizontalAlignment);
@@ -430,39 +398,34 @@ namespace Fluence.Wpf.Tests
                 Assert.Null(FindVisualChildByName<TextBlock>(window, "SliderValueLabel"));
 
                 numberBox.Value = 73d;
-                DrainDispatcher(window.Dispatcher);
+                WpfTestSta.DrainDispatcher(window.Dispatcher);
                 window.UpdateLayout();
 
                 Assert.Equal(73d, progressBar.Value, 0.1);
 
                 numberBox.Value = 0d;
-                DrainDispatcher(window.Dispatcher);
+                WpfTestSta.DrainDispatcher(window.Dispatcher);
                 window.UpdateLayout();
 
                 Assert.Equal(0d, progressBar.Value, 0.1);
 
                 indeterminateToggle.IsChecked = false;
-                DrainDispatcher(window.Dispatcher);
+                WpfTestSta.DrainDispatcher(window.Dispatcher);
                 Assert.Equal("On / Off", indeterminateToggle.OffContent as string, StringComparer.Ordinal);
             });
         }
 
         [Fact]
-        public void GalleryFormsPage_CheckoutFieldsUseStableNamesAndAlignOptionalInput()
+        public Task GalleryFormsPage_CheckoutFieldsUseStableNamesAndAlignOptionalInputAsync()
         {
-            RunDemoPageTest(static () => new GalleryFormsPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryFormsPage(), static window =>
             {
-                Grid? checkoutGrid = FindVisualChildByName<Grid>(window, "CheckoutFieldsGrid");
-                Controls.NumberBox? quantity = FindVisualChildByName<Controls.NumberBox>(window, "QuantityNumberBox");
-                Controls.TextBox? optional = FindVisualChildByName<Controls.TextBox>(window, "OptionalTextBox");
-                Controls.CheckBox? gift = FindVisualChildByName<Controls.CheckBox>(window, "GiftCheckBox");
-                StackPanel? actions = FindVisualChildByName<StackPanel>(window, "CheckoutButtonsPanel");
+                Grid checkoutGrid = Assert.IsAssignableFrom<Grid>(FindVisualChildByName<Grid>(window, "CheckoutFieldsGrid"));
+                Controls.NumberBox quantity = Assert.IsAssignableFrom<Controls.NumberBox>(FindVisualChildByName<Controls.NumberBox>(window, "QuantityNumberBox"));
+                Controls.TextBox optional = Assert.IsAssignableFrom<Controls.TextBox>(FindVisualChildByName<Controls.TextBox>(window, "OptionalTextBox"));
+                Controls.CheckBox gift = Assert.IsAssignableFrom<Controls.CheckBox>(FindVisualChildByName<Controls.CheckBox>(window, "GiftCheckBox"));
+                StackPanel actions = Assert.IsAssignableFrom<StackPanel>(FindVisualChildByName<StackPanel>(window, "CheckoutButtonsPanel"));
 
-                Assert.NotNull(checkoutGrid);
-                Assert.NotNull(quantity);
-                Assert.NotNull(optional);
-                Assert.NotNull(gift);
-                Assert.NotNull(actions);
                 Assert.Equal(3, checkoutGrid.ColumnDefinitions.Count);
                 Assert.Equal(0, Grid.GetColumn(quantity));
                 Assert.Equal(2, Grid.GetColumn(optional));
@@ -471,27 +434,23 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GalleryDataPage_ListBackgroundsAndPersonPicturesUseExpectedAssets()
+        public Task GalleryDataPage_ListBackgroundsAndPersonPicturesUseExpectedAssetsAsync()
         {
-            RunDemoPageTest(static () => new GalleryDataPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryDataPage(), static window =>
             {
-                Border? simpleBackground = FindVisualChildByName<Border>(window, "SimpleListViewBackground");
-                Border? richBackground = FindVisualChildByName<Border>(window, "RichListViewBackground");
-                StackPanel? emptyStateActions = FindVisualChildByName<StackPanel>(window, "EmptyStateActionsPanel");
+                Border simpleBackground = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(window, "SimpleListViewBackground"));
+                Border richBackground = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(window, "RichListViewBackground"));
+                StackPanel emptyStateActions = Assert.IsAssignableFrom<StackPanel>(FindVisualChildByName<StackPanel>(window, "EmptyStateActionsPanel"));
 
-                Assert.NotNull(simpleBackground);
-                Assert.NotNull(richBackground);
-                Assert.NotNull(emptyStateActions);
                 Assert.Equal(HorizontalAlignment.Center, emptyStateActions.HorizontalAlignment);
                 Assert.Equal(VerticalAlignment.Center, emptyStateActions.VerticalAlignment);
                 Assert.True(emptyStateActions.Children.OfType<Controls.Button>().All(static button => button.MinWidth >= 140.0),
                     "EmptyContent action buttons should be wider than the default compact command width.");
 
                 List<Controls.PersonPicture> personPictures = [.. FindVisualChildren<Controls.PersonPicture>(window)];
-                WrapPanel? personPicturePanel = personPictures.FirstOrDefault()?.Parent as WrapPanel;
+                WrapPanel personPicturePanel = Assert.IsType<WrapPanel>(personPictures.FirstOrDefault()?.Parent);
                 Assert.Equal(5, personPictures.Count);
                 Assert.Equal(5, personPictures.Count(static picture => picture.ProfilePicture is not null));
-                Assert.NotNull(personPicturePanel);
                 Assert.Equal(HorizontalAlignment.Center, personPicturePanel.HorizontalAlignment);
                 Assert.Equal(VerticalAlignment.Center, personPicturePanel.VerticalAlignment);
                 Assert.True(personPictures.Exists(static picture => picture.ProfilePicture?.ToString(CultureInfo.InvariantCulture).IndexOf("PersonPictureMadisonButler.png", StringComparison.Ordinal) >= 0),
@@ -506,26 +465,24 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GalleryPages_RightRailControlsUseRequestedAlignment()
+        public async Task GalleryPages_RightRailControlsUseRequestedAlignmentAsync()
         {
-            RunDemoPageTest(static () => new GalleryDataBindingPage(), static window =>
+            await RunDemoPageTestAsync(static () => new GalleryDataBindingPage(), static window =>
             {
-                StackPanel? selectionRail = FindVisualChildByName<StackPanel>(window, "SelectionModeRail");
-                Assert.NotNull(selectionRail);
+                StackPanel selectionRail = Assert.IsAssignableFrom<StackPanel>(FindVisualChildByName<StackPanel>(window, "SelectionModeRail"));
                 Assert.Equal(VerticalAlignment.Center, selectionRail.VerticalAlignment);
-            });
+            }).ConfigureAwait(true);
 
-            RunDemoPageTest(static () => new GalleryTreesPage(), static window =>
+            await RunDemoPageTestAsync(static () => new GalleryTreesPage(), static window =>
             {
-                StackPanel? treeExpansionActions = FindVisualChildByName<StackPanel>(window, "TreeExpansionActionsPanel");
-                Assert.NotNull(treeExpansionActions);
+                StackPanel treeExpansionActions = Assert.IsAssignableFrom<StackPanel>(FindVisualChildByName<StackPanel>(window, "TreeExpansionActionsPanel"));
                 Assert.Equal(HorizontalAlignment.Center, treeExpansionActions.HorizontalAlignment);
                 Assert.Equal(VerticalAlignment.Center, treeExpansionActions.VerticalAlignment);
                 Assert.True(treeExpansionActions.Children.OfType<Controls.Button>().All(static button => button.MinWidth >= 140.0),
                     "Tree expansion buttons should be wider than the default compact command width.");
-            });
+            }).ConfigureAwait(true);
 
-            RunDemoPageTest(static () => new GalleryAccessibilityPage(), static window =>
+            await RunDemoPageTestAsync(static () => new GalleryAccessibilityPage(), static window =>
             {
                 string[] buttonNames =
                 [
@@ -538,23 +495,21 @@ namespace Fluence.Wpf.Tests
 
                 foreach (string buttonName in buttonNames)
                 {
-                    Controls.Button? button = FindVisualChildByName<Controls.Button>(window, buttonName);
-                    Assert.NotNull(button);
+                    Controls.Button button = Assert.IsAssignableFrom<Controls.Button>(FindVisualChildByName<Controls.Button>(window, buttonName));
                     Assert.Equal(36.0, button.Width, 0.1);
                     Assert.Equal(36.0, button.Height, 0.1);
                     Assert.Equal(36.0, button.MinWidth, 0.1);
                     Assert.Equal(0.0, button.Padding.Left, 0.1);
                 }
-            });
+            }).ConfigureAwait(true);
         }
 
         [Fact]
-        public void GalleryNavigationPage_IconsAreDefaultSizeAndInfoBadgePaneStartsExpanded()
+        public Task GalleryNavigationPage_IconsAreDefaultSizeAndInfoBadgePaneStartsExpandedAsync()
         {
-            RunDemoPageTest(static () => new GalleryNavigationPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryNavigationPage(), static window =>
             {
-                Controls.NavigationView? leftNavigation = FindVisualChildByName<Controls.NavigationView>(window, "LeftNavigationDemo");
-                Assert.NotNull(leftNavigation);
+                Controls.NavigationView leftNavigation = Assert.IsAssignableFrom<Controls.NavigationView>(FindVisualChildByName<Controls.NavigationView>(window, "LeftNavigationDemo"));
 
                 List<Controls.FontIcon> leftIcons = [.. FindVisualChildren<Controls.FontIcon>(leftNavigation)];
                 Assert.True(leftIcons.Count >= 3, "Left navigation sample should expose item icons.");
@@ -571,9 +526,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GalleryTabsPage_PlacementSampleUsesLeftPlacementOnly()
+        public Task GalleryTabsPage_PlacementSampleUsesLeftPlacementOnlyAsync()
         {
-            RunDemoPageTest(static () => new GalleryTabsPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryTabsPage(), static window =>
             {
                 Dictionary<string, TabItem> items = FindVisualChildren<TabItem>(window)
                     .Where(static item => item.Header is string)
@@ -585,8 +540,7 @@ namespace Fluence.Wpf.Tests
                 Assert.Equal(infoWidth, archiveWidth, 0.1);
                 Assert.True(infoWidth > 0.0, "Placement sample tab headers should use an explicit shared width.");
 
-                TabControl? leftTabs = FindVisualChildByName<TabControl>(window, "LeftPlacementTabs");
-                Assert.NotNull(leftTabs);
+                TabControl leftTabs = Assert.IsAssignableFrom<TabControl>(FindVisualChildByName<TabControl>(window, "LeftPlacementTabs"));
                 Assert.Equal(Dock.Left, leftTabs.TabStripPlacement);
 
                 TabControl? bottomTabs = FindVisualChildByName<TabControl>(window, "BottomPlacementTabs");
@@ -595,9 +549,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GalleryLayoutPage_SeparatesStructuralPrimitiveSamples()
+        public Task GalleryLayoutPage_SeparatesStructuralPrimitiveSamplesAsync()
         {
-            RunDemoPageTest(static () => new GalleryLayoutPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryLayoutPage(), static window =>
             {
                 List<string> descriptions = [.. FindVisualChildren<DemoSampleControl>(window).Select(static sample => sample.SampleDescription)];
 
@@ -608,23 +562,20 @@ namespace Fluence.Wpf.Tests
                 Assert.True(descriptions.Exists(static description => description.Contains("Expander", StringComparison.OrdinalIgnoreCase)),
                     "Layout page should have a dedicated Expander DemoSampleControl.");
 
-                Controls.Expander? dockPanelExpander = FindVisualChildByName<Controls.Expander>(window, "DockPanelOptionsExpander");
-                Assert.NotNull(dockPanelExpander);
+                Controls.Expander dockPanelExpander = Assert.IsAssignableFrom<Controls.Expander>(FindVisualChildByName<Controls.Expander>(window, "DockPanelOptionsExpander"));
                 _ = Assert.IsAssignableFrom<DockPanel>(dockPanelExpander.Header);
                 _ = Assert.IsAssignableFrom<DockPanel>(dockPanelExpander.Content);
             });
         }
 
         [Fact]
-        public void GalleryAccessibilityPage_RtlSampleDefaultsOn()
+        public Task GalleryAccessibilityPage_RtlSampleDefaultsOnAsync()
         {
-            RunDemoPageTest(static () => new GalleryAccessibilityPage(), static window =>
+            return RunDemoPageTestAsync(static () => new GalleryAccessibilityPage(), static window =>
             {
-                Controls.ToggleSwitch? toggle = FindVisualChildByName<Controls.ToggleSwitch>(window, "RtlToggle");
-                Controls.Card? card = FindVisualChildByName<Controls.Card>(window, "RtlDemoCard");
+                Controls.ToggleSwitch toggle = Assert.IsAssignableFrom<Controls.ToggleSwitch>(FindVisualChildByName<Controls.ToggleSwitch>(window, "RtlToggle"));
+                Controls.Card card = Assert.IsAssignableFrom<Controls.Card>(FindVisualChildByName<Controls.Card>(window, "RtlDemoCard"));
 
-                Assert.NotNull(toggle);
-                Assert.NotNull(card);
                 Assert.True(toggle.IsChecked.GetValueOrDefault(),
                     "RTL sample should default to On.");
                 Assert.Equal(FlowDirection.RightToLeft, card.FlowDirection);
@@ -648,28 +599,12 @@ namespace Fluence.Wpf.Tests
 
         private static Controls.ToggleButton? FindToggleButtonByContent(DependencyObject root, string content)
         {
-            foreach (Controls.ToggleButton button in FindVisualChildren<Controls.ToggleButton>(root))
-            {
-                if (string.Equals(button.Content as string, content, StringComparison.Ordinal))
-                {
-                    return button;
-                }
-            }
-
-            return null;
+            return FindVisualChildren<Controls.ToggleButton>(root).FirstOrDefault(button => string.Equals(button.Content as string, content, StringComparison.Ordinal));
         }
 
         private static Controls.RadioButton? FindRadioButtonByContent(DependencyObject root, string content)
         {
-            foreach (Controls.RadioButton radioButton in FindVisualChildren<Controls.RadioButton>(root))
-            {
-                if (string.Equals(radioButton.Content as string, content, StringComparison.Ordinal))
-                {
-                    return radioButton;
-                }
-            }
-
-            return null;
+            return FindVisualChildren<Controls.RadioButton>(root).FirstOrDefault(radioButton => string.Equals(radioButton.Content as string, content, StringComparison.Ordinal));
         }
     }
 }

@@ -27,6 +27,8 @@
  */
 
 using System;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -52,10 +54,9 @@ namespace Fluence.Wpf.Tests
             }
         }
 
-        private static Color GetResolvedBrushColor(Application? application, string brushKey)
+        private static Color GetResolvedBrushColor(Application application, string brushKey)
         {
-            SolidColorBrush? brush = application?.Resources[brushKey] as SolidColorBrush;
-            Assert.NotNull(brush);
+            SolidColorBrush brush = Assert.IsType<SolidColorBrush>(application?.Resources[brushKey]);
             return brush.Color;
         }
 
@@ -66,12 +67,12 @@ namespace Fluence.Wpf.Tests
 
         // Constructs the control inside the STA action: FrameworkElement creation on
         // the xUnit worker thread throws, so the factory must run on the STA thread.
-        private static void RunToggleButtonTest<T>(Func<T> createToggleButton, Action<Application?, T> verify)
+        private static Task RunToggleButtonTestAsync<T>(Func<T> createToggleButton, Action<Application, T> verify)
             where T : Controls.ToggleButton
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 ApplicationAccentColorManager.ApplyCustomAccent(Color.FromRgb(0x00, 0x78, 0xD4));
                 T toggleButton = createToggleButton();
@@ -81,7 +82,7 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = toggleButton;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     verify(application, toggleButton);
@@ -95,9 +96,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_Defaults_AreWinUiCanon()
+        public Task ToggleButton_Defaults_AreWinUiCanonAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new Controls.ToggleButton
                 {
                     Content = "Toggle",
@@ -115,9 +116,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_DefaultStyle_TemplateExposesRestFillAndBackdrop()
+        public Task ToggleButton_DefaultStyle_TemplateExposesRestFillAndBackdropAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new Controls.ToggleButton
                 {
                     Content = "Toggle",
@@ -132,9 +133,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_Checked_UsesAccentFillBackdropAndOnAccentText()
+        public Task ToggleButton_Checked_UsesAccentFillBackdropAndOnAccentTextAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new Controls.ToggleButton
                 {
                     Content = "Toggle",
@@ -143,11 +144,9 @@ namespace Fluence.Wpf.Tests
                 },
                 (application, toggleButton) =>
                 {
-                    Border? restFill = FindVisualChildByName<Border>(toggleButton, "RestFill");
-                    Border? backdrop = FindVisualChildByName<Border>(toggleButton, "AccentFillBackdrop");
+                    Border restFill = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "RestFill"));
+                    Border backdrop = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "AccentFillBackdrop"));
 
-                    Assert.NotNull(restFill);
-                    Assert.NotNull(backdrop);
                     Assert.Equal(GetResolvedBrushColor(application, "AccentFillColorDefaultBrush"), GetSolidColor(restFill.Background));
                     Assert.Equal(1.0, backdrop.Opacity);
                     Assert.Equal(GetResolvedBrushColor(application, "TextOnAccentFillColorPrimaryBrush"), GetSolidColor(toggleButton.Foreground));
@@ -155,9 +154,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_CheckedPressed_UsesAccentTertiaryFill()
+        public Task ToggleButton_CheckedPressed_UsesAccentTertiaryFillAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new PressableToggleButtonProbe
                 {
                     Content = "Probe",
@@ -166,14 +165,12 @@ namespace Fluence.Wpf.Tests
                 (application, probe) =>
                 {
                     probe.SetPressed(value: true);
-                    DrainDispatcher(probe.Dispatcher);
+                    WpfTestSta.DrainDispatcher(probe.Dispatcher);
                     probe.UpdateLayout();
 
-                    Border? restFill = FindVisualChildByName<Border>(probe, "RestFill");
-                    Border? outerBorder = FindVisualChildByName<Border>(probe, "OuterBorder");
+                    Border restFill = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(probe, "RestFill"));
+                    Border outerBorder = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(probe, "OuterBorder"));
 
-                    Assert.NotNull(restFill);
-                    Assert.NotNull(outerBorder);
                     Assert.Equal(GetResolvedBrushColor(application, "AccentFillColorTertiaryBrush"), GetSolidColor(restFill.Background));
                     Assert.Equal(GetResolvedBrushColor(application, "TextOnAccentFillColorSecondaryBrush"), GetSolidColor(probe.Foreground));
                     Assert.Equal(GetResolvedBrushColor(application, "ControlFillColorTransparentBrush"), GetSolidColor(outerBorder.BorderBrush));
@@ -181,9 +178,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_Indeterminate_RestKeepsDefaultFill()
+        public Task ToggleButton_Indeterminate_RestKeepsDefaultFillAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new Controls.ToggleButton
                 {
                     Content = "Toggle",
@@ -193,11 +190,9 @@ namespace Fluence.Wpf.Tests
                 },
                 (application, toggleButton) =>
                 {
-                    Border? restFill = FindVisualChildByName<Border>(toggleButton, "RestFill");
-                    Border? backdrop = FindVisualChildByName<Border>(toggleButton, "AccentFillBackdrop");
+                    Border restFill = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "RestFill"));
+                    Border backdrop = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "AccentFillBackdrop"));
 
-                    Assert.NotNull(restFill);
-                    Assert.NotNull(backdrop);
                     Assert.Equal(GetResolvedBrushColor(application, "ControlFillColorDefaultBrush"), GetSolidColor(restFill.Background));
                     Assert.Equal(0.0, backdrop.Opacity);
                     Assert.Equal(GetResolvedBrushColor(application, "TextFillColorPrimaryBrush"), GetSolidColor(toggleButton.Foreground));
@@ -205,9 +200,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_IndeterminatePressed_UsesControlTertiaryFill()
+        public Task ToggleButton_IndeterminatePressed_UsesControlTertiaryFillAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new PressableToggleButtonProbe
                 {
                     Content = "Probe",
@@ -217,14 +212,12 @@ namespace Fluence.Wpf.Tests
                 (application, probe) =>
                 {
                     probe.SetPressed(value: true);
-                    DrainDispatcher(probe.Dispatcher);
+                    WpfTestSta.DrainDispatcher(probe.Dispatcher);
                     probe.UpdateLayout();
 
-                    Border? restFill = FindVisualChildByName<Border>(probe, "RestFill");
-                    Border? outerBorder = FindVisualChildByName<Border>(probe, "OuterBorder");
+                    Border restFill = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(probe, "RestFill"));
+                    Border outerBorder = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(probe, "OuterBorder"));
 
-                    Assert.NotNull(restFill);
-                    Assert.NotNull(outerBorder);
                     Assert.Equal(GetResolvedBrushColor(application, "ControlFillColorTertiaryBrush"), GetSolidColor(restFill.Background));
                     Assert.Equal(GetResolvedBrushColor(application, "TextFillColorSecondaryBrush"), GetSolidColor(probe.Foreground));
                     Assert.Equal(GetResolvedBrushColor(application, "ControlStrokeColorDefaultBrush"), GetSolidColor(outerBorder.BorderBrush));
@@ -232,9 +225,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_IndeterminateDisabled_UsesDisabledFillAndText()
+        public Task ToggleButton_IndeterminateDisabled_UsesDisabledFillAndTextAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new Controls.ToggleButton
                 {
                     Content = "Toggle",
@@ -244,11 +237,9 @@ namespace Fluence.Wpf.Tests
                 },
                 (application, toggleButton) =>
                 {
-                    Border? restFill = FindVisualChildByName<Border>(toggleButton, "RestFill");
-                    Border? outerBorder = FindVisualChildByName<Border>(toggleButton, "OuterBorder");
+                    Border restFill = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "RestFill"));
+                    Border outerBorder = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "OuterBorder"));
 
-                    Assert.NotNull(restFill);
-                    Assert.NotNull(outerBorder);
                     Assert.Equal(GetResolvedBrushColor(application, "ControlFillColorDisabledBrush"), GetSolidColor(restFill.Background));
                     Assert.Equal(GetResolvedBrushColor(application, "TextFillColorDisabledBrush"), GetSolidColor(toggleButton.Foreground));
                     Assert.Equal(GetResolvedBrushColor(application, "ControlStrokeColorDefaultBrush"), GetSolidColor(outerBorder.BorderBrush));
@@ -256,9 +247,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_CheckedDisabled_UsesAccentDisabledFill()
+        public Task ToggleButton_CheckedDisabled_UsesAccentDisabledFillAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new Controls.ToggleButton
                 {
                     Content = "Toggle",
@@ -267,18 +258,17 @@ namespace Fluence.Wpf.Tests
                 },
                 (application, toggleButton) =>
                 {
-                    Border? restFill = FindVisualChildByName<Border>(toggleButton, "RestFill");
+                    Border restFill = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "RestFill"));
 
-                    Assert.NotNull(restFill);
                     Assert.Equal(GetResolvedBrushColor(application, "AccentFillColorDisabledBrush"), GetSolidColor(restFill.Background));
                     Assert.Equal(GetResolvedBrushColor(application, "TextOnAccentFillColorDisabledBrush"), GetSolidColor(toggleButton.Foreground));
                 });
         }
 
         [Fact]
-        public void ToggleButton_AppearanceAccent_StillRendersCheckedAccentVisuals()
+        public Task ToggleButton_AppearanceAccent_StillRendersCheckedAccentVisualsAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new Controls.ToggleButton
                 {
                     Content = "Toggle",
@@ -288,11 +278,9 @@ namespace Fluence.Wpf.Tests
                 },
                 (application, toggleButton) =>
                 {
-                    Border? restFill = FindVisualChildByName<Border>(toggleButton, "RestFill");
-                    Border? backdrop = FindVisualChildByName<Border>(toggleButton, "AccentFillBackdrop");
+                    Border restFill = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "RestFill"));
+                    Border backdrop = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "AccentFillBackdrop"));
 
-                    Assert.NotNull(restFill);
-                    Assert.NotNull(backdrop);
                     Assert.Equal(GetResolvedBrushColor(application, "AccentFillColorDefaultBrush"), GetSolidColor(restFill.Background));
                     Assert.Equal(1.0, backdrop.Opacity);
                     Assert.Equal(GetResolvedBrushColor(application, "TextOnAccentFillColorPrimaryBrush"), GetSolidColor(toggleButton.Foreground));
@@ -300,9 +288,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_CheckedTriggers_OrderedRestHoverPressed()
+        public Task ToggleButton_CheckedTriggers_OrderedRestHoverPressedAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new Controls.ToggleButton
                 {
                     Content = "Toggle",
@@ -310,8 +298,7 @@ namespace Fluence.Wpf.Tests
                 },
                 (_, toggleButton) =>
                 {
-                    ControlTemplate? template = toggleButton.Template;
-                    Assert.NotNull(template);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(toggleButton.Template);
                     TriggerCollection triggers = template.Triggers;
 
                     int checkedRestIndex = FindTriggerIndex(triggers, triggerBase =>
@@ -336,9 +323,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleButton_ThemeCycle_CheckedBrushesReResolve()
+        public Task ToggleButton_ThemeCycle_CheckedBrushesReResolveAsync()
         {
-            RunToggleButtonTest(
+            return RunToggleButtonTestAsync(
                 () => new Controls.ToggleButton
                 {
                     Content = "Toggle",
@@ -348,12 +335,11 @@ namespace Fluence.Wpf.Tests
                 (application, toggleButton) =>
                 {
                     ThemeTestHelpers.ApplyStandardThemeCycle();
-                    DrainDispatcher(toggleButton.Dispatcher);
+                    WpfTestSta.DrainDispatcher(toggleButton.Dispatcher);
                     toggleButton.UpdateLayout();
 
-                    Border? restFill = FindVisualChildByName<Border>(toggleButton, "RestFill");
+                    Border restFill = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(toggleButton, "RestFill"));
 
-                    Assert.NotNull(restFill);
                     Assert.Equal(GetResolvedBrushColor(application, "AccentFillColorDefaultBrush"), GetSolidColor(restFill.Background));
                     ThemeTestHelpers.AssertKeyThemeBrushesResolve(application);
                 });
@@ -374,15 +360,7 @@ namespace Fluence.Wpf.Tests
 
         private static bool HasTriggerCondition(MultiTrigger multiTrigger, DependencyProperty property, object? value)
         {
-            foreach (Condition condition in multiTrigger.Conditions)
-            {
-                if (condition.Property == property && Equals(condition.Value, value))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return multiTrigger.Conditions.Any(condition => condition.Property == property && Equals(condition.Value, value));
         }
 
         private static bool IsToggleHoverTrigger(TriggerBase triggerBase, object? isCheckedValue)

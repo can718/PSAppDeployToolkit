@@ -28,6 +28,7 @@
 
 using System;
 using System.Globalization;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
@@ -71,15 +72,14 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_DefaultStyle_AppliesTemplateParts()
+        public Task TimePicker_DefaultStyle_AppliesTemplatePartsAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
-                Style? style = app?.TryFindResource(typeof(Controls.TimePicker)) as Style;
-                Assert.NotNull(style);
+                Style style = Assert.IsType<Style>(app?.TryFindResource(typeof(Controls.TimePicker)));
 
                 Window window = new() { Width = 500, Height = 400 };
                 Controls.TimePicker picker = new();
@@ -88,27 +88,19 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
 
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? hourList = template.FindName("PART_HourList", picker) as Selector;
-                    Selector? minuteList = template.FindName("PART_MinuteList", picker) as Selector;
-                    Selector? periodList = template.FindName("PART_PeriodList", picker) as Selector;
-                    ButtonBase? acceptButton = template.FindName("PART_AcceptButton", picker) as ButtonBase;
-                    ButtonBase? cancelButton = template.FindName("PART_CancelButton", picker) as ButtonBase;
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector hourList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_HourList", picker));
+                    Selector minuteList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MinuteList", picker));
+                    Selector periodList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_PeriodList", picker));
+                    ButtonBase acceptButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_AcceptButton", picker));
+                    ButtonBase cancelButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_CancelButton", picker));
 
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(hourList);
-                    Assert.NotNull(minuteList);
-                    Assert.NotNull(periodList);
-                    Assert.NotNull(acceptButton);
-                    Assert.NotNull(cancelButton);
                     _ = Assert.IsAssignableFrom<Controls.ListBox>(hourList);
                     _ = Assert.IsAssignableFrom<Controls.Button>(flyoutButton);
                     Assert.False(popup.StaysOpen, "The selector flyout must be light-dismiss (StaysOpen=false).");
@@ -122,11 +114,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_SelectedTime_UpdatesFieldSegmentsAndPlaceholder()
+        public Task TimePicker_SelectedTime_UpdatesFieldSegmentsAndPlaceholderAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -139,23 +131,17 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
 
-                    TextBlock? hourText = template.FindName("HourSegmentText", picker) as TextBlock;
-                    TextBlock? minuteText = template.FindName("MinuteSegmentText", picker) as TextBlock;
-                    TextBlock? periodText = template.FindName("PeriodSegmentText", picker) as TextBlock;
-                    TextBlock? placeholder = template.FindName("PlaceholderTextBlock", picker) as TextBlock;
-                    FrameworkElement? segmentsHost = template.FindName("SegmentsHost", picker) as FrameworkElement;
+                    TextBlock hourText = Assert.IsType<TextBlock>(template.FindName("HourSegmentText", picker));
+                    TextBlock minuteText = Assert.IsType<TextBlock>(template.FindName("MinuteSegmentText", picker));
+                    TextBlock periodText = Assert.IsType<TextBlock>(template.FindName("PeriodSegmentText", picker));
+                    TextBlock placeholder = Assert.IsType<TextBlock>(template.FindName("PlaceholderTextBlock", picker));
+                    FrameworkElement segmentsHost = Assert.IsAssignableFrom<FrameworkElement>(template.FindName("SegmentsHost", picker));
 
-                    Assert.NotNull(hourText);
-                    Assert.NotNull(minuteText);
-                    Assert.NotNull(periodText);
-                    Assert.NotNull(placeholder);
-                    Assert.NotNull(segmentsHost);
 
                     Assert.Equal(Visibility.Visible, placeholder.Visibility);
                     Assert.Equal(Visibility.Collapsed, segmentsHost.Visibility);
@@ -163,7 +149,7 @@ namespace Fluence.Wpf.Tests
 
                     CultureInfo culture = CultureInfo.CurrentCulture;
                     picker.SelectedTime = new TimeSpan(9, 5, 0);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Collapsed, placeholder.Visibility);
                     Assert.Equal(Visibility.Visible, segmentsHost.Visibility);
@@ -172,14 +158,14 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(ExpectedAmDesignator(culture), periodText.Text, StringComparer.Ordinal);
 
                     picker.SelectedTime = TimeSpan.Zero;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(12.ToString(culture), hourText.Text, StringComparer.Ordinal);
                     Assert.Equal(0.ToString("00", culture), minuteText.Text, StringComparer.Ordinal);
                     Assert.Equal(ExpectedAmDesignator(culture), periodText.Text, StringComparer.Ordinal);
 
                     picker.SelectedTime = new TimeSpan(12, 30, 0);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(12.ToString(culture), hourText.Text, StringComparer.Ordinal);
                     Assert.Equal(30.ToString("00", culture), minuteText.Text, StringComparer.Ordinal);
@@ -193,11 +179,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_FieldClick_OpensPopupAndPopulatesColumns()
+        public Task TimePicker_FieldClick_OpensPopupAndPopulatesColumnsAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -210,38 +196,30 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? hourList = template.FindName("PART_HourList", picker) as Selector;
-                    Selector? minuteList = template.FindName("PART_MinuteList", picker) as Selector;
-                    Selector? periodList = template.FindName("PART_PeriodList", picker) as Selector;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(hourList);
-                    Assert.NotNull(minuteList);
-                    Assert.NotNull(periodList);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector hourList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_HourList", picker));
+                    Selector minuteList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MinuteList", picker));
+                    Selector periodList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_PeriodList", picker));
 
                     picker.SelectedTime = new TimeSpan(14, 30, 0);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "Clicking the field must open the selector flyout.");
 
                     // The open reveal (slide down from Y=-8 with a fade) must exist in the
                     // template and settle at rest once the 167ms storyboard completes.
-                    TranslateTransform? translate =
-                        template.FindName("FlyoutSurfaceTranslate", picker) as TranslateTransform;
-                    Assert.NotNull(translate);
-                    Border? surface = template.FindName("FlyoutSurface", picker) as Border;
-                    Assert.NotNull(surface);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => Math.Abs(translate.Y) < 0.001 && surface.Opacity >= 1.0),
+                    TranslateTransform translate =
+                        Assert.IsType<TranslateTransform>(template.FindName("FlyoutSurfaceTranslate", picker));
+                    Border surface = Assert.IsType<Border>(template.FindName("FlyoutSurface", picker));
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => Math.Abs(translate.Y) < 0.001 && surface.Opacity >= 1.0).ConfigureAwait(true),
                         "The flyout reveal must settle at Y=0 and full opacity.");
 
                     CultureInfo culture = CultureInfo.CurrentCulture;
@@ -264,11 +242,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_TwentyFourHourClock_PopulatesHoursAndHidesPeriodColumn()
+        public Task TimePicker_TwentyFourHourClock_PopulatesHoursAndHidesPeriodColumnAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -283,27 +261,18 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? hourList = template.FindName("PART_HourList", picker) as Selector;
-                    Selector? minuteList = template.FindName("PART_MinuteList", picker) as Selector;
-                    Selector? periodList = template.FindName("PART_PeriodList", picker) as Selector;
-                    TextBlock? hourText = template.FindName("HourSegmentText", picker) as TextBlock;
-                    TextBlock? periodText = template.FindName("PeriodSegmentText", picker) as TextBlock;
-                    FrameworkElement? secondDivider = template.FindName("SecondDivider", picker) as FrameworkElement;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(hourList);
-                    Assert.NotNull(minuteList);
-                    Assert.NotNull(periodList);
-                    Assert.NotNull(hourText);
-                    Assert.NotNull(periodText);
-                    Assert.NotNull(secondDivider);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector hourList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_HourList", picker));
+                    Selector minuteList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MinuteList", picker));
+                    Selector periodList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_PeriodList", picker));
+                    TextBlock hourText = Assert.IsType<TextBlock>(template.FindName("HourSegmentText", picker));
+                    TextBlock periodText = Assert.IsType<TextBlock>(template.FindName("PeriodSegmentText", picker));
+                    FrameworkElement secondDivider = Assert.IsAssignableFrom<FrameworkElement>(template.FindName("SecondDivider", picker));
 
                     CultureInfo culture = CultureInfo.CurrentCulture;
                     Assert.Equal(14.ToString(culture), hourText.Text, StringComparer.Ordinal);
@@ -312,7 +281,7 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(Visibility.Collapsed, secondDivider.Visibility);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "Clicking the field must open the selector flyout.");
 
                     Assert.Equal(24, hourList.Items.Count);
@@ -331,11 +300,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_ClockIdentifierAndMinuteIncrement_CoerceInvalidValues()
+        public Task TimePicker_ClockIdentifierAndMinuteIncrement_CoerceInvalidValuesAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.TimePicker picker = new();
@@ -364,11 +333,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_Accept_CommitsSelectionAndRaisesSelectedTimeChanged()
+        public Task TimePicker_Accept_CommitsSelectionAndRaisesSelectedTimeChangedAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -381,30 +350,23 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? hourList = template.FindName("PART_HourList", picker) as Selector;
-                    Selector? minuteList = template.FindName("PART_MinuteList", picker) as Selector;
-                    Selector? periodList = template.FindName("PART_PeriodList", picker) as Selector;
-                    ButtonBase? acceptButton = template.FindName("PART_AcceptButton", picker) as ButtonBase;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(hourList);
-                    Assert.NotNull(minuteList);
-                    Assert.NotNull(periodList);
-                    Assert.NotNull(acceptButton);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector hourList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_HourList", picker));
+                    Selector minuteList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MinuteList", picker));
+                    Selector periodList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_PeriodList", picker));
+                    ButtonBase acceptButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_AcceptButton", picker));
 
                     TimeSpan oldTime = new(9, 5, 0);
                     picker.SelectedTime = oldTime;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the accept scenario.");
 
                     TimePickerSelectedValueChangedEventArgs? captured = null;
@@ -413,29 +375,29 @@ namespace Fluence.Wpf.Tests
                     hourList.SelectedIndex = 11;
                     minuteList.SelectedIndex = 30;
                     periodList.SelectedIndex = 1;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(acceptButton);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     TimeSpan noon = new(12, 30, 0);
                     Assert.Equal(noon, picker.SelectedTime);
                     Assert.NotNull(captured);
                     Assert.Equal(oldTime, captured.OldTime);
                     Assert.Equal(noon, captured.NewTime);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => !popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => !popup.IsOpen).ConfigureAwait(true),
                         "Accept must close the selector flyout.");
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must reopen for the midnight scenario.");
 
                     Assert.Equal(11, hourList.SelectedIndex);
                     periodList.SelectedIndex = 0;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(acceptButton);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     TimeSpan midnight = new(0, 30, 0);
                     Assert.Equal(midnight, picker.SelectedTime);
@@ -451,11 +413,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_Cancel_RevertsPendingSelection()
+        public Task TimePicker_Cancel_RevertsPendingSelectionAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -465,28 +427,22 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? hourList = template.FindName("PART_HourList", picker) as Selector;
-                    Selector? minuteList = template.FindName("PART_MinuteList", picker) as Selector;
-                    ButtonBase? cancelButton = template.FindName("PART_CancelButton", picker) as ButtonBase;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(hourList);
-                    Assert.NotNull(minuteList);
-                    Assert.NotNull(cancelButton);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector hourList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_HourList", picker));
+                    Selector minuteList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MinuteList", picker));
+                    ButtonBase cancelButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_CancelButton", picker));
 
                     TimeSpan original = new(9, 5, 0);
                     picker.SelectedTime = original;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the cancel scenario.");
 
                     bool raised = false;
@@ -494,14 +450,14 @@ namespace Fluence.Wpf.Tests
 
                     hourList.SelectedIndex = 3;
                     minuteList.SelectedIndex = 45;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(cancelButton);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(original, picker.SelectedTime);
                     Assert.False(raised, "Cancel must not raise SelectedTimeChanged.");
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => !popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => !popup.IsOpen).ConfigureAwait(true),
                         "Cancel must close the selector flyout.");
                 }
                 finally
@@ -512,11 +468,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_AutomationPeer_ReportsNameFromTimeOrPlaceholder()
+        public Task TimePicker_AutomationPeer_ReportsNameFromTimeOrPlaceholderAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -526,11 +482,10 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    AutomationPeer? peer = UIElementAutomationPeer.CreatePeerForElement(picker);
-                    Assert.NotNull(peer);
+                    AutomationPeer peer = Assert.IsAssignableFrom<AutomationPeer>(UIElementAutomationPeer.CreatePeerForElement(picker));
                     _ = Assert.IsAssignableFrom<Automation.TimePickerAutomationPeer>(peer);
                     Assert.Equal("TimePicker", peer.GetClassName(), StringComparer.Ordinal);
                     Assert.Equal(AutomationControlType.Group, peer.GetAutomationControlType());
@@ -538,7 +493,7 @@ namespace Fluence.Wpf.Tests
 
                     TimeSpan time = new(14, 30, 0);
                     picker.SelectedTime = time;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(DateTime.Today.Add(time).ToString("t", CultureInfo.CurrentCulture), peer.GetName(), StringComparer.Ordinal);
                 }
@@ -550,11 +505,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_BlankCultureDesignators_FallBackToInvariantAmPm()
+        public Task TimePicker_BlankCultureDesignators_FallBackToInvariantAmPmAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 // Simulate the .NET Framework NLS locales (de-DE, fr-FR, sv-SE, it-IT) that
@@ -573,32 +528,27 @@ namespace Fluence.Wpf.Tests
 
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? periodList = template.FindName("PART_PeriodList", picker) as Selector;
-                    TextBlock? periodText = template.FindName("PeriodSegmentText", picker) as TextBlock;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(periodList);
-                    Assert.NotNull(periodText);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector periodList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_PeriodList", picker));
+                    TextBlock periodText = Assert.IsType<TextBlock>(template.FindName("PeriodSegmentText", picker));
 
                     picker.SelectedTime = new TimeSpan(14, 30, 0);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal("PM", periodText.Text, StringComparer.Ordinal);
 
                     picker.SelectedTime = new TimeSpan(9, 5, 0);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal("AM", periodText.Text, StringComparer.Ordinal);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "Clicking the field must open the selector flyout.");
 
                     Assert.Equal(2, periodList.Items.Count);
@@ -614,11 +564,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_FlyoutOpen_MovesKeyboardFocusIntoPopupAndCyclesTab()
+        public Task TimePicker_FlyoutOpen_MovesKeyboardFocusIntoPopupAndCyclesTabAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -632,27 +582,24 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
                     Assert.NotNull(popup.Child);
 
                     Assert.Equal(KeyboardNavigationMode.Cycle, KeyboardNavigation.GetTabNavigation(popup.Child));
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "Clicking the field must open the selector flyout.");
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () =>
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () =>
                             popup.Child is Visual root
                             && Keyboard.FocusedElement is Visual focused
-                            && focused.IsDescendantOf(root)),
+                            && focused.IsDescendantOf(root)).ConfigureAwait(true),
                         "Opening the flyout must move keyboard focus inside the popup.");
                 }
                 finally
@@ -663,11 +610,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_FlyoutEscape_ClosesWithoutCommitting()
+        public Task TimePicker_FlyoutEscape_ClosesWithoutCommittingAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -677,26 +624,21 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? hourList = template.FindName("PART_HourList", picker) as Selector;
-                    Selector? minuteList = template.FindName("PART_MinuteList", picker) as Selector;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(hourList);
-                    Assert.NotNull(minuteList);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector hourList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_HourList", picker));
+                    Selector minuteList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MinuteList", picker));
 
                     TimeSpan original = new(9, 5, 0);
                     picker.SelectedTime = original;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the Escape scenario.");
                     Assert.NotNull(popup.Child);
 
@@ -705,11 +647,11 @@ namespace Fluence.Wpf.Tests
 
                     hourList.SelectedIndex = 3;
                     minuteList.SelectedIndex = 45;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseKeyEvent(popup.Child, Key.Escape, UIElement.PreviewKeyDownEvent);
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => !popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => !popup.IsOpen).ConfigureAwait(true),
                         "Escape must close the selector flyout.");
                     Assert.Equal(original, picker.SelectedTime);
                     Assert.False(raised, "Escape must not raise SelectedTimeChanged.");
@@ -722,11 +664,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_FlyoutEnter_CommitsPendingSelection()
+        public Task TimePicker_FlyoutEnter_CommitsPendingSelectionAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -736,38 +678,32 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? hourList = template.FindName("PART_HourList", picker) as Selector;
-                    Selector? minuteList = template.FindName("PART_MinuteList", picker) as Selector;
-                    Selector? periodList = template.FindName("PART_PeriodList", picker) as Selector;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(hourList);
-                    Assert.NotNull(minuteList);
-                    Assert.NotNull(periodList);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector hourList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_HourList", picker));
+                    Selector minuteList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MinuteList", picker));
+                    Selector periodList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_PeriodList", picker));
 
                     picker.SelectedTime = new TimeSpan(9, 5, 0);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the Enter scenario.");
                     Assert.NotNull(popup.Child);
 
                     hourList.SelectedIndex = 11;
                     minuteList.SelectedIndex = 30;
                     periodList.SelectedIndex = 1;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseKeyEvent(popup.Child, Key.Enter, UIElement.PreviewKeyDownEvent);
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => !popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => !popup.IsOpen).ConfigureAwait(true),
                         "Enter must close the selector flyout.");
                     Assert.Equal(new TimeSpan(12, 30, 0), picker.SelectedTime);
                 }
@@ -779,11 +715,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_OutOfRangeSelectedTime_NormalizesFieldText()
+        public Task TimePicker_OutOfRangeSelectedTime_NormalizesFieldTextAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -795,31 +731,28 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    TextBlock? hourText = template.FindName("HourSegmentText", picker) as TextBlock;
-                    TextBlock? minuteText = template.FindName("MinuteSegmentText", picker) as TextBlock;
-                    Assert.NotNull(hourText);
-                    Assert.NotNull(minuteText);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    TextBlock hourText = Assert.IsType<TextBlock>(template.FindName("HourSegmentText", picker));
+                    TextBlock minuteText = Assert.IsType<TextBlock>(template.FindName("MinuteSegmentText", picker));
 
                     CultureInfo culture = CultureInfo.CurrentCulture;
 
                     // A negative span wraps to the previous-day hour like the flyout columns.
                     picker.SelectedTime = TimeSpan.FromHours(-1);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.Equal(23.ToString(culture), hourText.Text, StringComparer.Ordinal);
 
                     // A span past a day wraps into the day like the flyout columns.
                     picker.SelectedTime = TimeSpan.FromHours(25);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.Equal(1.ToString(culture), hourText.Text, StringComparer.Ordinal);
 
                     // Negative minutes normalize into 0..59.
                     picker.SelectedTime = new TimeSpan(0, -30, 0);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.Equal(30.ToString("00", culture), minuteText.Text, StringComparer.Ordinal);
                 }
                 finally
@@ -830,11 +763,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_FieldClickAfterLightDismiss_DoesNotImmediatelyReopen()
+        public Task TimePicker_FieldClickAfterLightDismiss_DoesNotImmediatelyReopenAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -844,35 +777,32 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the light dismiss is simulated.");
 
                     // A light dismiss closes the popup outside the control's own pipeline,
                     // exactly like the StaysOpen=false dismissal on the field mousedown.
                     popup.SetCurrentValue(Popup.IsOpenProperty, value: false);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     // The click of the same press-release gesture must not reopen the flyout.
                     RaiseButtonClick(flyoutButton);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.False(popup.IsOpen,
                         "A field click right after a light dismiss must not reopen the flyout (toggle, not flicker).");
 
                     // Once the lockout has elapsed, the field opens the flyout again.
-                    System.Threading.Thread.Sleep(300);
+                    await Task.Delay(300, TestContext.Current.CancellationToken).ConfigureAwait(true);
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "A field click after the lockout must reopen the flyout.");
                 }
                 finally
@@ -883,11 +813,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TimePicker_SurfaceBrushes_ResolveAfterThemeCycle()
+        public Task TimePicker_SurfaceBrushes_ResolveAfterThemeCycleAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ThemeTestHelpers.ApplyStandardThemeCycle();

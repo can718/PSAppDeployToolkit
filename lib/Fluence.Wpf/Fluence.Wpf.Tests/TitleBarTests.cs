@@ -29,7 +29,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Runtime.ExceptionServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;
@@ -41,22 +41,22 @@ using Xunit;
 
 namespace Fluence.Wpf.Tests
 {
-    public sealed class TitleBarTests : IDisposable
+    public sealed class TitleBarTests : IAsyncLifetime
     {
-        public TitleBarTests()
+        public ValueTask InitializeAsync()
         {
-            WpfTestSta.Invoke(ResetSharedWpfState);
+            return new ValueTask(WpfTestSta.RunOnStaAsync(ResetSharedWpfStateAsync));
         }
 
-        public void Dispose()
+        public ValueTask DisposeAsync()
         {
-            WpfTestSta.Invoke(ResetSharedWpfState);
+            return new ValueTask(WpfTestSta.RunOnStaAsync(ResetSharedWpfStateAsync));
         }
 
         [Fact]
-        public void TitleBar_Template_ExposesNavigationButtons()
+        public Task TitleBar_Template_ExposesNavigationButtonsAsync()
         {
-            RunWithTitleBar(
+            return RunWithTitleBarAsync(
                 static delegate
                 {
                     return new Controls.TitleBar
@@ -81,9 +81,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void TitleBar_BackButton_UsesCompactSlot()
+        public Task TitleBar_BackButton_UsesCompactSlotAsync()
         {
-            RunWithTitleBar(
+            return RunWithTitleBarAsync(
                 static delegate
                 {
                     return new Controls.TitleBar
@@ -103,22 +103,21 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(40.0, paneToggleButton.ActualWidth, 0.5);
                     Assert.Equal(36.0, paneToggleButton.ActualHeight, 0.5);
 
-                    System.Windows.Controls.TextBlock? backGlyph = FindVisualChild<System.Windows.Controls.TextBlock>(backButton);
-                    Assert.NotNull(backGlyph);
+                    System.Windows.Controls.TextBlock backGlyph = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(FindVisualChild<System.Windows.Controls.TextBlock>(backButton));
                     Assert.Equal(16.0, backGlyph.ActualWidth, 0.5);
                     Assert.Equal(16.0, backGlyph.ActualHeight, 0.5);
                 });
         }
 
         [Fact]
-        public void TitleBar_PaneToggleClick_ExecutesCommandThenRaisesRequested()
+        public async Task TitleBar_PaneToggleClick_ExecutesCommandThenRaisesRequestedAsync()
         {
             object parameter = new();
             RecordingCommand command = new(canExecute: true);
             int eventCount = 0;
             int commandCountObservedByEvent = -1;
 
-            RunWithTitleBar(
+            await RunWithTitleBarAsync(
                 delegate
                 {
                     return new Controls.TitleBar
@@ -142,17 +141,17 @@ namespace Fluence.Wpf.Tests
                     Assert.Same(parameter, command.LastParameter);
                     Assert.Equal(1, eventCount);
                     Assert.Equal(1, commandCountObservedByEvent);
-                });
+                }).ConfigureAwait(true);
         }
 
         [Fact]
-        public void TitleBar_BackButtonVisibilityAndCommand_Work()
+        public async Task TitleBar_BackButtonVisibilityAndCommand_WorkAsync()
         {
             object parameter = new();
             RecordingCommand command = new(canExecute: true);
             int eventCount = 0;
 
-            RunWithTitleBar(
+            await RunWithTitleBarAsync(
                 delegate
                 {
                     return new Controls.TitleBar
@@ -169,7 +168,7 @@ namespace Fluence.Wpf.Tests
                     titleBar.BackRequested += delegate { eventCount++; };
                     titleBar.IsBackButtonVisible = true;
                     titleBar.UpdateLayout();
-                    DrainDispatcher(titleBar.Dispatcher);
+                    WpfTestSta.DrainDispatcher(titleBar.Dispatcher);
 
                     Assert.Equal(Visibility.Visible, backButton.Visibility);
 
@@ -178,16 +177,16 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(1, command.ExecuteCount);
                     Assert.Same(parameter, command.LastParameter);
                     Assert.Equal(1, eventCount);
-                });
+                }).ConfigureAwait(true);
         }
 
         [Fact]
-        public void TitleBar_Unloaded_UnsubscribesCommandCanExecuteHandlers()
+        public async Task TitleBar_Unloaded_UnsubscribesCommandCanExecuteHandlersAsync()
         {
             RecordingCommand backCommand = new(canExecute: true);
             RecordingCommand paneToggleCommand = new(canExecute: true);
 
-            RunWithTitleBar(
+            await RunWithTitleBarAsync(
                 delegate
                 {
                     return new Controls.TitleBar
@@ -204,18 +203,18 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(1, paneToggleCommand.CanExecuteSubscriptionCount);
 
                     titleBar.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, titleBar));
-                    DrainDispatcher(titleBar.Dispatcher);
+                    WpfTestSta.DrainDispatcher(titleBar.Dispatcher);
 
                     Assert.Equal(1, backCommand.CanExecuteUnsubscriptionCount);
                     Assert.Equal(1, paneToggleCommand.CanExecuteUnsubscriptionCount);
-                });
+                }).ConfigureAwait(true);
         }
 
-        private static void RunWithTitleBar(Func<Controls.TitleBar> titleBarFactory, Action<Controls.TitleBar> testBody)
+        private static Task RunWithTitleBarAsync(Func<Controls.TitleBar> titleBarFactory, Action<Controls.TitleBar> testBody)
         {
-            RunOnFreshStaThread(delegate
+            return WpfTestSta.RunOnStaAsync(delegate
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window? window = null;
                 Controls.TitleBar? titleBar = null;
@@ -235,10 +234,10 @@ namespace Fluence.Wpf.Tests
                     };
 
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
                     _ = titleBar.ApplyTemplate();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     testBody(titleBar);
                 }
@@ -260,9 +259,7 @@ namespace Fluence.Wpf.Tests
 
         private static System.Windows.Controls.Button GetTemplateButton(Controls.TitleBar titleBar, string partName)
         {
-            System.Windows.Controls.Button? button = titleBar.Template.FindName(partName, titleBar) as System.Windows.Controls.Button;
-            Assert.NotNull(button);
-            return button;
+            return Assert.IsType<System.Windows.Controls.Button>(titleBar.Template.FindName(partName, titleBar));
         }
 
         private static T? FindVisualChild<T>(DependencyObject parent)
@@ -292,36 +289,10 @@ namespace Fluence.Wpf.Tests
             AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(button);
             IInvokeProvider invoke = (IInvokeProvider)peer.GetPattern(PatternInterface.Invoke);
             invoke.Invoke();
-            DrainDispatcher(button.Dispatcher);
+            WpfTestSta.DrainDispatcher(button.Dispatcher);
         }
 
-        private static void RunOnFreshStaThread(Action action)
-        {
-            Exception? capturedException = null;
-            WpfTestSta.Dispatcher?.Invoke(new Action(delegate
-            {
-                try
-                {
-                    action();
-                }
-                catch (Exception exception)
-                {
-                    capturedException = exception;
-                }
-            }));
-
-            if (capturedException is not null)
-            {
-                ExceptionDispatchInfo.Capture(capturedException).Throw();
-            }
-        }
-
-        private static Application? EnsureApplication()
-        {
-            return WpfTestSta.EnsureApplication();
-        }
-
-        private static ResourceDictionary? MergeGenericDictionary(Application? application)
+        private static ResourceDictionary? MergeGenericDictionary(Application application)
         {
             ApplicationThemeManager.ResetForTesting();
             ApplicationAccentColorManager.ResetForTesting();
@@ -332,14 +303,9 @@ namespace Fluence.Wpf.Tests
             return dictionaries?.Count > 0 ? dictionaries[^1] : null;
         }
 
-        private static void DrainDispatcher(Dispatcher dispatcher)
+        private static async Task ResetSharedWpfStateAsync()
         {
-            _ = dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(static delegate { }));
-        }
-
-        private static void ResetSharedWpfState()
-        {
-            Application? application = WpfTestSta.EnsureApplication();
+            Application application = WpfTestSta.EnsureApplication();
             Keyboard.ClearFocus();
 
             foreach (Window? window in application?.Windows.Cast<Window>() ?? [])
@@ -349,9 +315,9 @@ namespace Fluence.Wpf.Tests
             }
 
             Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
-            _ = dispatcher.Invoke(DispatcherPriority.Loaded, new Action(static delegate { }));
-            _ = dispatcher.Invoke(DispatcherPriority.ContextIdle, new Action(static delegate { }));
-            _ = dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(static delegate { }));
+            await dispatcher.InvokeAsync(static () => { }, priority: DispatcherPriority.Loaded, cancellationToken: TestContext.Current.CancellationToken).Task.ConfigureAwait(true);
+            await dispatcher.InvokeAsync(static () => { }, priority: DispatcherPriority.ContextIdle, cancellationToken: TestContext.Current.CancellationToken).Task.ConfigureAwait(true);
+            await dispatcher.InvokeAsync(static () => { }, priority: DispatcherPriority.ApplicationIdle, cancellationToken: TestContext.Current.CancellationToken).Task.ConfigureAwait(true);
 
             ApplicationThemeManager.ResetForTesting();
             ApplicationAccentColorManager.ResetForTesting();

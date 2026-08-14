@@ -29,6 +29,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -48,17 +49,17 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void InfoBadge_DisplayKindStates_GroupExists()
+        public Task InfoBadge_DisplayKindStates_GroupExistsAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 InfoBadge badge = new();
                 Window w = new() { Content = badge, Width = 60, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // Verify the VSM group is present in the template.
                 IList groups = VisualStateManager.GetVisualStateGroups(
@@ -78,24 +79,22 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void InfoBadge_DefaultState_IsDot()
+        public Task InfoBadge_DefaultState_IsDotAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 // Default: Value=-1, no IconSource → Dot state.
                 InfoBadge badge = new();
                 Window w = new() { Content = badge, Width = 60, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // DotIndicator should be visible; BadgeBorder should be collapsed.
-                Ellipse? dot = FindVisualChildByName<Ellipse>(badge, "DotIndicator");
-                System.Windows.Controls.Border? border = FindVisualChildByName<System.Windows.Controls.Border>(badge, "BadgeBorder");
-                Assert.NotNull(dot);
-                Assert.NotNull(border);
+                Ellipse dot = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(badge, "DotIndicator"));
+                System.Windows.Controls.Border border = Assert.IsAssignableFrom<System.Windows.Controls.Border>(FindVisualChildByName<System.Windows.Controls.Border>(badge, "BadgeBorder"));
                 Assert.Equal(Visibility.Visible, dot.Visibility);
                 Assert.Equal(Visibility.Collapsed, border.Visibility);
                 w.Close();
@@ -103,17 +102,17 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void InfoBadge_ValueSet_ShowsBadgeBorder()
+        public Task InfoBadge_ValueSet_ShowsBadgeBorderAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 InfoBadge badge = new() { Value = 5 };
                 Window w = new() { Content = badge, Width = 60, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 Ellipse? dot = FindVisualChildByName<Ellipse>(badge, "DotIndicator");
                 System.Windows.Controls.Border? border = FindVisualChildByName<System.Windows.Controls.Border>(badge, "BadgeBorder");
@@ -124,11 +123,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void InfoBadge_ValueBadge_UsesStableScreenshotPillMetrics()
+        public Task InfoBadge_ValueBadge_UsesStableScreenshotPillMetricsAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 InfoBadge badge = new() { Value = 12 };
@@ -136,13 +135,11 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     w.Show();
-                    DrainDispatcher(w.Dispatcher);
+                    WpfTestSta.DrainDispatcher(w.Dispatcher);
                     w.UpdateLayout();
 
-                    System.Windows.Controls.Border? border = FindVisualChildByName<System.Windows.Controls.Border>(badge, "BadgeBorder");
-                    ContentPresenter? content = FindVisualChildByName<ContentPresenter>(badge, "ContentArea");
-                    Assert.NotNull(border);
-                    Assert.NotNull(content);
+                    System.Windows.Controls.Border border = Assert.IsAssignableFrom<System.Windows.Controls.Border>(FindVisualChildByName<System.Windows.Controls.Border>(badge, "BadgeBorder"));
+                    ContentPresenter content = Assert.IsAssignableFrom<ContentPresenter>(FindVisualChildByName<ContentPresenter>(badge, "ContentArea"));
                     Assert.Equal(34.0, border.MinWidth, 0.1);
                     Assert.Equal(24.0, border.MinHeight, 0.1);
                     Assert.Equal(24.0, border.MaxHeight, 0.1);
@@ -162,17 +159,17 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void InfoBadge_DisplayKindStates_HasAllFourStates()
+        public Task InfoBadge_DisplayKindStates_HasAllFourStatesAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 InfoBadge badge = new();
                 Window w = new() { Content = badge, Width = 60, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 IList groups = VisualStateManager.GetVisualStateGroups(FindVisualChild<Grid>(badge));
                 VisualStateGroup? dkg = null;
@@ -183,8 +180,8 @@ namespace Fluence.Wpf.Tests
                         if (g is VisualStateGroup vsg && string.Equals(vsg.Name, "DisplayKindStates", StringComparison.Ordinal)) { dkg = vsg; break; }
                     }
                 }
-                Assert.NotNull(dkg);
 
+                Assert.NotNull(dkg);
                 HashSet<string> stateNames = new(StringComparer.OrdinalIgnoreCase);
                 foreach (object? s in dkg.States)
                 {

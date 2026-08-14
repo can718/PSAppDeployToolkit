@@ -27,6 +27,7 @@
  */
 
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -50,15 +51,14 @@ namespace Fluence.Wpf.Tests
     public partial class ControlTests
     {
         [Fact]
-        public void ColorPicker_DefaultStyle_AppliesTemplateParts()
+        public Task ColorPicker_DefaultStyle_AppliesTemplatePartsAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
-                Style? style = app?.TryFindResource(typeof(Controls.ColorPicker)) as Style;
-                Assert.NotNull(style);
+                Style style = Assert.IsType<Style>(app?.TryFindResource(typeof(Controls.ColorPicker)));
 
                 Window window = new() { Width = 500, Height = 640 };
                 Controls.ColorPicker picker = new();
@@ -67,26 +67,17 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
 
-                    Image? spectrumImage = template.FindName("PART_SpectrumImage", picker) as Image;
-                    FrameworkElement? spectrumArea = template.FindName("PART_SpectrumArea", picker) as FrameworkElement;
-                    FrameworkElement? spectrumThumb = template.FindName("PART_SpectrumThumb", picker) as FrameworkElement;
-                    RangeBase? hueSlider = template.FindName("PART_HueSlider", picker) as RangeBase;
-                    RangeBase? alphaSlider = template.FindName("PART_AlphaSlider", picker) as RangeBase;
-                    TextBox? hexTextBox = template.FindName("PART_HexTextBox", picker) as TextBox;
-
-                    Assert.NotNull(spectrumImage);
-                    Assert.NotNull(spectrumArea);
-                    Assert.NotNull(spectrumThumb);
-                    Assert.NotNull(hueSlider);
-                    Assert.NotNull(alphaSlider);
-                    Assert.NotNull(hexTextBox);
-                    _ = Assert.IsAssignableFrom<Controls.TextBox>(hexTextBox);
+                    Image spectrumImage = Assert.IsType<Image>(template.FindName("PART_SpectrumImage", picker));
+                    FrameworkElement spectrumArea = Assert.IsAssignableFrom<FrameworkElement>(template.FindName("PART_SpectrumArea", picker));
+                    FrameworkElement spectrumThumb = Assert.IsAssignableFrom<FrameworkElement>(template.FindName("PART_SpectrumThumb", picker));
+                    RangeBase hueSlider = Assert.IsAssignableFrom<RangeBase>(template.FindName("PART_HueSlider", picker));
+                    RangeBase alphaSlider = Assert.IsAssignableFrom<RangeBase>(template.FindName("PART_AlphaSlider", picker));
+                    TextBox hexTextBox = Assert.IsAssignableFrom<TextBox>(template.FindName("PART_HexTextBox", picker));
 
                     Assert.Equal(Color.FromArgb(255, 255, 0, 0), picker.Color);
                     Assert.Equal(0d, hueSlider.Minimum);
@@ -107,11 +98,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_SpectrumBitmap_IsGenerated256x256AfterTemplateApply()
+        public Task ColorPicker_SpectrumBitmap_IsGenerated256x256AfterTemplateApplyAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 640 };
@@ -121,16 +112,13 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    Image? spectrumImage = template.FindName("PART_SpectrumImage", picker) as Image;
-                    Assert.NotNull(spectrumImage);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    Image spectrumImage = Assert.IsType<Image>(template.FindName("PART_SpectrumImage", picker));
 
-                    WriteableBitmap? bitmap = spectrumImage.Source as WriteableBitmap;
-                    Assert.NotNull(bitmap);
+                    WriteableBitmap bitmap = Assert.IsType<WriteableBitmap>(spectrumImage.Source);
                     Assert.Equal(256, bitmap.PixelWidth);
                     Assert.Equal(256, bitmap.PixelHeight);
                 }
@@ -142,11 +130,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_SetColor_RaisesColorChangedAndUpdatesHexText()
+        public Task ColorPicker_SetColor_RaisesColorChangedAndUpdatesHexTextAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 640 };
@@ -156,13 +144,11 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    TextBox? hexTextBox = template.FindName("PART_HexTextBox", picker) as TextBox;
-                    Assert.NotNull(hexTextBox);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    TextBox hexTextBox = Assert.IsAssignableFrom<TextBox>(template.FindName("PART_HexTextBox", picker));
                     Assert.Equal("#FF0000", hexTextBox.Text, StringComparer.Ordinal);
 
                     ColorPickerColorChangedEventArgs? changed = null;
@@ -175,7 +161,7 @@ namespace Fluence.Wpf.Tests
 
                     Color target = Color.FromArgb(255, 0, 120, 212);
                     picker.Color = target;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(1, raiseCount);
                     Assert.NotNull(changed);
@@ -191,11 +177,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_HexEntry_CommitsOnEnterAndInvalidInputReverts()
+        public Task ColorPicker_HexEntry_CommitsOnEnterAndInvalidInputRevertsAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 640 };
@@ -205,23 +191,20 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    TextBox? hexTextBox = template.FindName("PART_HexTextBox", picker) as TextBox;
-                    Assert.NotNull(hexTextBox);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    TextBox hexTextBox = Assert.IsAssignableFrom<TextBox>(template.FindName("PART_HexTextBox", picker));
 
-                    PresentationSource? source = PresentationSource.FromVisual(hexTextBox);
-                    Assert.NotNull(source);
+                    PresentationSource source = Assert.IsAssignableFrom<PresentationSource>(PresentationSource.FromVisual(hexTextBox));
 
                     hexTextBox.Text = "#FF0078D4";
                     hexTextBox.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Enter)
                     {
                         RoutedEvent = Keyboard.KeyDownEvent,
                     });
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(255, 0, 120, 212), picker.Color);
                     Assert.Equal("#0078D4", hexTextBox.Text, StringComparer.Ordinal);
@@ -231,7 +214,7 @@ namespace Fluence.Wpf.Tests
                     {
                         RoutedEvent = Keyboard.KeyDownEvent,
                     });
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(255, 0, 178, 148), picker.Color);
                     Assert.Equal("#00B294", hexTextBox.Text, StringComparer.Ordinal);
@@ -241,7 +224,7 @@ namespace Fluence.Wpf.Tests
                     {
                         RoutedEvent = Keyboard.KeyDownEvent,
                     });
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(255, 0, 178, 148), picker.Color);
                     Assert.Equal("#00B294", hexTextBox.Text, StringComparer.Ordinal);
@@ -254,11 +237,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_HueSlider_UpdatesColorAtFullSaturationAndValue()
+        public Task ColorPicker_HueSlider_UpdatesColorAtFullSaturationAndValueAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 640 };
@@ -268,15 +251,12 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    RangeBase? hueSlider = template.FindName("PART_HueSlider", picker) as RangeBase;
-                    TextBox? hexTextBox = template.FindName("PART_HexTextBox", picker) as TextBox;
-                    Assert.NotNull(hueSlider);
-                    Assert.NotNull(hexTextBox);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    RangeBase hueSlider = Assert.IsAssignableFrom<RangeBase>(template.FindName("PART_HueSlider", picker));
+                    TextBox hexTextBox = Assert.IsAssignableFrom<TextBox>(template.FindName("PART_HexTextBox", picker));
 
                     ColorPickerColorChangedEventArgs? changed = null;
                     picker.ColorChanged += (sender, e) => changed = e;
@@ -284,7 +264,7 @@ namespace Fluence.Wpf.Tests
                     // The default red sits at the S=1, V=1 fixed point, so a hue change maps
                     // exactly onto the pure hue color.
                     hueSlider.Value = 120;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(255, 0, 255, 0), picker.Color);
                     Assert.NotNull(changed);
@@ -300,11 +280,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_AlphaSlider_CollapsedByDefaultAndFunctionalWhenEnabled()
+        public Task ColorPicker_AlphaSlider_CollapsedByDefaultAndFunctionalWhenEnabledAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 640 };
@@ -314,34 +294,30 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    FrameworkElement? alphaSection = template.FindName("AlphaSection", picker) as FrameworkElement;
-                    RangeBase? alphaSlider = template.FindName("PART_AlphaSlider", picker) as RangeBase;
-                    TextBox? hexTextBox = template.FindName("PART_HexTextBox", picker) as TextBox;
-                    Assert.NotNull(alphaSection);
-                    Assert.NotNull(alphaSlider);
-                    Assert.NotNull(hexTextBox);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    FrameworkElement alphaSection = Assert.IsAssignableFrom<FrameworkElement>(template.FindName("AlphaSection", picker));
+                    RangeBase alphaSlider = Assert.IsAssignableFrom<RangeBase>(template.FindName("PART_AlphaSlider", picker));
+                    TextBox hexTextBox = Assert.IsAssignableFrom<TextBox>(template.FindName("PART_HexTextBox", picker));
 
                     Assert.Equal(Visibility.Collapsed, alphaSection.Visibility);
 
                     picker.IsAlphaEnabled = true;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Visible, alphaSection.Visibility);
                     Assert.Equal("#FFFF0000", hexTextBox.Text, StringComparer.Ordinal);
 
                     alphaSlider.Value = 128;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(128, 255, 0, 0), picker.Color);
                     Assert.Equal("#80FF0000", hexTextBox.Text, StringComparer.Ordinal);
 
                     picker.IsAlphaEnabled = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Collapsed, alphaSection.Visibility);
                     Assert.Equal(Color.FromArgb(255, 255, 0, 0), picker.Color);
@@ -355,11 +331,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_SpectrumPoint_UpdatesSaturationAndValuePreservingHue()
+        public Task ColorPicker_SpectrumPoint_UpdatesSaturationAndValuePreservingHueAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 640 };
@@ -369,39 +345,36 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    FrameworkElement? spectrumArea = template.FindName("PART_SpectrumArea", picker) as FrameworkElement;
-                    RangeBase? hueSlider = template.FindName("PART_HueSlider", picker) as RangeBase;
-                    Assert.NotNull(spectrumArea);
-                    Assert.NotNull(hueSlider);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    FrameworkElement spectrumArea = Assert.IsAssignableFrom<FrameworkElement>(template.FindName("PART_SpectrumArea", picker));
+                    RangeBase hueSlider = Assert.IsAssignableFrom<RangeBase>(template.FindName("PART_HueSlider", picker));
                     Assert.True(spectrumArea.ActualWidth > 0 && spectrumArea.ActualHeight > 0,
                         "The spectrum area must have a layout size once the window is shown.");
 
                     hueSlider.Value = 120;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     // Top-left corner: saturation 0, value 1 - white, regardless of hue.
                     // The mouse handlers funnel through ApplySpectrumPoint with the mouse
                     // captured, so driving the mapping directly keeps the test deterministic.
                     picker.ApplySpectrumPoint(new Point(0, 0));
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(255, 255, 255, 255), picker.Color);
                     Assert.Equal(120d, hueSlider.Value);
 
                     // Top-right corner: saturation 1, value 1 - the retained hue reappears.
                     picker.ApplySpectrumPoint(new Point(spectrumArea.ActualWidth, 0));
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(255, 0, 255, 0), picker.Color);
 
                     // Bottom edge: value 0 - black.
                     picker.ApplySpectrumPoint(new Point(spectrumArea.ActualWidth, spectrumArea.ActualHeight));
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(255, 0, 0, 0), picker.Color);
                 }
@@ -413,11 +386,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_PreviousColor_TogglesPreviousSwatch()
+        public Task ColorPicker_PreviousColor_TogglesPreviousSwatchAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 640 };
@@ -427,32 +400,27 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    Border? currentSwatch = template.FindName("CurrentSwatchBorder", picker) as Border;
-                    Border? previousSwatch = template.FindName("PreviousSwatchBorder", picker) as Border;
-                    Assert.NotNull(currentSwatch);
-                    Assert.NotNull(previousSwatch);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    Border currentSwatch = Assert.IsType<Border>(template.FindName("CurrentSwatchBorder", picker));
+                    Border previousSwatch = Assert.IsType<Border>(template.FindName("PreviousSwatchBorder", picker));
 
                     Assert.Equal(Visibility.Collapsed, previousSwatch.Visibility);
 
-                    SolidColorBrush? currentBrush = currentSwatch.Background as SolidColorBrush;
-                    Assert.NotNull(currentBrush);
+                    SolidColorBrush currentBrush = Assert.IsType<SolidColorBrush>(currentSwatch.Background);
                     Assert.Equal(picker.Color, currentBrush.Color);
 
                     picker.PreviousColor = Colors.Blue;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Visible, previousSwatch.Visibility);
-                    SolidColorBrush? previousBrush = previousSwatch.Background as SolidColorBrush;
-                    Assert.NotNull(previousBrush);
+                    SolidColorBrush previousBrush = Assert.IsType<SolidColorBrush>(previousSwatch.Background);
                     Assert.Equal(Colors.Blue, previousBrush.Color);
 
                     picker.PreviousColor = null;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Collapsed, previousSwatch.Visibility);
                 }
@@ -464,11 +432,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_AutomationPeer_ReportsClassTypeAndHexName()
+        public Task ColorPicker_AutomationPeer_ReportsClassTypeAndHexNameAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 640 };
@@ -478,18 +446,17 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    AutomationPeer? peer = UIElementAutomationPeer.CreatePeerForElement(picker);
-                    Assert.NotNull(peer);
+                    AutomationPeer peer = Assert.IsAssignableFrom<AutomationPeer>(UIElementAutomationPeer.CreatePeerForElement(picker));
                     _ = Assert.IsAssignableFrom<Automation.ColorPickerAutomationPeer>(peer);
                     Assert.Equal("ColorPicker", peer.GetClassName(), StringComparer.Ordinal);
                     Assert.Equal(AutomationControlType.Group, peer.GetAutomationControlType());
                     Assert.Equal("#FF0000", peer.GetName(), StringComparer.Ordinal);
 
                     picker.Color = Color.FromArgb(255, 0, 120, 212);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal("#0078D4", peer.GetName(), StringComparer.Ordinal);
 
@@ -504,11 +471,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_SurfaceBrushes_ResolveAfterThemeCycle()
+        public Task ColorPicker_SurfaceBrushes_ResolveAfterThemeCycleAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ThemeTestHelpers.ApplyStandardThemeCycle();
@@ -522,11 +489,11 @@ namespace Fluence.Wpf.Tests
 
         // Boilerplate runner for the option-surface tests: constructs the picker on the
         // STA thread, shows it, asserts the template applied, and hands both to verify.
-        private static void RunColorPickerOptionTest(Func<Controls.ColorPicker> createPicker, Action<Controls.ColorPicker, ControlTemplate, Window> verify)
+        private static Task RunColorPickerOptionTestAsync(Func<Controls.ColorPicker> createPicker, Action<Controls.ColorPicker, ControlTemplate, Window> verify)
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 520, Height = 860 };
@@ -536,11 +503,10 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
                     verify(picker, template, window);
                 }
                 finally
@@ -552,8 +518,7 @@ namespace Fluence.Wpf.Tests
 
         private static void RaiseEnterKey(TextBox textBox)
         {
-            PresentationSource? source = PresentationSource.FromVisual(textBox);
-            Assert.NotNull(source);
+            PresentationSource source = Assert.IsAssignableFrom<PresentationSource>(PresentationSource.FromVisual(textBox));
             textBox.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Enter)
             {
                 RoutedEvent = Keyboard.KeyDownEvent,
@@ -562,15 +527,13 @@ namespace Fluence.Wpf.Tests
 
         private static T GetTemplateElement<T>(ControlTemplate template, Controls.ColorPicker picker, string name) where T : class
         {
-            T? element = template.FindName(name, picker) as T;
-            Assert.NotNull(element);
-            return element;
+            return Assert.IsAssignableFrom<T>(template.FindName(name, picker));
         }
 
         [Fact]
-        public void ColorPicker_OptionSurfaceDefaults_MatchWinUi()
+        public Task ColorPicker_OptionSurfaceDefaults_MatchWinUiAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, _, _) =>
                 {
@@ -584,9 +547,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_IsColorPreviewVisible_TogglesSwatchSection()
+        public Task ColorPicker_IsColorPreviewVisible_TogglesSwatchSectionAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, window) =>
                 {
@@ -594,19 +557,19 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(Visibility.Visible, swatchSection.Visibility);
 
                     picker.IsColorPreviewVisible = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.Equal(Visibility.Collapsed, swatchSection.Visibility);
 
                     picker.IsColorPreviewVisible = true;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.Equal(Visibility.Visible, swatchSection.Visibility);
                 });
         }
 
         [Fact]
-        public void ColorPicker_IsColorSliderVisible_TogglesHueSection()
+        public Task ColorPicker_IsColorSliderVisible_TogglesHueSectionAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, window) =>
                 {
@@ -615,7 +578,7 @@ namespace Fluence.Wpf.Tests
                     TextBox hexTextBox = GetTemplateElement<TextBox>(template, picker, "PART_HexTextBox");
 
                     picker.IsColorSliderVisible = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Collapsed, hueSection.Visibility);
                     Assert.Equal(Visibility.Visible, spectrumSection.Visibility);
@@ -624,9 +587,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_IsHexInputVisible_TogglesHexTextBoxOnly()
+        public Task ColorPicker_IsHexInputVisible_TogglesHexTextBoxOnlyAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, window) =>
                 {
@@ -635,7 +598,7 @@ namespace Fluence.Wpf.Tests
                     FrameworkElement channelPanel = GetTemplateElement<FrameworkElement>(template, picker, "ColorChannelTextInputPanel");
 
                     picker.IsHexInputVisible = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Collapsed, hexTextBox.Visibility);
                     Assert.Equal(Visibility.Visible, representationComboBox.Visibility);
@@ -644,9 +607,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_AlphaVisibilityFlags_AndWithIsAlphaEnabled()
+        public Task ColorPicker_AlphaVisibilityFlags_AndWithIsAlphaEnabledAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker { IsAlphaEnabled = true },
                 (picker, template, window) =>
                 {
@@ -657,28 +620,28 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(Visibility.Visible, alphaInputPanel.Visibility);
 
                     picker.IsAlphaSliderVisible = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.Equal(Visibility.Collapsed, alphaSection.Visibility);
                     Assert.Equal(Visibility.Visible, alphaInputPanel.Visibility);
 
                     picker.IsAlphaSliderVisible = true;
                     picker.IsAlphaTextInputVisible = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.Equal(Visibility.Visible, alphaSection.Visibility);
                     Assert.Equal(Visibility.Collapsed, alphaInputPanel.Visibility);
 
                     picker.IsAlphaTextInputVisible = true;
                     picker.IsAlphaEnabled = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.Equal(Visibility.Collapsed, alphaSection.Visibility);
                     Assert.Equal(Visibility.Collapsed, alphaInputPanel.Visibility);
                 });
         }
 
         [Fact]
-        public void ColorPicker_MoreButton_DefaultCollapsedWithTextEntryVisible()
+        public Task ColorPicker_MoreButton_DefaultCollapsedWithTextEntryVisibleAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, _) =>
                 {
@@ -691,9 +654,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_MoreButton_TogglesTextEntryGridAndLabel()
+        public Task ColorPicker_MoreButton_TogglesTextEntryGridAndLabelAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker { IsMoreButtonVisible = true },
                 (picker, template, window) =>
                 {
@@ -706,13 +669,13 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal("More", moreButtonLabel.Text, StringComparer.Ordinal);
 
                     moreButton.IsChecked = true;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Visible, textEntryGrid.Visibility);
                     Assert.Equal("Less", moreButtonLabel.Text, StringComparer.Ordinal);
 
                     moreButton.IsChecked = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Collapsed, textEntryGrid.Visibility);
                     Assert.Equal("More", moreButtonLabel.Text, StringComparer.Ordinal);
@@ -720,9 +683,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_ColorRepresentationComboBox_SwapsRgbAndHsvPanels()
+        public Task ColorPicker_ColorRepresentationComboBox_SwapsRgbAndHsvPanelsAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, window) =>
                 {
@@ -735,7 +698,7 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(Visibility.Collapsed, hsvPanel.Visibility);
 
                     representationComboBox.SelectedIndex = 1;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Collapsed, rgbPanel.Visibility);
                     Assert.Equal(Visibility.Visible, hsvPanel.Visibility);
@@ -743,9 +706,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_RgbTextEntry_CommitsLivePreservingExactRgb()
+        public Task ColorPicker_RgbTextEntry_CommitsLivePreservingExactRgbAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, window) =>
                 {
@@ -757,7 +720,7 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal("0", greenTextBox.Text, StringComparer.Ordinal);
 
                     redTextBox.Text = "10";
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(255, 10, 0, 0), picker.Color);
                     Assert.Equal("10", redTextBox.Text, StringComparer.Ordinal);
@@ -766,9 +729,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_HsvTextEntry_GoesThroughHsvModelWithoutQuantizingSiblings()
+        public Task ColorPicker_HsvTextEntry_GoesThroughHsvModelWithoutQuantizingSiblingsAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, window) =>
                 {
@@ -780,10 +743,10 @@ namespace Fluence.Wpf.Tests
                     // quantize away (0.503 displays as 50).
                     const double fractionalSaturation = 0.503;
                     picker.ApplySpectrumPoint(new Point(spectrumArea.ActualWidth * fractionalSaturation, 0));
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     hueTextBox.Text = "240";
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Color expected = Helpers.HsvColorHelper.WithAlpha(
                         Helpers.HsvColorHelper.HsvToRgb(240, fractionalSaturation, 1.0), 255);
@@ -797,30 +760,30 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_ChannelTextEntry_InvalidInputRestoredOnEnter()
+        public Task ColorPicker_ChannelTextEntry_InvalidInputRestoredOnEnterAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, window) =>
                 {
                     TextBox redTextBox = GetTemplateElement<TextBox>(template, picker, "PART_RedTextBox");
 
                     redTextBox.Text = "999";
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Color.FromArgb(255, 255, 0, 0), picker.Color);
 
                     RaiseEnterKey(redTextBox);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal("255", redTextBox.Text, StringComparer.Ordinal);
                 });
         }
 
         [Fact]
-        public void ColorPicker_AlphaTextEntry_ParsesPercentAndNormalizes()
+        public Task ColorPicker_AlphaTextEntry_ParsesPercentAndNormalizesAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker { IsAlphaEnabled = true },
                 (picker, template, window) =>
                 {
@@ -829,31 +792,31 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal("100%", alphaTextBox.Text, StringComparer.Ordinal);
 
                     alphaTextBox.Text = "50";
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(128, picker.Color.A);
 
                     RaiseEnterKey(alphaTextBox);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal("50%", alphaTextBox.Text, StringComparer.Ordinal);
 
                     alphaTextBox.Text = "200";
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(128, picker.Color.A);
 
                     RaiseEnterKey(alphaTextBox);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal("50%", alphaTextBox.Text, StringComparer.Ordinal);
                 });
         }
 
         [Fact]
-        public void ColorPicker_IsColorChannelTextInputVisible_CollapsesChannelPanelNotHexOrAlpha()
+        public Task ColorPicker_IsColorChannelTextInputVisible_CollapsesChannelPanelNotHexOrAlphaAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker { IsAlphaEnabled = true },
                 (picker, template, window) =>
                 {
@@ -863,7 +826,7 @@ namespace Fluence.Wpf.Tests
                     TextBox hexTextBox = GetTemplateElement<TextBox>(template, picker, "PART_HexTextBox");
 
                     picker.IsColorChannelTextInputVisible = false;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Collapsed, representationComboBox.Visibility);
                     Assert.Equal(Visibility.Collapsed, channelPanel.Visibility);
@@ -874,9 +837,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_HexMaxLength_TracksIsAlphaEnabled()
+        public Task ColorPicker_HexMaxLength_TracksIsAlphaEnabledAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, window) =>
                 {
@@ -885,16 +848,16 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(7, hexTextBox.MaxLength);
 
                     picker.IsAlphaEnabled = true;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(9, hexTextBox.MaxLength);
                 });
         }
 
         [Fact]
-        public void ColorPicker_SpectrumArea_IsFocusableTabStop()
+        public Task ColorPicker_SpectrumArea_IsFocusableTabStopAsync()
         {
-            RunColorPickerOptionTest(
+            return RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker(),
                 (picker, template, _) =>
                 {
@@ -913,11 +876,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ColorPicker_SpectrumKeyboard_RightKeyIncreasesSaturation()
+        public async Task ColorPicker_SpectrumKeyboard_RightKeyIncreasesSaturationAsync()
         {
             // Start with a mid-saturation color: FromRgb(128, 64, 64) has saturation ~0.5
             // (Max=128, Min=64, S=(128-64)/128=0.5) so pressing Right has room to increase it.
-            RunColorPickerOptionTest(
+            await RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker { Color = Color.FromRgb(0x80, 0x40, 0x40) },
                 (picker, template, window) =>
                 {
@@ -926,16 +889,15 @@ namespace Fluence.Wpf.Tests
                     Color colorBefore = picker.Color;
 
                     _ = spectrumArea.Focus();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
-                    PresentationSource? source = PresentationSource.FromVisual(spectrumArea);
-                    Assert.NotNull(source);
+                    PresentationSource source = Assert.IsAssignableFrom<PresentationSource>(PresentationSource.FromVisual(spectrumArea));
 
                     spectrumArea.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Right)
                     {
                         RoutedEvent = Keyboard.KeyDownEvent,
                     });
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Color colorAfter = picker.Color;
                     Assert.NotEqual(colorBefore, colorAfter);
@@ -944,14 +906,14 @@ namespace Fluence.Wpf.Tests
                     Assert.True(
                         colorAfter.R >= colorBefore.R,
                         "Pressing Right on the spectrum must increase saturation, brightening the hue channel.");
-                });
+                }).ConfigureAwait(true);
         }
 
         [Fact]
-        public void ColorPicker_SpectrumKeyboard_UpKeyIncreasesValue()
+        public async Task ColorPicker_SpectrumKeyboard_UpKeyIncreasesValueAsync()
         {
             // Start dark so Value (brightness) has room to increase.
-            RunColorPickerOptionTest(
+            await RunColorPickerOptionTestAsync(
                 () => new Controls.ColorPicker { Color = Color.FromRgb(0x40, 0x20, 0x00) },
                 (picker, template, window) =>
                 {
@@ -960,16 +922,15 @@ namespace Fluence.Wpf.Tests
                     Color colorBefore = picker.Color;
 
                     _ = spectrumArea.Focus();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
-                    PresentationSource? source = PresentationSource.FromVisual(spectrumArea);
-                    Assert.NotNull(source);
+                    PresentationSource source = Assert.IsAssignableFrom<PresentationSource>(PresentationSource.FromVisual(spectrumArea));
 
                     spectrumArea.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Up)
                     {
                         RoutedEvent = Keyboard.KeyDownEvent,
                     });
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Color colorAfter = picker.Color;
                     Assert.NotEqual(colorBefore, colorAfter);
@@ -978,7 +939,7 @@ namespace Fluence.Wpf.Tests
                     Assert.True(
                         colorAfter.R > colorBefore.R || colorAfter.G > colorBefore.G || colorAfter.B > colorBefore.B,
                         "Pressing Up on the spectrum must increase Value, making channels brighter.");
-                });
+                }).ConfigureAwait(true);
         }
     }
 }
