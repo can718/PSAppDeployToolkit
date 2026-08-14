@@ -116,5 +116,18 @@ through `WpfTestSta.Invoke`.
 
 ---
 
+## Background Terminal Commands
+
+- When polling background terminal commands, use short wait intervals (30-60 seconds per read) instead of multi-minute waits, so completed work is noticed promptly.
+
+---
+
+## Testing Guidelines
+
+- In `Fluence.Wpf.Tests`, prefer direct calls to the canonical `WpfTestSta` helpers (e.g., `RunOnSta`, `EnsureApplication`, `DrainDispatcher`, etc.) instead of per-class wrapper/forwarder methods. Remove any duplicated wrapper logic when encountered.
+- Prefer eliding async/await for methods whose entire body is a single awaited Task-returning call: return the Task directly instead of async/await (e.g., `public Task X() { return WpfTestSta.RunOnStaAsync(...); }`). This applies even though Roslynator RCS1174 only covers Task<T>. Keep `new ValueTask(task)` wrapping only where required by interfaces like xUnit v3 IAsyncLifetime.
+
+---
+
 For full detail on control authoring, theme API, common pitfalls, naming
-conventions, and C# style rules: read **AGENTS.md**.
+conventions, and C# style rules: read **AGENTS.md**

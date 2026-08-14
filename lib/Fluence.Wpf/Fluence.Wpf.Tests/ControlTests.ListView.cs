@@ -27,6 +27,7 @@
  */
 
 using System.Collections.ObjectModel;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -46,11 +47,11 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void ListView_SelectionIndicator_PresentInItemTemplate()
+        public Task ListView_SelectionIndicator_PresentInItemTemplateAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ListView lv = new();
@@ -58,36 +59,32 @@ namespace Fluence.Wpf.Tests
                 _ = lv.Items.Add(new ListViewItem { Content = "Item B" });
                 Window w = new() { Content = lv, Width = 300, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // Find the first ListViewItem in the visual tree
-                ListViewItem? item = FindVisualChild<ListViewItem>(lv);
-                Assert.NotNull(item);
+                ListViewItem item = Assert.IsAssignableFrom<ListViewItem>(FindVisualChild<ListViewItem>(lv));
 
-                Border? indicator = FindVisualChildByName<Border>(item, "SelectionIndicator");
-                Assert.NotNull(indicator);
+                Border indicator = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(item, "SelectionIndicator"));
                 w.Close();
             });
         }
 
         [Fact]
-        public void ListView_SelectionIndicator_WidthIsCanonical()
+        public Task ListView_SelectionIndicator_WidthIsCanonicalAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ListView lv = new();
                 _ = lv.Items.Add(new ListViewItem { Content = "Item A" });
                 Window w = new() { Content = lv, Width = 300, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                ListViewItem? item = FindVisualChild<ListViewItem>(lv);
-                Assert.NotNull(item);
-                Border? indicator = FindVisualChildByName<Border>(item, "SelectionIndicator");
-                Assert.NotNull(indicator);
+                ListViewItem item = Assert.IsAssignableFrom<ListViewItem>(FindVisualChild<ListViewItem>(lv));
+                Border indicator = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(item, "SelectionIndicator"));
 
                 Assert.Equal(3.0, indicator.Width, 0.01);
                 w.Close();
@@ -95,23 +92,21 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ListView_SelectionIndicator_CornerRadiusIsCanonical()
+        public Task ListView_SelectionIndicator_CornerRadiusIsCanonicalAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ListView lv = new();
                 _ = lv.Items.Add(new ListViewItem { Content = "Item A" });
                 Window w = new() { Content = lv, Width = 300, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                ListViewItem? item = FindVisualChild<ListViewItem>(lv);
-                Assert.NotNull(item);
-                Border? indicator = FindVisualChildByName<Border>(item, "SelectionIndicator");
-                Assert.NotNull(indicator);
+                ListViewItem item = Assert.IsAssignableFrom<ListViewItem>(FindVisualChild<ListViewItem>(lv));
+                Border indicator = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(item, "SelectionIndicator"));
 
                 Assert.Equal(new CornerRadius(1.5), indicator.CornerRadius);
                 w.Close();
@@ -119,29 +114,25 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ListView_SelectionIndicator_BackgroundIsAccentBrush()
+        public Task ListView_SelectionIndicator_BackgroundIsAccentBrushAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ListView lv = new();
                 _ = lv.Items.Add(new ListViewItem { Content = "Item A" });
                 Window w = new() { Content = lv, Width = 300, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                ListViewItem? item = FindVisualChild<ListViewItem>(lv);
-                Assert.NotNull(item);
-                Border? indicator = FindVisualChildByName<Border>(item, "SelectionIndicator");
-                Assert.NotNull(indicator);
+                ListViewItem item = Assert.IsAssignableFrom<ListViewItem>(FindVisualChild<ListViewItem>(lv));
+                Border indicator = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(item, "SelectionIndicator"));
 
-                SolidColorBrush? expected = app?.TryFindResource("AccentFillColorDefaultBrush") as SolidColorBrush;
-                Assert.NotNull(expected);
+                SolidColorBrush expected = Assert.IsType<SolidColorBrush>(app?.TryFindResource("AccentFillColorDefaultBrush"));
 
-                SolidColorBrush? actual = indicator.Background as SolidColorBrush;
-                Assert.NotNull(actual);
+                SolidColorBrush actual = Assert.IsType<SolidColorBrush>(indicator.Background);
                 Assert.Equal(
                     expected.Color,
                     actual.Color);
@@ -150,11 +141,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ListView_AnimateRemove_RemovesItemFromBoundObservableCollection()
+        public Task ListView_AnimateRemove_RemovesItemFromBoundObservableCollectionAsync()
         {
-            WpfTestSta.Invoke(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ObservableCollection<string> items = ["One", "Two", "Three"];
@@ -167,16 +158,16 @@ namespace Fluence.Wpf.Tests
                 };
                 Window w = new() { Content = lv, Width = 360, Height = 240 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
                 w.UpdateLayout();
 
                 bool completed = false;
                 lv.AnimateRemove("Two", delegate { completed = true; });
 
-                bool removed = WaitUntil(w.Dispatcher, 1000, delegate
+                bool removed = await WaitUntilAsync(w.Dispatcher, 1000, delegate
                 {
                     return completed && !items.Contains("Two");
-                });
+                }).ConfigureAwait(true);
 
                 Assert.True(removed, "AnimateRemove should animate then remove the item from the bound ObservableCollection.");
                 Assert.Equal(2, items.Count);

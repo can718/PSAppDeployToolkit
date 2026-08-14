@@ -26,6 +26,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
@@ -46,46 +47,42 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void Slider_StyleApplies_PartTrackFound()
+        public Task Slider_StyleApplies_PartTrackFoundAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Slider slider = new() { Value = 50, Minimum = 0, Maximum = 100 };
                 Window w = new() { Content = slider, Width = 300, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Track? track = FindVisualChildByName<Track>(slider, "PART_Track");
-                Assert.NotNull(track);
+                Track track = Assert.IsAssignableFrom<Track>(FindVisualChildByName<Track>(slider, "PART_Track"));
                 w.Close();
             });
         }
 
         [Fact]
-        public void Slider_DefaultState_ThumbScaleIsOne()
+        public Task Slider_DefaultState_ThumbScaleIsOneAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Slider slider = new() { Value = 50, Minimum = 0, Maximum = 100 };
                 Window w = new() { Content = slider, Width = 300, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // Thumb's template root Grid has a ScaleTransform named ThumbScale.
-                Thumb? thumb = FindVisualChild<Thumb>(slider);
-                Assert.NotNull(thumb);
+                Thumb thumb = Assert.IsAssignableFrom<Thumb>(FindVisualChild<Thumb>(slider));
 
-                System.Windows.Controls.Grid? grid = FindVisualChild<System.Windows.Controls.Grid>(thumb);
-                Assert.NotNull(grid);
+                System.Windows.Controls.Grid grid = Assert.IsAssignableFrom<System.Windows.Controls.Grid>(FindVisualChild<System.Windows.Controls.Grid>(thumb));
 
-                ScaleTransform? scale = grid.RenderTransform as ScaleTransform;
-                Assert.NotNull(scale);
+                ScaleTransform scale = Assert.IsType<ScaleTransform>(grid.RenderTransform);
                 Assert.Equal(1.0, scale.ScaleX, 0.001);
                 Assert.Equal(1.0, scale.ScaleY, 0.001);
                 w.Close();
@@ -93,23 +90,21 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Slider_ThumbTemplate_HasEllipseAndInnerDot()
+        public Task Slider_ThumbTemplate_HasEllipseAndInnerDotAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Slider slider = new() { Value = 30, Minimum = 0, Maximum = 100 };
                 Window w = new() { Content = slider, Width = 300, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Ellipse? thumbEllipse = FindVisualChildByName<Ellipse>(slider, "ThumbEllipse");
-                Ellipse? innerDot = FindVisualChildByName<Ellipse>(slider, "ThumbInnerDot");
+                Ellipse thumbEllipse = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(slider, "ThumbEllipse"));
+                Ellipse innerDot = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(slider, "ThumbInnerDot"));
 
-                Assert.NotNull(thumbEllipse);
-                Assert.NotNull(innerDot);
                 w.Close();
             });
         }

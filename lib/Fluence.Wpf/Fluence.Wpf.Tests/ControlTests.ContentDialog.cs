@@ -51,7 +51,7 @@ namespace Fluence.Wpf.Tests
         {
             Window window = new() { Width = 640, Height = 480, Content = new Grid() };
             window.Show();
-            DrainDispatcher(window.Dispatcher);
+            WpfTestSta.DrainDispatcher(window.Dispatcher);
             window.UpdateLayout();
             return window;
         }
@@ -69,8 +69,7 @@ namespace Fluence.Wpf.Tests
 
         private static void RaiseKeyEvent(UIElement target, Key key, RoutedEvent routedEvent)
         {
-            PresentationSource? source = PresentationSource.FromVisual(target);
-            Assert.NotNull(source);
+            PresentationSource source = Assert.IsAssignableFrom<PresentationSource>(PresentationSource.FromVisual(target));
             target.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key)
             {
                 RoutedEvent = routedEvent,
@@ -78,11 +77,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_DefaultStyle_AppliesAndTemplatePartsFound()
+        public Task ContentDialog_DefaultStyle_AppliesAndTemplatePartsFoundAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ContentDialog defaults = new();
@@ -106,7 +105,7 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     Assert.Equal(Visibility.Collapsed, dialog.Visibility);
@@ -118,23 +117,19 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(548.0, dialog.MaxWidth, 0.01);
                     Assert.Equal(320.0, dialog.MinWidth, 0.01);
 
-                    Border? surface = FindVisualChildByName<Border>(dialog, "DialogSurface");
-                    Assert.NotNull(surface);
+                    Border surface = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(dialog, "DialogSurface"));
                     CornerRadius? overlayRadius = (CornerRadius?)app?.FindResource("OverlayCornerRadius");
                     Assert.Equal(overlayRadius, surface.CornerRadius);
 
-                    ButtonBase? primary = FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton");
-                    ButtonBase? secondary = FindVisualChildByName<ButtonBase>(dialog, "PART_SecondaryButton");
-                    ButtonBase? close = FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton");
-                    Assert.NotNull(primary);
-                    Assert.NotNull(secondary);
-                    Assert.NotNull(close);
+                    ButtonBase primary = Assert.IsAssignableFrom<ButtonBase>(FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton"));
+                    ButtonBase secondary = Assert.IsAssignableFrom<ButtonBase>(FindVisualChildByName<ButtonBase>(dialog, "PART_SecondaryButton"));
+                    ButtonBase close = Assert.IsAssignableFrom<ButtonBase>(FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton"));
                     Assert.Equal(Visibility.Visible, primary.Visibility);
                     Assert.Equal(Visibility.Visible, secondary.Visibility);
                     Assert.Equal(Visibility.Visible, close.Visibility);
 
                     dialog.SecondaryButtonText = string.Empty;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.Equal(Visibility.Collapsed, secondary.Visibility);
                 }
                 finally
@@ -145,11 +140,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_DeclaredAsWindowContentChild_CollapsedAtRestAndShowsViaShow()
+        public Task ContentDialog_DeclaredAsWindowContentChild_CollapsedAtRestAndShowsViaShowAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Grid host = new();
@@ -166,22 +161,22 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     Assert.Equal(Visibility.Collapsed, dialog.Visibility);
                     Assert.Equal(0.0, dialog.ActualHeight, 0.001);
 
                     Task<ContentDialogResult> task = dialog.ShowAsync();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null).ConfigureAwait(true),
                         "ShowAsync on a declared dialog must succeed and apply the template once overlay-hosted.");
                     Assert.Equal(Visibility.Visible, dialog.Visibility);
                     Assert.False(host.Children.Contains(dialog),
                         "ShowAsync must detach the declared dialog from its XAML parent.");
 
                     dialog.Hide();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => task.IsCompleted),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => task.IsCompleted).ConfigureAwait(true),
                         "Hide must complete the pending ShowAsync task for a declared dialog.");
                     Assert.Equal(Visibility.Collapsed, dialog.Visibility);
                 }
@@ -194,11 +189,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_EnterInAcceptsReturnTextBox_DoesNotInvokeDefaultButton()
+        public Task ContentDialog_EnterInAcceptsReturnTextBox_DoesNotInvokeDefaultButtonAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -215,19 +210,19 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     Task<ContentDialogResult> task = dialog.ShowAsync();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null).ConfigureAwait(true),
                         "The dialog template must apply before Enter is simulated.");
 
                     _ = body.Focus();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     // Real key input tunnels the preview event first and then bubbles the key
                     // down event. The multiline TextBox consumes the bubbling Enter, so the
                     // dialog must leave it alone.
                     RaiseKeyEvent(body, Key.Enter, UIElement.PreviewKeyDownEvent);
                     RaiseKeyEvent(body, Key.Enter, UIElement.KeyDownEvent);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.False(task.IsCompleted,
                         "Enter inside an AcceptsReturn TextBox must not invoke the default button while DefaultButton=Primary.");
@@ -245,11 +240,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_EnterWithDefaultButton_InvokesDefaultViaBubbling()
+        public Task ContentDialog_EnterWithDefaultButton_InvokesDefaultViaBubblingAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -268,19 +263,19 @@ namespace Fluence.Wpf.Tests
                     dialog.PrimaryButtonClick += (_, _) => clickRaised = true;
 
                     Task<ContentDialogResult> task = dialog.ShowAsync();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null).ConfigureAwait(true),
                         "The dialog template must apply before Enter is simulated.");
 
                     // Move focus off the command buttons so the default-button shortcut path
                     // (not the native button click) handles Enter.
                     _ = dialog.Focus();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseKeyEvent(dialog, Key.Enter, UIElement.PreviewKeyDownEvent);
                     RaiseKeyEvent(dialog, Key.Enter, UIElement.KeyDownEvent);
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => task.IsCompleted),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => task.IsCompleted).ConfigureAwait(true),
                         "Enter must invoke the default button through the bubbling key event.");
                     Assert.True(clickRaised, "Enter must raise PrimaryButtonClick while DefaultButton=Primary.");
                 }
@@ -296,9 +291,9 @@ namespace Fluence.Wpf.Tests
         public async Task ContentDialog_OwnerWindowClose_CompletesPendingTaskWithNoneAsync()
         {
             Task<ContentDialogResult>? dialogTask = null;
-            RunOnStaThread(() =>
+            await WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -313,13 +308,13 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     dialogTask = dialog.ShowAsync();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null).ConfigureAwait(true),
                         "The dialog template must apply before the owner window closes.");
 
                     window.Close();
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => dialogTask.IsCompleted),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => dialogTask.IsCompleted).ConfigureAwait(true),
                         "Closing the owner window must complete the pending ShowAsync task.");
                 }
                 finally
@@ -327,19 +322,19 @@ namespace Fluence.Wpf.Tests
                     dialog.Hide();
                     window.Close();
                 }
-            });
+            }).ConfigureAwait(true);
 
             Assert.NotNull(dialogTask);
-            ContentDialogResult result = await dialogTask;
+            ContentDialogResult result = await dialogTask.ConfigureAwait(true);
             Assert.Equal(ContentDialogResult.None, result);
         }
 
         [Fact]
-        public void ContentDialog_Hide_PlaysDialogHiddenExitThenCompletesTask()
+        public Task ContentDialog_Hide_PlaysDialogHiddenExitThenCompletesTaskAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -353,8 +348,8 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     Task<ContentDialogResult> task = dialog.ShowAsync();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null).ConfigureAwait(true),
                         "The dialog template must apply before Hide is called.");
 
                     dialog.Hide();
@@ -368,12 +363,12 @@ namespace Fluence.Wpf.Tests
                     Assert.False(task.IsCompleted,
                         "The ShowAsync task must stay pending until the DialogHidden exit completes.");
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => task.IsCompleted),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => task.IsCompleted).ConfigureAwait(true),
                         "The ShowAsync task must complete once the 167 ms DialogHidden exit settles.");
                     Assert.True(dialog.IsHitTestVisible,
                         "The teardown must restore hit testing so a reshown dialog is interactive.");
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => GetContentDialogOverlayAdorners(window) is not { Length: > 0 }),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => GetContentDialogOverlayAdorners(window) is not { Length: > 0 }).ConfigureAwait(true),
                         "The teardown must remove the modal overlay after the exit.");
                 }
                 finally
@@ -389,9 +384,9 @@ namespace Fluence.Wpf.Tests
         {
             Task<ContentDialogResult>? dialogTask = null;
             int closedCount = 0;
-            RunOnStaThread(() =>
+            await WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -406,8 +401,8 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     dialogTask = dialog.ShowAsync();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null).ConfigureAwait(true),
                         "The dialog template must apply before the double close.");
 
                     // The second Hide lands while the DialogHidden exit is playing and must
@@ -415,29 +410,29 @@ namespace Fluence.Wpf.Tests
                     dialog.Hide();
                     dialog.Hide();
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => dialogTask.IsCompleted),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => dialogTask.IsCompleted).ConfigureAwait(true),
                         "The double close must still complete the ShowAsync task.");
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                 }
                 finally
                 {
                     dialog.Hide();
                     window.Close();
                 }
-            });
+            }).ConfigureAwait(true);
 
             Assert.NotNull(dialogTask);
-            ContentDialogResult result = await dialogTask;
+            ContentDialogResult result = await dialogTask.ConfigureAwait(true);
             Assert.Equal(ContentDialogResult.None, result);
             Assert.Equal(1, closedCount);
         }
 
         [Fact]
-        public void ContentDialog_ShowAsync_AddsOverlayAdornerAndReturnsPendingTask()
+        public Task ContentDialog_ShowAsync_AddsOverlayAdornerAndReturnsPendingTaskAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -458,20 +453,20 @@ namespace Fluence.Wpf.Tests
                     Assert.False(task.IsCompleted, "ShowAsync must return a task that stays pending until the dialog closes.");
                     Assert.True(openedRaised, "ShowAsync must raise Opened once the overlay has been added.");
 
-                    bool overlayAdded = WaitUntil(window.Dispatcher, 2000,
-                        () => GetContentDialogOverlayAdorners(window) is { Length: > 0 });
+                    bool overlayAdded = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => GetContentDialogOverlayAdorners(window) is { Length: > 0 }).ConfigureAwait(true);
                     Assert.True(overlayAdded, "ShowAsync must add the modal overlay adorner to the owner window content.");
 
-                    bool templated = WaitUntil(window.Dispatcher, 2000,
-                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null);
+                    bool templated = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null).ConfigureAwait(true);
                     Assert.True(templated, "The adorner-hosted dialog must apply its template once layout has run.");
                     Assert.False(task.IsCompleted, "The ShowAsync task must still be pending while the dialog is open.");
 
                     dialog.Hide();
-                    bool completed = WaitUntil(window.Dispatcher, 2000, () => task.IsCompleted);
+                    bool completed = await WaitUntilAsync(window.Dispatcher, 2000, () => task.IsCompleted).ConfigureAwait(true);
                     Assert.True(completed, "Hide must complete the pending ShowAsync task.");
-                    bool overlayRemoved = WaitUntil(window.Dispatcher, 2000,
-                        () => GetContentDialogOverlayAdorners(window) is null or { Length: 0 });
+                    bool overlayRemoved = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => GetContentDialogOverlayAdorners(window) is null or { Length: 0 }).ConfigureAwait(true);
                     Assert.True(overlayRemoved, "Hide must remove the modal overlay adorner from the owner window content.");
                 }
                 finally
@@ -486,9 +481,9 @@ namespace Fluence.Wpf.Tests
         public async Task ContentDialog_PrimaryButtonClick_CompletesTaskWithPrimaryAndRemovesOverlayAsync()
         {
             Task<ContentDialogResult>? dialogTask = null;
-            RunOnStaThread(() =>
+            await WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -508,21 +503,20 @@ namespace Fluence.Wpf.Tests
                     dialog.Closed += (_, _) => closedRaised = true;
 
                     dialogTask = dialog.ShowAsync();
-                    bool templated = WaitUntil(window.Dispatcher, 2000,
-                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null);
+                    bool templated = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null).ConfigureAwait(true);
                     Assert.True(templated, "The dialog template must apply before the primary button can be clicked.");
 
-                    ButtonBase? primary = FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton");
-                    Assert.NotNull(primary);
+                    ButtonBase primary = Assert.IsAssignableFrom<ButtonBase>(FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton"));
                     primary.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
-                    bool completed = WaitUntil(window.Dispatcher, 2000, () => dialogTask.IsCompleted);
+                    bool completed = await WaitUntilAsync(window.Dispatcher, 2000, () => dialogTask.IsCompleted).ConfigureAwait(true);
                     Assert.True(completed, "Clicking the primary button must complete the ShowAsync task.");
                     Assert.True(clickRaised, "Clicking the primary button must raise PrimaryButtonClick.");
                     Assert.True(closedRaised, "Closing via the primary button must raise Closed.");
 
-                    bool overlayRemoved = WaitUntil(window.Dispatcher, 2000,
-                        () => GetContentDialogOverlayAdorners(window) is null or { Length: 0 });
+                    bool overlayRemoved = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => GetContentDialogOverlayAdorners(window) is null or { Length: 0 }).ConfigureAwait(true);
                     Assert.True(overlayRemoved, "Closing via the primary button must remove the modal overlay adorner.");
                 }
                 finally
@@ -530,10 +524,10 @@ namespace Fluence.Wpf.Tests
                     dialog.Hide();
                     window.Close();
                 }
-            });
+            }).ConfigureAwait(true);
 
             Assert.NotNull(dialogTask);
-            ContentDialogResult result = await dialogTask;
+            ContentDialogResult result = await dialogTask.ConfigureAwait(true);
             Assert.Equal(ContentDialogResult.Primary, result);
         }
 
@@ -541,9 +535,9 @@ namespace Fluence.Wpf.Tests
         public async Task ContentDialog_CloseButtonClick_CompletesTaskWithNoneAsync()
         {
             Task<ContentDialogResult>? dialogTask = null;
-            RunOnStaThread(() =>
+            await WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -561,15 +555,14 @@ namespace Fluence.Wpf.Tests
                     dialog.CloseButtonClick += (_, _) => clickRaised = true;
 
                     dialogTask = dialog.ShowAsync();
-                    bool templated = WaitUntil(window.Dispatcher, 2000,
-                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null);
+                    bool templated = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null).ConfigureAwait(true);
                     Assert.True(templated, "The dialog template must apply before the close button can be clicked.");
 
-                    ButtonBase? close = FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton");
-                    Assert.NotNull(close);
+                    ButtonBase close = Assert.IsAssignableFrom<ButtonBase>(FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton"));
                     close.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
-                    bool completed = WaitUntil(window.Dispatcher, 2000, () => dialogTask.IsCompleted);
+                    bool completed = await WaitUntilAsync(window.Dispatcher, 2000, () => dialogTask.IsCompleted).ConfigureAwait(true);
                     Assert.True(completed, "Clicking the close button must complete the ShowAsync task.");
                     Assert.True(clickRaised, "Clicking the close button must raise CloseButtonClick.");
                 }
@@ -578,10 +571,10 @@ namespace Fluence.Wpf.Tests
                     dialog.Hide();
                     window.Close();
                 }
-            });
+            }).ConfigureAwait(true);
 
             Assert.NotNull(dialogTask);
-            ContentDialogResult result = await dialogTask;
+            ContentDialogResult result = await dialogTask.ConfigureAwait(true);
             Assert.Equal(ContentDialogResult.None, result);
         }
 
@@ -589,9 +582,9 @@ namespace Fluence.Wpf.Tests
         public async Task ContentDialog_EscapeKey_CompletesTaskWithNoneAsync()
         {
             Task<ContentDialogResult>? dialogTask = null;
-            RunOnStaThread(() =>
+            await WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -606,8 +599,8 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     dialogTask = dialog.ShowAsync();
-                    bool templated = WaitUntil(window.Dispatcher, 2000,
-                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null);
+                    bool templated = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_CloseButton") is not null).ConfigureAwait(true);
                     Assert.True(templated, "The dialog template must apply before Escape is simulated.");
 
                     dialog.RaiseEvent(new KeyEventArgs(
@@ -619,10 +612,10 @@ namespace Fluence.Wpf.Tests
                         RoutedEvent = UIElement.PreviewKeyDownEvent,
                     });
 
-                    bool completed = WaitUntil(window.Dispatcher, 2000, () => dialogTask.IsCompleted);
+                    bool completed = await WaitUntilAsync(window.Dispatcher, 2000, () => dialogTask.IsCompleted).ConfigureAwait(true);
                     Assert.True(completed, "Pressing Escape must complete the ShowAsync task.");
-                    bool overlayRemoved = WaitUntil(window.Dispatcher, 2000,
-                        () => GetContentDialogOverlayAdorners(window) is null or { Length: 0 });
+                    bool overlayRemoved = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => GetContentDialogOverlayAdorners(window) is null or { Length: 0 }).ConfigureAwait(true);
                     Assert.True(overlayRemoved, "Pressing Escape must remove the modal overlay adorner.");
                 }
                 finally
@@ -630,19 +623,19 @@ namespace Fluence.Wpf.Tests
                     dialog.Hide();
                     window.Close();
                 }
-            });
+            }).ConfigureAwait(true);
 
             Assert.NotNull(dialogTask);
-            ContentDialogResult result = await dialogTask;
+            ContentDialogResult result = await dialogTask.ConfigureAwait(true);
             Assert.Equal(ContentDialogResult.None, result);
         }
 
         [Fact]
-        public void ContentDialog_CancelingPrimaryButtonClick_KeepsDialogOpen()
+        public Task ContentDialog_CancelingPrimaryButtonClick_KeepsDialogOpenAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -659,21 +652,20 @@ namespace Fluence.Wpf.Tests
                     dialog.PrimaryButtonClick += (_, args) => args.Cancel = true;
 
                     Task<ContentDialogResult> task = dialog.ShowAsync();
-                    bool templated = WaitUntil(window.Dispatcher, 2000,
-                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null);
+                    bool templated = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null).ConfigureAwait(true);
                     Assert.True(templated, "The dialog template must apply before the primary button can be clicked.");
 
-                    ButtonBase? primary = FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton");
-                    Assert.NotNull(primary);
+                    ButtonBase primary = Assert.IsAssignableFrom<ButtonBase>(FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton"));
                     primary.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.False(task.IsCompleted, "A canceled PrimaryButtonClick must keep the ShowAsync task pending.");
                     Assert.True(GetContentDialogOverlayAdorners(window) is { Length: > 0 },
                         "A canceled PrimaryButtonClick must keep the modal overlay adorner in place.");
 
                     dialog.Hide();
-                    bool completed = WaitUntil(window.Dispatcher, 2000, () => task.IsCompleted);
+                    bool completed = await WaitUntilAsync(window.Dispatcher, 2000, () => task.IsCompleted).ConfigureAwait(true);
                     Assert.True(completed, "Hide must still complete the task after a canceled button click.");
                 }
                 finally
@@ -685,30 +677,28 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_SmokeFillBrush_ResolvesAcrossThemeCycle()
+        public Task ContentDialog_SmokeFillBrush_ResolvesAcrossThemeCycleAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ThemeTestHelpers.ApplyStandardThemeCycle();
 
-                SolidColorBrush? smoke = app?.TryFindResource("SmokeFillColorDefaultBrush") as SolidColorBrush;
-                Assert.NotNull(smoke);
+                SolidColorBrush smoke = Assert.IsType<SolidColorBrush>(app?.TryFindResource("SmokeFillColorDefaultBrush"));
                 Assert.Equal(Color.FromArgb(0x4D, 0x00, 0x00, 0x00), smoke.Color);
 
-                Color? smokeColor = app?.TryFindResource("SmokeFillColorDefault") as Color?;
-                _ = Assert.NotNull(smokeColor);
+                Color smokeColor = Assert.IsAssignableFrom<Color>(app?.TryFindResource("SmokeFillColorDefault") as Color?);
             });
         }
 
         [Fact]
-        public void ContentDialog_WhileOpen_BlocksPointerInputOutsideDialog()
+        public Task ContentDialog_WhileOpen_BlocksPointerInputOutsideDialogAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Button behind = new() { Content = "Behind" };
@@ -717,7 +707,7 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     Controls.ContentDialog dialog = new()
@@ -729,8 +719,8 @@ namespace Fluence.Wpf.Tests
                     };
 
                     Task<ContentDialogResult> task = dialog.ShowAsync();
-                    bool templated = WaitUntil(window.Dispatcher, 2000,
-                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null);
+                    bool templated = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null).ConfigureAwait(true);
                     Assert.True(templated, "The dialog template must apply before input is simulated.");
 
                     // A press on a control outside the dialog (standing in for a title-bar
@@ -743,8 +733,7 @@ namespace Fluence.Wpf.Tests
                     Assert.True(outside.Handled, "Pointer input outside the open dialog must be blocked.");
 
                     // A press on the dialog's own button must pass through.
-                    ButtonBase? primary = FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton");
-                    Assert.NotNull(primary);
+                    ButtonBase primary = Assert.IsAssignableFrom<ButtonBase>(FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton"));
                     MouseButtonEventArgs inside = new(Mouse.PrimaryDevice, 0, MouseButton.Left)
                     {
                         RoutedEvent = UIElement.PreviewMouseDownEvent,
@@ -755,7 +744,7 @@ namespace Fluence.Wpf.Tests
                     // The owner stays modal while the DialogHidden exit plays, so wait for
                     // the close to complete before asserting input flows again.
                     dialog.Hide();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => task.IsCompleted),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => task.IsCompleted).ConfigureAwait(true),
                         "Hide must complete the ShowAsync task once the exit settles.");
 
                     // After the dialog closes, input outside it flows normally again.
@@ -774,11 +763,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_WhileOpen_BlocksKeyInputOutsideDialog()
+        public Task ContentDialog_WhileOpen_BlocksKeyInputOutsideDialogAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 TextBox behind = new() { Text = "Behind" };
@@ -787,7 +776,7 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     Controls.ContentDialog dialog = new()
@@ -799,12 +788,11 @@ namespace Fluence.Wpf.Tests
                     };
 
                     Task<ContentDialogResult> task = dialog.ShowAsync();
-                    bool templated = WaitUntil(window.Dispatcher, 2000,
-                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null);
+                    bool templated = await WaitUntilAsync(window.Dispatcher, 2000,
+                        () => FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton") is not null).ConfigureAwait(true);
                     Assert.True(templated, "The dialog template must apply before key input is simulated.");
 
-                    PresentationSource? source = PresentationSource.FromVisual(window);
-                    Assert.NotNull(source);
+                    PresentationSource source = Assert.IsAssignableFrom<PresentationSource>(PresentationSource.FromVisual(window));
 
                     // A key press sourced outside the dialog (standing in for a title-bar
                     // search box that still holds keyboard focus) must be swallowed.
@@ -817,8 +805,7 @@ namespace Fluence.Wpf.Tests
 
                     // A key press sourced inside the dialog must pass through so the dialog's
                     // own Tab cycle and key handling keep working.
-                    ButtonBase? primary = FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton");
-                    Assert.NotNull(primary);
+                    ButtonBase primary = Assert.IsAssignableFrom<ButtonBase>(FindVisualChildByName<ButtonBase>(dialog, "PART_PrimaryButton"));
                     KeyEventArgs inside = new(Keyboard.PrimaryDevice, source, 0, Key.A)
                     {
                         RoutedEvent = UIElement.PreviewKeyDownEvent,
@@ -829,7 +816,7 @@ namespace Fluence.Wpf.Tests
                     // The owner stays modal while the DialogHidden exit plays, so wait for
                     // the close to complete before asserting key input flows again.
                     dialog.Hide();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => task.IsCompleted),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => task.IsCompleted).ConfigureAwait(true),
                         "Hide must complete the ShowAsync task once the exit settles.");
 
                     // After the dialog closes, key input outside it flows normally again.
@@ -848,11 +835,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_Open_UsesSurfaceStrokeAndPlaysEntranceAnimation()
+        public Task ContentDialog_Open_UsesSurfaceStrokeAndPlaysEntranceAnimationAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = CreateShownContentDialogOwner();
@@ -866,21 +853,19 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     _ = dialog.ShowAsync();
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => FindVisualChildByName<Border>(dialog, "DialogSurface") is not null),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => FindVisualChildByName<Border>(dialog, "DialogSurface") is not null).ConfigureAwait(true),
                         "The dialog template must apply once overlay-hosted.");
 
                     // C1: the outer dialog stroke is the WinUI ContentDialogBorderBrush.
-                    Border? surface = FindVisualChildByName<Border>(dialog, "DialogSurface");
-                    Assert.NotNull(surface);
+                    Border surface = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(dialog, "DialogSurface"));
                     Assert.Same(app?.TryFindResource("SurfaceStrokeColorDefaultBrush"), surface.BorderBrush);
 
                     // C2: the entrance animates opacity 0->1 and scale 1.05->1.0 around the center.
                     Assert.Equal(new Point(0.5, 0.5), dialog.RenderTransformOrigin);
-                    ScaleTransform? scale = dialog.RenderTransform as ScaleTransform;
-                    Assert.NotNull(scale);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => dialog.Opacity >= 1.0 && scale.ScaleX <= 1.0 && scale.ScaleY <= 1.0),
+                    ScaleTransform scale = Assert.IsType<ScaleTransform>(dialog.RenderTransform);
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => dialog.Opacity >= 1.0 && scale.ScaleX <= 1.0 && scale.ScaleY <= 1.0).ConfigureAwait(true),
                         "The entrance animation must settle at full opacity and 1.0 scale.");
 
                     dialog.Hide();
@@ -894,11 +879,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_OverFluenceWindow_HostsOverlayAboveTheWholeWindow()
+        public Task ContentDialog_OverFluenceWindow_HostsOverlayAboveTheWholeWindowAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.FluenceWindow window = new()
@@ -912,12 +897,11 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    Panel? host =
-                        window.Template?.FindName("PART_DialogOverlayHost", window) as Panel;
-                    Assert.NotNull(host);
+                    Panel host =
+                        Assert.IsAssignableFrom<Panel>(window.Template?.FindName("PART_DialogOverlayHost", window));
 
                     Controls.ContentDialog dialog = new()
                     {
@@ -927,12 +911,12 @@ namespace Fluence.Wpf.Tests
                     };
 
                     _ = dialog.ShowAsync();
-                    bool hosted = WaitUntil(window.Dispatcher, 2000, () => host.Children.Count > 0);
+                    bool hosted = await WaitUntilAsync(window.Dispatcher, 2000, () => host.Children.Count > 0).ConfigureAwait(true);
                     Assert.True(hosted,
                         "Over a FluenceWindow the dialog overlay must be hosted in PART_DialogOverlayHost so the smoke covers the title bar.");
 
                     dialog.Hide();
-                    bool removed = WaitUntil(window.Dispatcher, 2000, () => host.Children.Count is 0);
+                    bool removed = await WaitUntilAsync(window.Dispatcher, 2000, () => host.Children.Count is 0).ConfigureAwait(true);
                     Assert.True(removed, "Closing the dialog must remove the overlay from PART_DialogOverlayHost.");
                 }
                 finally
@@ -943,11 +927,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_DeclaresAssertiveLiveSetting()
+        public Task ContentDialog_DeclaresAssertiveLiveSettingAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ContentDialog dialog = new() { Title = "Confirm" };
@@ -961,11 +945,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContentDialog_AutomationPeer_ReportsWindowRoleAndTitleName()
+        public Task ContentDialog_AutomationPeer_ReportsWindowRoleAndTitleNameAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ContentDialog dialog = new() { Title = "Delete file?" };
@@ -974,7 +958,7 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(dialog);
                     _ = Assert.IsAssignableFrom<Automation.ContentDialogAutomationPeer>(peer);

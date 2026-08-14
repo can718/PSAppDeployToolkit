@@ -27,6 +27,7 @@
  */
 
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -48,67 +49,62 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void PersonPicture_DefaultStyle_Applies()
+        public Task PersonPicture_DefaultStyle_AppliesAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new();
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // Background ellipse must be in visual tree
-                Ellipse? ellipse = FindVisualChild<Ellipse>(pp);
-                Assert.NotNull(ellipse);
+                Ellipse ellipse = Assert.IsAssignableFrom<Ellipse>(FindVisualChild<Ellipse>(pp));
                 w.Close();
             });
         }
 
         [Fact]
-        public void PersonPicture_TemplateParts_Present()
+        public Task PersonPicture_TemplateParts_PresentAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new();
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.TextBlock? initialsText = FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText");
-                Assert.NotNull(initialsText);
+                System.Windows.Controls.TextBlock initialsText = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText"));
 
-                Ellipse? imageEllipse = FindVisualChildByName<Ellipse>(pp, "PART_ImageEllipse");
-                Assert.NotNull(imageEllipse);
+                Ellipse imageEllipse = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(pp, "PART_ImageEllipse"));
 
-                System.Windows.Controls.Grid? badgeGrid = FindVisualChildByName<System.Windows.Controls.Grid>(pp, "PART_BadgeGrid");
-                Assert.NotNull(badgeGrid);
+                System.Windows.Controls.Grid badgeGrid = Assert.IsAssignableFrom<System.Windows.Controls.Grid>(FindVisualChildByName<System.Windows.Controls.Grid>(pp, "PART_BadgeGrid"));
 
                 w.Close();
             });
         }
 
         [Fact]
-        public void PersonPicture_NoData_ShowsPlaceholderGlyph()
+        public Task PersonPicture_NoData_ShowsPlaceholderGlyphAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 // No DisplayName, no Initials, no ProfilePicture
                 PersonPicture pp = new();
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.TextBlock? initialsText = FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText");
-                Assert.NotNull(initialsText);
+                System.Windows.Controls.TextBlock initialsText = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText"));
                 // Contact glyph U+E77B
                 Assert.Equal("\uE77B", initialsText.Text, StringComparer.Ordinal);
                 Assert.Contains("Segoe Fluent Icons", initialsText.FontFamily.Source, StringComparison.Ordinal);
@@ -117,110 +113,102 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void PersonPicture_DisplayName_GeneratesInitials()
+        public Task PersonPicture_DisplayName_GeneratesInitialsAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { DisplayName = "John Doe" };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.TextBlock? initialsText = FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText");
-                Assert.NotNull(initialsText);
+                System.Windows.Controls.TextBlock initialsText = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText"));
                 Assert.Equal("JD", initialsText.Text, StringComparer.Ordinal);
                 w.Close();
             });
         }
 
         [Fact]
-        public void PersonPicture_ExplicitInitials_Override()
+        public Task PersonPicture_ExplicitInitials_OverrideAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { DisplayName = "John Doe", Initials = "XY" };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.TextBlock? initialsText = FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText");
-                Assert.NotNull(initialsText);
+                System.Windows.Controls.TextBlock initialsText = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText"));
                 Assert.Equal("XY", initialsText.Text, StringComparer.Ordinal);
                 w.Close();
             });
         }
 
         [Fact]
-        public void PersonPicture_IsGroup_ShowsPeopleGlyph()
+        public Task PersonPicture_IsGroup_ShowsPeopleGlyphAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { IsGroup = true };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.TextBlock? initialsText = FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText");
-                Assert.NotNull(initialsText);
+                System.Windows.Controls.TextBlock initialsText = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText"));
                 Assert.Equal("\uE716", initialsText.Text, StringComparer.Ordinal);
                 w.Close();
             });
         }
 
         [Fact]
-        public void PersonPicture_BadgeNumber_MakesBadgeVisible()
+        public Task PersonPicture_BadgeNumber_MakesBadgeVisibleAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { BadgeNumber = 3 };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.Grid? badgeGrid = FindVisualChildByName<System.Windows.Controls.Grid>(pp, "PART_BadgeGrid");
-                Assert.NotNull(badgeGrid);
+                System.Windows.Controls.Grid badgeGrid = Assert.IsAssignableFrom<System.Windows.Controls.Grid>(FindVisualChildByName<System.Windows.Controls.Grid>(pp, "PART_BadgeGrid"));
                 Assert.Equal(Visibility.Visible, badgeGrid.Visibility);
 
-                System.Windows.Controls.TextBlock? badgeText = FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_BadgeText");
-                Assert.NotNull(badgeText);
+                System.Windows.Controls.TextBlock badgeText = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_BadgeText"));
                 Assert.Equal("3", badgeText.Text, StringComparer.Ordinal);
                 w.Close();
             });
         }
 
         [Fact]
-        public void PersonPicture_BadgeBackground_CoversNumberAndGlyphContent()
+        public Task PersonPicture_BadgeBackground_CoversNumberAndGlyphContentAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { Width = 48, Height = 48, BadgeNumber = 150 };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
                 w.UpdateLayout();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.Grid? badgeGrid = FindVisualChildByName<System.Windows.Controls.Grid>(pp, "PART_BadgeGrid");
-                System.Windows.Controls.Border? badgeBackground = FindVisualChildByName<System.Windows.Controls.Border>(pp, "PART_BadgeBackground");
-                System.Windows.Controls.TextBlock? badgeText = FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_BadgeText");
-                Assert.NotNull(badgeGrid);
-                Assert.NotNull(badgeBackground);
-                Assert.NotNull(badgeText);
+                System.Windows.Controls.Grid badgeGrid = Assert.IsAssignableFrom<System.Windows.Controls.Grid>(FindVisualChildByName<System.Windows.Controls.Grid>(pp, "PART_BadgeGrid"));
+                System.Windows.Controls.Border badgeBackground = Assert.IsAssignableFrom<System.Windows.Controls.Border>(FindVisualChildByName<System.Windows.Controls.Border>(pp, "PART_BadgeBackground"));
+                System.Windows.Controls.TextBlock badgeText = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_BadgeText"));
                 Assert.Equal("99+", badgeText.Text, StringComparer.Ordinal);
                 Assert.True(badgeGrid.ActualWidth >= badgeText.ActualWidth + 8.0,
                     "Numeric badges must use a pill surface wide enough to cover their rendered text.");
@@ -229,9 +217,9 @@ namespace Fluence.Wpf.Tests
 
                 pp.BadgeNumber = 0;
                 pp.BadgeGlyph = "\uE73E";
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
                 w.UpdateLayout();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 Assert.Equal("\uE73E", badgeText.Text, StringComparer.Ordinal);
                 Assert.True(badgeGrid.ActualWidth >= badgeText.ActualWidth + 8.0,
@@ -243,37 +231,36 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void PersonPicture_NoBadge_BadgeCollapsed()
+        public Task PersonPicture_NoBadge_BadgeCollapsedAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { BadgeNumber = 0 };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.Grid? badgeGrid = FindVisualChildByName<System.Windows.Controls.Grid>(pp, "PART_BadgeGrid");
-                Assert.NotNull(badgeGrid);
+                System.Windows.Controls.Grid badgeGrid = Assert.IsAssignableFrom<System.Windows.Controls.Grid>(FindVisualChildByName<System.Windows.Controls.Grid>(pp, "PART_BadgeGrid"));
                 Assert.Equal(Visibility.Collapsed, badgeGrid.Visibility);
                 w.Close();
             });
         }
 
         [Fact]
-        public void PersonPicture_DefaultSize_Is40x40()
+        public Task PersonPicture_DefaultSize_Is40x40Async()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new();
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 Assert.Equal(40.0, pp.Width);
                 Assert.Equal(40.0, pp.Height);
@@ -282,40 +269,39 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void PersonPicture_ThemeCycle_StyleRemainsApplied()
+        public Task PersonPicture_ThemeCycle_StyleRemainsAppliedAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { DisplayName = "Alice Smith" };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 ThemeTestHelpers.ApplyStandardThemeCycle();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                System.Windows.Controls.TextBlock? initialsText = FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText");
-                Assert.NotNull(initialsText);
+                System.Windows.Controls.TextBlock initialsText = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(FindVisualChildByName<System.Windows.Controls.TextBlock>(pp, "PART_InitialsText"));
                 w.Close();
             });
         }
 
         [Fact]
-        public void PersonPicture_AutomationPeer_IsPersonPictureAutomationPeer()
+        public Task PersonPicture_AutomationPeer_IsPersonPictureAutomationPeerAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { DisplayName = "Ada Lovelace" };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
                 _ = pp.ApplyTemplate();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(pp);
                 _ = Assert.IsAssignableFrom<PersonPictureAutomationPeer>(peer);
@@ -324,18 +310,18 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void PersonPicture_AutomationPeer_ControlTypeIsImage()
+        public Task PersonPicture_AutomationPeer_ControlTypeIsImageAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { DisplayName = "Ada Lovelace" };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
                 _ = pp.ApplyTemplate();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(pp);
                 Assert.Equal(AutomationControlType.Image, peer.GetAutomationControlType());
@@ -344,18 +330,18 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void PersonPicture_AutomationPeer_GetName_ReturnsDisplayName()
+        public Task PersonPicture_AutomationPeer_GetName_ReturnsDisplayNameAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { DisplayName = "Ada Lovelace" };
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
                 _ = pp.ApplyTemplate();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(pp);
                 Assert.Equal("Ada Lovelace", peer.GetName(), StringComparer.Ordinal);
@@ -364,11 +350,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void PersonPicture_AutomationPeer_GetName_FallsBackToInitials()
+        public Task PersonPicture_AutomationPeer_GetName_FallsBackToInitialsAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 // No DisplayName, but Initials set explicitly.
@@ -376,7 +362,7 @@ namespace Fluence.Wpf.Tests
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
                 _ = pp.ApplyTemplate();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(pp);
                 Assert.Equal("AL", peer.GetName(), StringComparer.Ordinal);
@@ -385,11 +371,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void PersonPicture_AutomationPeer_ExplicitAutomationName_Wins()
+        public Task PersonPicture_AutomationPeer_ExplicitAutomationName_WinsAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 PersonPicture pp = new() { DisplayName = "Ada Lovelace" };
@@ -397,7 +383,7 @@ namespace Fluence.Wpf.Tests
                 Window w = new() { Content = pp, Width = 200, Height = 200 };
                 w.Show();
                 _ = pp.ApplyTemplate();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(pp);
                 Assert.Equal("Profile picture for Ada", peer.GetName(), StringComparer.Ordinal);

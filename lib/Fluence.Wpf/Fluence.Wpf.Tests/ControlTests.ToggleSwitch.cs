@@ -27,6 +27,7 @@
  */
 
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -49,41 +50,38 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void ToggleSwitch_StyleApplies_SwitchThumbFound()
+        public Task ToggleSwitch_StyleApplies_SwitchThumbFoundAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ToggleSwitch ts = new();
                 Window w = new() { Content = ts, Width = 160, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Ellipse? thumb = FindVisualChildByName<Ellipse>(ts, "SwitchThumb");
-                Assert.NotNull(thumb);
-                Thumb? input = FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput");
-                Assert.NotNull(input);
+                Ellipse thumb = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(ts, "SwitchThumb"));
+                Thumb input = Assert.IsAssignableFrom<Thumb>(FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput"));
                 w.Close();
             });
         }
 
         [Fact]
-        public void ToggleSwitch_DefaultState_ThumbWidth12()
+        public Task ToggleSwitch_DefaultState_ThumbWidth12Async()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ToggleSwitch ts = new() { IsChecked = false };
                 Window w = new() { Content = ts, Width = 160, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Ellipse? thumb = FindVisualChildByName<Ellipse>(ts, "SwitchThumb");
-                Assert.NotNull(thumb);
+                Ellipse thumb = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(ts, "SwitchThumb"));
                 Assert.Equal(12.0, thumb.Width, 0.001);
                 Assert.Equal(12.0, thumb.Height, 0.001);
 
@@ -95,17 +93,17 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleSwitch_Checked_ThumbTranslateIs20()
+        public Task ToggleSwitch_Checked_ThumbTranslateIs20Async()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ToggleSwitch ts = new() { IsChecked = true };
                 Window w = new() { Content = ts, Width = 160, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 TranslateTransform tx = GetToggleSwitchKnobTranslate(ts);
                 Assert.Equal(20.0, tx.X, 0.5);
@@ -114,17 +112,17 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleSwitch_Unchecked_ThumbTranslateIsZero()
+        public Task ToggleSwitch_Unchecked_ThumbTranslateIsZeroAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ToggleSwitch ts = new() { IsChecked = false };
                 Window w = new() { Content = ts, Width = 160, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 TranslateTransform tx = GetToggleSwitchKnobTranslate(ts);
                 Assert.Equal(0.0, tx.X, 0.5);
@@ -133,17 +131,17 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleSwitch_ProgrammaticToggle_AnimatesKnobToCheckedSide()
+        public Task ToggleSwitch_ProgrammaticToggle_AnimatesKnobToCheckedSideAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ToggleSwitch ts = new() { IsChecked = false };
                 Window w = new() { Content = ts, Width = 160, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 TranslateTransform tx = GetToggleSwitchKnobTranslate(ts);
                 Assert.Equal(0.0, tx.X, 0.5);
@@ -152,29 +150,27 @@ namespace Fluence.Wpf.Tests
                 Assert.True(tx.X < 20.0,
                     "Programmatic toggle should start an animation instead of snapping directly to the checked side.");
 
-                WaitForAnimationAndDrain(w.Dispatcher, 250);
+                await WaitForAnimationAndDrainAsync(w.Dispatcher, 250).ConfigureAwait(true);
                 Assert.Equal(20.0, tx.X, 0.5);
                 w.Close();
             });
         }
 
         [Fact]
-        public void ToggleSwitch_DragInput_ExpandsThumbAndCommitsCheckedState()
+        public Task ToggleSwitch_DragInput_ExpandsThumbAndCommitsCheckedStateAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ToggleSwitch ts = new() { IsChecked = false };
                 Window w = new() { Content = ts, Width = 160, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Ellipse? thumb = FindVisualChildByName<Ellipse>(ts, "SwitchThumb");
-                Assert.NotNull(thumb);
-                Thumb? input = FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput");
-                Assert.NotNull(input);
+                Ellipse thumb = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(ts, "SwitchThumb"));
+                Thumb input = Assert.IsAssignableFrom<Thumb>(FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput"));
                 TranslateTransform tx = GetToggleSwitchKnobTranslate(ts);
                 ScaleTransform scale = GetToggleSwitchThumbScale(ts);
 
@@ -183,7 +179,7 @@ namespace Fluence.Wpf.Tests
                     RoutedEvent = Thumb.DragStartedEvent,
                 };
                 input.RaiseEvent(started);
-                WaitForAnimationAndDrain(w.Dispatcher, 120);
+                await WaitForAnimationAndDrainAsync(w.Dispatcher, 120).ConfigureAwait(true);
                 Assert.Equal(17.0 / 12.0, scale.ScaleX, 0.05);
                 Assert.Equal(14.0 / 12.0, scale.ScaleY, 0.05);
                 Assert.Equal(12.0, thumb.Width, 0.001);
@@ -202,7 +198,7 @@ namespace Fluence.Wpf.Tests
                 };
                 input.RaiseEvent(completed);
                 Assert.Equal(true, ts.IsChecked);
-                WaitForAnimationAndDrain(w.Dispatcher, 250);
+                await WaitForAnimationAndDrainAsync(w.Dispatcher, 250).ConfigureAwait(true);
                 Assert.Equal(20.0, tx.X, 0.5);
                 Assert.Equal(1.0, scale.ScaleX, 0.05);
                 Assert.Equal(1.0, scale.ScaleY, 0.05);
@@ -213,22 +209,20 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleSwitch_PressedCodePath_ScalesThumbWithoutLayoutSizeChange()
+        public Task ToggleSwitch_PressedCodePath_ScalesThumbWithoutLayoutSizeChangeAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ToggleSwitch ts = new() { IsChecked = false };
                 Window w = new() { Content = ts, Width = 160, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Ellipse? thumb = FindVisualChildByName<Ellipse>(ts, "SwitchThumb");
-                Assert.NotNull(thumb);
-                Thumb? input = FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput");
-                Assert.NotNull(input);
+                Ellipse thumb = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(ts, "SwitchThumb"));
+                Thumb input = Assert.IsAssignableFrom<Thumb>(FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput"));
                 ScaleTransform scale = GetToggleSwitchThumbScale(ts);
                 Assert.Equal(1.0, scale.ScaleX, 0.001);
 
@@ -237,7 +231,7 @@ namespace Fluence.Wpf.Tests
                     RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
                 };
                 input.RaiseEvent(pressed);
-                WaitForAnimationAndDrain(w.Dispatcher, 120);
+                await WaitForAnimationAndDrainAsync(w.Dispatcher, 120).ConfigureAwait(true);
 
                 Assert.Equal(17.0 / 12.0, scale.ScaleX, 0.05);
                 Assert.Equal(14.0 / 12.0, scale.ScaleY, 0.05);
@@ -249,7 +243,7 @@ namespace Fluence.Wpf.Tests
                     RoutedEvent = UIElement.LostMouseCaptureEvent,
                 };
                 input.RaiseEvent(lostCapture);
-                WaitForAnimationAndDrain(w.Dispatcher, 250);
+                await WaitForAnimationAndDrainAsync(w.Dispatcher, 250).ConfigureAwait(true);
                 Assert.Equal(1.0, scale.ScaleX, 0.05);
 
                 w.Close();
@@ -257,20 +251,19 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleSwitch_ClickReleaseThroughCaptureLoss_CommitsCheckedState()
+        public Task ToggleSwitch_ClickReleaseThroughCaptureLoss_CommitsCheckedStateAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ToggleSwitch ts = new() { IsChecked = false };
                 Window w = new() { Content = ts, Width = 160, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Thumb? input = FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput");
-                Assert.NotNull(input);
+                Thumb input = Assert.IsAssignableFrom<Thumb>(FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput"));
 
                 MouseButtonEventArgs pressed = new(Mouse.PrimaryDevice, 0, MouseButton.Left)
                 {
@@ -286,7 +279,7 @@ namespace Fluence.Wpf.Tests
 
                 Assert.Equal(true, ts.IsChecked);
 
-                WaitForAnimationAndDrain(w.Dispatcher, 250);
+                await WaitForAnimationAndDrainAsync(w.Dispatcher, 250).ConfigureAwait(true);
                 TranslateTransform tx = GetToggleSwitchKnobTranslate(ts);
                 Assert.Equal(20.0, tx.X, 0.5);
 
@@ -295,20 +288,19 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleSwitch_DragReleaseThroughCaptureLoss_CommitsNearestState()
+        public Task ToggleSwitch_DragReleaseThroughCaptureLoss_CommitsNearestStateAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ToggleSwitch ts = new() { IsChecked = false };
                 Window w = new() { Content = ts, Width = 160, Height = 60 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Thumb? input = FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput");
-                Assert.NotNull(input);
+                Thumb input = Assert.IsAssignableFrom<Thumb>(FindVisualChildByName<Thumb>(ts, "PART_SwitchThumbInput"));
                 TranslateTransform tx = GetToggleSwitchKnobTranslate(ts);
 
                 DragStartedEventArgs started = new(0, 0)
@@ -332,7 +324,7 @@ namespace Fluence.Wpf.Tests
 
                 Assert.Equal(true, ts.IsChecked);
 
-                WaitForAnimationAndDrain(w.Dispatcher, 250);
+                await WaitForAnimationAndDrainAsync(w.Dispatcher, 250).ConfigureAwait(true);
                 Assert.Equal(20.0, tx.X, 0.5);
 
                 w.Close();
@@ -340,11 +332,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ToggleSwitch_HeaderContent_BecomesAccessibleName()
+        public Task ToggleSwitch_HeaderContent_BecomesAccessibleNameAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? application = EnsureApplication();
+                Application application = WpfTestSta.EnsureApplication();
                 ResourceDictionary? genericDictionary = MergeGenericDictionary(application);
                 Window window = new();
 
@@ -355,7 +347,7 @@ namespace Fluence.Wpf.Tests
                     window.Width = 240;
                     window.Height = 120;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     AutomationPeer peer = UIElementAutomationPeer.CreatePeerForElement(ts);
                     Assert.True(
@@ -380,20 +372,14 @@ namespace Fluence.Wpf.Tests
 
         private static ScaleTransform GetToggleSwitchThumbScale(ToggleSwitch toggleSwitch)
         {
-            Ellipse? thumb = FindVisualChildByName<Ellipse>(toggleSwitch, "SwitchThumb");
-            Assert.NotNull(thumb);
-            ScaleTransform? scale = thumb.RenderTransform as ScaleTransform;
-            Assert.NotNull(scale);
-            return scale;
+            Ellipse thumb = Assert.IsAssignableFrom<Ellipse>(FindVisualChildByName<Ellipse>(toggleSwitch, "SwitchThumb"));
+            return Assert.IsType<ScaleTransform>(thumb.RenderTransform);
         }
 
         private static TranslateTransform GetToggleSwitchKnobTranslate(ToggleSwitch toggleSwitch)
         {
-            FrameworkElement? knob = FindVisualChildByName<FrameworkElement>(toggleSwitch, "SwitchKnob");
-            Assert.NotNull(knob);
-            TranslateTransform? tx = knob.RenderTransform as TranslateTransform;
-            Assert.NotNull(tx);
-            return tx;
+            FrameworkElement knob = Assert.IsAssignableFrom<FrameworkElement>(FindVisualChildByName<FrameworkElement>(toggleSwitch, "SwitchKnob"));
+            return Assert.IsType<TranslateTransform>(knob.RenderTransform);
         }
     }
 }

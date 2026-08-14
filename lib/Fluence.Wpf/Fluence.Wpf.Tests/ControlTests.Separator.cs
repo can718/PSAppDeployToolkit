@@ -26,6 +26,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -44,37 +45,36 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void Separator_DefaultStyle_Applies()
+        public Task Separator_DefaultStyle_AppliesAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Separator sep = new();
                 Window w = new() { Content = sep, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // Template applied - Border is the root of the template
-                Border? border = FindVisualChild<Border>(sep);
-                Assert.NotNull(border);
+                Border border = Assert.IsAssignableFrom<Border>(FindVisualChild<Border>(sep));
                 w.Close();
             });
         }
 
         [Fact]
-        public void Separator_Height_IsOne()
+        public Task Separator_Height_IsOneAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Separator sep = new();
                 Window w = new() { Content = sep, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 Assert.Equal(1.0, sep.Height);
                 w.Close();
@@ -82,46 +82,43 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Separator_Background_UsesDividerStrokeColorDefaultBrush()
+        public Task Separator_Background_UsesDividerStrokeColorDefaultBrushAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Separator sep = new();
                 Window w = new() { Content = sep, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                SolidColorBrush? bg = sep.Background as SolidColorBrush;
-                SolidColorBrush? expected = app?.TryFindResource("DividerStrokeColorDefaultBrush") as SolidColorBrush;
+                SolidColorBrush bg = Assert.IsType<SolidColorBrush>(sep.Background);
+                SolidColorBrush expected = Assert.IsType<SolidColorBrush>(app?.TryFindResource("DividerStrokeColorDefaultBrush"));
 
-                Assert.NotNull(expected);
-                Assert.NotNull(bg);
                 Assert.Equal(expected.Color, bg.Color);
                 w.Close();
             });
         }
 
         [Fact]
-        public void Separator_ThemeCycle_StyleRemainsApplied()
+        public Task Separator_ThemeCycle_StyleRemainsAppliedAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Separator sep = new();
                 Window w = new() { Content = sep, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 ThemeTestHelpers.ApplyStandardThemeCycle();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Border? border = FindVisualChild<Border>(sep);
-                Assert.NotNull(border);
+                Border border = Assert.IsAssignableFrom<Border>(FindVisualChild<Border>(sep));
                 w.Close();
             });
         }

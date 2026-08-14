@@ -27,6 +27,7 @@
  */
 
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -45,87 +46,81 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void Expander_StyleApplies_RootBorderFound()
+        public Task Expander_StyleApplies_RootBorderFoundAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Expander expander = new() { Header = "Test", Content = "Content" };
                 Window w = new() { Content = expander, Width = 300, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // RootBorder is the template root - proves Fluence style applied.
-                Border? rootBorder = FindVisualChildByName<Border>(expander, "RootBorder");
-                Assert.NotNull(rootBorder);
+                Border rootBorder = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(expander, "RootBorder"));
                 w.Close();
             });
         }
 
         [Fact]
-        public void Expander_ChevronPath_ExistsWithRotateTransformOnParent()
+        public Task Expander_ChevronPath_ExistsWithRotateTransformOnParentAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Expander expander = new() { Header = "Test", Content = "Body", IsExpanded = false };
                 Window w = new() { Content = expander, Width = 300, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Path? chevron = FindVisualChildByName<Path>(expander, "Chevron");
-                Assert.NotNull(chevron);
+                Path chevron = Assert.IsAssignableFrom<Path>(FindVisualChildByName<Path>(expander, "Chevron"));
 
                 // Parent Border owns the RotateTransform.
-                Border? parent = VisualTreeHelper.GetParent(chevron) as Border;
-                Assert.NotNull(parent);
+                Border parent = Assert.IsType<Border>(VisualTreeHelper.GetParent(chevron));
 
-                RotateTransform? rt = parent.RenderTransform as RotateTransform;
-                Assert.NotNull(rt);
+                RotateTransform rt = Assert.IsType<RotateTransform>(parent.RenderTransform);
                 Assert.Equal(0.0, rt.Angle, 1.0);
                 w.Close();
             });
         }
 
         [Fact]
-        public void Expander_Expanded_ContentVisibilityIsVisible()
+        public Task Expander_Expanded_ContentVisibilityIsVisibleAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Expander expander = new() { Header = "Test", Content = "Body", IsExpanded = true };
                 Window w = new() { Content = expander, Width = 300, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // Structural check: ExpandSite ContentPresenter is present.
-                ContentPresenter? site = FindVisualChildByName<ContentPresenter>(expander, "ExpandSite");
-                Assert.NotNull(site);
+                ContentPresenter site = Assert.IsAssignableFrom<ContentPresenter>(FindVisualChildByName<ContentPresenter>(expander, "ExpandSite"));
                 w.Close();
             });
         }
 
         [Fact]
-        public void Expander_HeaderBorder_CornerRadius4()
+        public Task Expander_HeaderBorder_CornerRadius4Async()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Expander expander = new() { Header = "Test" };
                 Window w = new() { Content = expander, Width = 300, Height = 200 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Border? headerBorder = FindVisualChildByName<Border>(expander, "HeaderBorder");
-                Assert.NotNull(headerBorder);
+                Border headerBorder = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(expander, "HeaderBorder"));
                 Assert.Equal(new CornerRadius(4), headerBorder.CornerRadius);
                 w.Close();
             });
@@ -136,11 +131,11 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void Expander_ContentSlideParts_PresentWithClipAndInlineTranslate()
+        public Task Expander_ContentSlideParts_PresentWithClipAndInlineTranslateAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Expander expander = new() { Header = "Test", Content = "Body" };
@@ -148,19 +143,16 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     w.Show();
-                    DrainDispatcher(w.Dispatcher);
+                    WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                    Border? contentBorder = FindVisualChildByName<Border>(expander, "PART_ContentBorder");
-                    Assert.NotNull(contentBorder);
+                    Border contentBorder = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(expander, "PART_ContentBorder"));
                     Assert.True(contentBorder.ClipToBounds,
                         "PART_ContentBorder must clip its bounds so the content slides behind the clip.");
 
-                    Grid? grid = VisualTreeHelper.GetParent(contentBorder) as Grid;
-                    Assert.NotNull(grid);
+                    Grid grid = Assert.IsType<Grid>(VisualTreeHelper.GetParent(contentBorder));
                     Assert.Equal(2, grid.RowDefinitions.Count);
 
-                    ContentPresenter? site = FindVisualChildByName<ContentPresenter>(expander, "ExpandSite");
-                    Assert.NotNull(site);
+                    ContentPresenter site = Assert.IsAssignableFrom<ContentPresenter>(FindVisualChildByName<ContentPresenter>(expander, "ExpandSite"));
                     _ = Assert.IsAssignableFrom<TranslateTransform>(site.RenderTransform);
                 }
                 finally
@@ -171,11 +163,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Expander_ExpandSlide_RestsAtZeroWithStarContentRow()
+        public Task Expander_ExpandSlide_RestsAtZeroWithStarContentRowAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Expander expander = new() { Header = "Test", Content = "Body", IsExpanded = false };
@@ -183,7 +175,7 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     w.Show();
-                    DrainDispatcher(w.Dispatcher);
+                    WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                     Border contentBorder = FindVisualChildByName<Border>(expander, "PART_ContentBorder")
                         ?? throw new Xunit.Sdk.XunitException("PART_ContentBorder must exist.");
@@ -195,11 +187,11 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(0.0, grid.RowDefinitions[1].Height.Value, 0.001);
 
                     expander.IsExpanded = true;
-                    Assert.True(WaitUntil(w.Dispatcher, 2000, () => translate.Y < 0),
+                    Assert.True(await WaitUntilAsync(w.Dispatcher, 2000, () => translate.Y < 0).ConfigureAwait(true),
                         "The expand slide must start from a negative offset (content behind the clip).");
                     Assert.True(
-                        WaitUntil(w.Dispatcher, 4000,
-                            () => Math.Abs(translate.Y) < 0.001 && grid.RowDefinitions[1].Height.IsStar),
+                        await WaitUntilAsync(w.Dispatcher, 4000,
+                            () => Math.Abs(translate.Y) < 0.001 && grid.RowDefinitions[1].Height.IsStar).ConfigureAwait(true),
                         "The content must rest at translate 0 with a star content row after the expand slide.");
                 }
                 finally
@@ -210,11 +202,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Expander_CollapseSlide_ClosesRowAndResetsTranslate()
+        public Task Expander_CollapseSlide_ClosesRowAndResetsTranslateAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Expander expander = new() { Header = "Test", Content = "Body", IsExpanded = true };
@@ -222,7 +214,7 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     w.Show();
-                    DrainDispatcher(w.Dispatcher);
+                    WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                     Border contentBorder = FindVisualChildByName<Border>(expander, "PART_ContentBorder")
                         ?? throw new Xunit.Sdk.XunitException("PART_ContentBorder must exist.");
@@ -236,10 +228,10 @@ namespace Fluence.Wpf.Tests
 
                     expander.IsExpanded = false;
                     Assert.True(
-                        WaitUntil(w.Dispatcher, 4000,
+                        await WaitUntilAsync(w.Dispatcher, 4000,
                             () => !grid.RowDefinitions[1].Height.IsStar
                                 && grid.RowDefinitions[1].Height.Value < 0.001
-                                && Math.Abs(translate.Y) < 0.001),
+                                && Math.Abs(translate.Y) < 0.001).ConfigureAwait(true),
                         "Collapse must close the content row at slide completion and reset the translate.");
                 }
                 finally
@@ -250,11 +242,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Expander_RapidToggleMidFlight_SettlesCollapsedWithoutStuckOffset()
+        public Task Expander_RapidToggleMidFlight_SettlesCollapsedWithoutStuckOffsetAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Expander expander = new() { Header = "Test", Content = "Body", IsExpanded = false };
@@ -262,7 +254,7 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     w.Show();
-                    DrainDispatcher(w.Dispatcher);
+                    WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                     Border contentBorder = FindVisualChildByName<Border>(expander, "PART_ContentBorder")
                         ?? throw new Xunit.Sdk.XunitException("PART_ContentBorder must exist.");
@@ -273,15 +265,15 @@ namespace Fluence.Wpf.Tests
 
                     // Interrupt the 333 ms expand slide mid-flight with a collapse.
                     expander.IsExpanded = true;
-                    Assert.True(WaitUntil(w.Dispatcher, 2000, () => translate.Y < 0),
+                    Assert.True(await WaitUntilAsync(w.Dispatcher, 2000, () => translate.Y < 0).ConfigureAwait(true),
                         "The expand slide must be in flight before the interrupting collapse.");
                     expander.IsExpanded = false;
 
                     Assert.True(
-                        WaitUntil(w.Dispatcher, 4000,
+                        await WaitUntilAsync(w.Dispatcher, 4000,
                             () => !grid.RowDefinitions[1].Height.IsStar
                                 && grid.RowDefinitions[1].Height.Value < 0.001
-                                && Math.Abs(translate.Y) < 0.001),
+                                && Math.Abs(translate.Y) < 0.001).ConfigureAwait(true),
                         "A collapse interrupting the expand slide must settle collapsed with no stuck offset.");
                 }
                 finally
@@ -292,11 +284,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void Expander_ExpandUp_SlidesFromBelowIntoTopContentRow()
+        public Task Expander_ExpandUp_SlidesFromBelowIntoTopContentRowAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(async static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.Expander expander = new()
@@ -310,7 +302,7 @@ namespace Fluence.Wpf.Tests
                 try
                 {
                     w.Show();
-                    DrainDispatcher(w.Dispatcher);
+                    WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                     Border contentBorder = FindVisualChildByName<Border>(expander, "PART_ContentBorder")
                         ?? throw new Xunit.Sdk.XunitException("PART_ContentBorder must exist.");
@@ -323,11 +315,11 @@ namespace Fluence.Wpf.Tests
                     Assert.Equal(0.0, grid.RowDefinitions[0].Height.Value, 0.001);
 
                     expander.IsExpanded = true;
-                    Assert.True(WaitUntil(w.Dispatcher, 2000, () => translate.Y > 0),
+                    Assert.True(await WaitUntilAsync(w.Dispatcher, 2000, () => translate.Y > 0).ConfigureAwait(true),
                         "The Up expand slide must start from a positive offset (content below the header).");
                     Assert.True(
-                        WaitUntil(w.Dispatcher, 4000,
-                            () => Math.Abs(translate.Y) < 0.001 && grid.RowDefinitions[0].Height.IsStar),
+                        await WaitUntilAsync(w.Dispatcher, 4000,
+                            () => Math.Abs(translate.Y) < 0.001 && grid.RowDefinitions[0].Height.IsStar).ConfigureAwait(true),
                         "The Up content must rest at translate 0 with a star top row after the expand slide.");
                 }
                 finally

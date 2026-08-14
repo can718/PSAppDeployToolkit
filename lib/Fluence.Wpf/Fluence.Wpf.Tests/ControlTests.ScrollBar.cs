@@ -28,6 +28,7 @@
 
 using System.Collections;
 using System.Globalization;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -54,8 +55,7 @@ namespace Fluence.Wpf.Tests
             string targetProperty,
             double expectedValue)
         {
-            Grid? root = FindVisualChildByName<Grid>(scrollBar, "Root");
-            Assert.NotNull(root);
+            Grid root = Assert.IsAssignableFrom<Grid>(FindVisualChildByName<Grid>(scrollBar, "Root"));
 
             IList groups = VisualStateManager.GetVisualStateGroups(root);
             VisualState? state = null;
@@ -101,11 +101,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ScrollBar_ScrollViewerTemplate_ContainsBothScrollBarParts()
+        public Task ScrollBar_ScrollViewerTemplate_ContainsBothScrollBarPartsAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ScrollViewer sv = new()
@@ -130,11 +130,9 @@ namespace Fluence.Wpf.Tests
                     window.Show();
                     sv.UpdateLayout();
 
-                    ScrollBar? vertBar = FindVisualChildByName<ScrollBar>(sv, "PART_VerticalScrollBar");
-                    ScrollBar? horizBar = FindVisualChildByName<ScrollBar>(sv, "PART_HorizontalScrollBar");
+                    ScrollBar vertBar = Assert.IsAssignableFrom<ScrollBar>(FindVisualChildByName<ScrollBar>(sv, "PART_VerticalScrollBar"));
+                    ScrollBar horizBar = Assert.IsAssignableFrom<ScrollBar>(FindVisualChildByName<ScrollBar>(sv, "PART_HorizontalScrollBar"));
 
-                    Assert.NotNull(vertBar);
-                    Assert.NotNull(horizBar);
                 }
                 finally
                 {
@@ -148,11 +146,11 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void ScrollBar_VSM_MouseIndicator_ExpandsVerticalWidth()
+        public Task ScrollBar_VSM_MouseIndicator_ExpandsVerticalWidthAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ScrollBar sb = new()
@@ -172,12 +170,12 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Show();
                     _ = sb.ApplyTemplate();
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
                     // GoToState with useTransitions=false: DiscreteDoubleKeyFrame at
                     // KeyTime=0 applies the final value immediately.
                     bool stateApplied = VisualStateManager.GoToState(sb, "MouseIndicator", useTransitions: false);
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
                     Assert.True(stateApplied,
                         "GoToState('MouseIndicator') must return true - VSM group must be present.");
@@ -194,11 +192,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ScrollBar_VSM_NoIndicator_CollapsesVerticalWidth()
+        public Task ScrollBar_VSM_NoIndicator_CollapsesVerticalWidthAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ScrollBar sb = new()
@@ -218,14 +216,14 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Show();
                     _ = sb.ApplyTemplate();
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
                     // Expand to MouseIndicator first, then collapse back.
                     _ = VisualStateManager.GoToState(sb, "MouseIndicator", useTransitions: false);
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
                     bool stateApplied = VisualStateManager.GoToState(sb, "NoIndicator", useTransitions: false);
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
                     Assert.True(stateApplied,
                         "GoToState('NoIndicator') must return true - VSM group must be present.");
@@ -242,11 +240,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ScrollBar_VSM_MouseIndicator_ExpandsHorizontalHeight()
+        public Task ScrollBar_VSM_MouseIndicator_ExpandsHorizontalHeightAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ScrollBar sb = new()
@@ -266,10 +264,10 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Show();
                     _ = sb.ApplyTemplate();
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
                     bool stateApplied = VisualStateManager.GoToState(sb, "MouseIndicator", useTransitions: false);
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
                     Assert.True(stateApplied,
                         "GoToState('MouseIndicator') on horizontal ScrollBar must return true.");
@@ -286,11 +284,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ScrollBar_DefaultLayout_ReservesExpandedSlotWithCompactIndicator()
+        public Task ScrollBar_DefaultLayout_ReservesExpandedSlotWithCompactIndicatorAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ScrollBar sb = new()
@@ -309,18 +307,15 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Show();
                     _ = sb.ApplyTemplate();
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
-                    Grid? root = FindVisualChildByName<Grid>(sb, "Root");
-                    Assert.NotNull(root);
+                    Grid root = Assert.IsAssignableFrom<Grid>(FindVisualChildByName<Grid>(sb, "Root"));
                     Assert.Equal(8.0, sb.ActualWidth, 0.5);
                     Assert.Equal(6.0, root.Width, 0.5);
                     Assert.Equal(HorizontalAlignment.Right, root.HorizontalAlignment);
 
-                    RepeatButton? decreaseButton = FindVisualChildByName<RepeatButton>(sb, "DecreaseButton");
-                    RepeatButton? increaseButton = FindVisualChildByName<RepeatButton>(sb, "IncreaseButton");
-                    Assert.NotNull(decreaseButton);
-                    Assert.NotNull(increaseButton);
+                    RepeatButton decreaseButton = Assert.IsAssignableFrom<RepeatButton>(FindVisualChildByName<RepeatButton>(sb, "DecreaseButton"));
+                    RepeatButton increaseButton = Assert.IsAssignableFrom<RepeatButton>(FindVisualChildByName<RepeatButton>(sb, "IncreaseButton"));
                     Assert.Equal(0.0, decreaseButton.Opacity, 0.01);
                     Assert.Equal(0.0, increaseButton.Opacity, 0.01);
                 }
@@ -336,11 +331,11 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void ScrollBar_Disabled_OpacityReducedOrElementDisabled()
+        public Task ScrollBar_Disabled_OpacityReducedOrElementDisabledAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ScrollBar sb = new()
@@ -360,10 +355,10 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Show();
                     _ = sb.ApplyTemplate();
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
                     sb.IsEnabled = false;
-                    DrainDispatcher(WpfTestSta.Dispatcher);
+                    WpfTestSta.DrainDispatcher(WpfTestSta.Dispatcher);
 
                     // IsEnabled=False trigger sets Opacity=0.45 on the ScrollBar root.
                     Assert.True(!sb.IsEnabled || sb.Opacity < 1.0,
@@ -381,11 +376,11 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void ScrollBar_ThemeCycle_BrushesResolveAfterEachSwitch()
+        public Task ScrollBar_ThemeCycle_BrushesResolveAfterEachSwitchAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 string[] keys =

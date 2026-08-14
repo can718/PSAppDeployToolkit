@@ -28,6 +28,7 @@
 
 using System.Collections;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using Xunit;
@@ -45,22 +46,21 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void ComboBox_FocusedStates_GroupExistsInTemplate()
+        public Task ComboBox_FocusedStates_GroupExistsInTemplateAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ComboBox cb = new();
                 _ = cb.Items.Add("One");
                 Window w = new() { Content = cb, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // VSM groups are attached to the root Grid of the template
-                Grid? root = FindVisualChild<Grid>(cb);
-                Assert.NotNull(root);
+                Grid root = Assert.IsAssignableFrom<Grid>(FindVisualChild<Grid>(cb));
                 IList groups = VisualStateManager.GetVisualStateGroups(root);
                 bool hasFocusedStates = groups
                     .Cast<VisualStateGroup>()
@@ -72,21 +72,20 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ComboBox_EditableFocusedStates_GroupExistsInTemplate()
+        public Task ComboBox_EditableFocusedStates_GroupExistsInTemplateAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ComboBox cb = new();
                 _ = cb.Items.Add("One");
                 Window w = new() { Content = cb, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Grid? root = FindVisualChild<Grid>(cb);
-                Assert.NotNull(root);
+                Grid root = Assert.IsAssignableFrom<Grid>(FindVisualChild<Grid>(cb));
                 IList groups = VisualStateManager.GetVisualStateGroups(root);
                 bool hasEditableFocusedStates = groups
                     .Cast<VisualStateGroup>()
@@ -98,25 +97,24 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ComboBox_FocusedState_DoesNotShowFocusAccentLine()
+        public Task ComboBox_FocusedState_DoesNotShowFocusAccentLineAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ComboBox cb = new();
                 _ = cb.Items.Add("Alpha");
                 Window w = new() { Content = cb, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 bool transitioned = VisualStateManager.GoToState(cb, "Focused", useTransitions: false);
                 Assert.True(transitioned, "GoToState('Focused') must return true.");
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Border? accentLine = FindVisualChildByName<Border>(cb, "FocusAccentLine");
-                Assert.NotNull(accentLine);
+                Border accentLine = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(cb, "FocusAccentLine"));
                 Assert.Equal(Visibility.Collapsed, accentLine.Visibility);
                 Assert.Equal(0.0, accentLine.Opacity, 0.01);
                 w.Close();
@@ -124,28 +122,27 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ComboBox_UnfocusedState_FocusAccentLineIsHidden()
+        public Task ComboBox_UnfocusedState_FocusAccentLineIsHiddenAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ComboBox cb = new();
                 _ = cb.Items.Add("Beta");
                 Window w = new() { Content = cb, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 // Focused first, then Unfocused
                 _ = VisualStateManager.GoToState(cb, "Focused", useTransitions: false);
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
                 bool transitioned = VisualStateManager.GoToState(cb, "Unfocused", useTransitions: false);
                 Assert.True(transitioned, "GoToState('Unfocused') must return true.");
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Border? accentLine = FindVisualChildByName<Border>(cb, "FocusAccentLine");
-                Assert.NotNull(accentLine);
+                Border accentLine = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(cb, "FocusAccentLine"));
                 Assert.Equal(0.0, accentLine.Opacity, 0.01);
                 Assert.Equal(Visibility.Collapsed, accentLine.Visibility);
                 w.Close();
@@ -153,11 +150,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ComboBox_InitialTemplate_DoesNotShowFocusAccentLine()
+        public Task ComboBox_InitialTemplate_DoesNotShowFocusAccentLineAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ComboBox cb = new();
@@ -165,10 +162,9 @@ namespace Fluence.Wpf.Tests
                 cb.SelectedIndex = 0;
                 Window w = new() { Content = cb, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Border? accentLine = FindVisualChildByName<Border>(cb, "FocusAccentLine");
-                Assert.NotNull(accentLine);
+                Border accentLine = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(cb, "FocusAccentLine"));
                 Assert.Equal(Visibility.Collapsed, accentLine.Visibility);
                 Assert.Equal(0.0, accentLine.Opacity, 0.01);
 
@@ -177,31 +173,30 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ComboBox_ThemeCycle_FocusedStateKeepsAccentLineHidden()
+        public Task ComboBox_ThemeCycle_FocusedStateKeepsAccentLineHiddenAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Controls.ComboBox cb = new();
                 _ = cb.Items.Add("Gamma");
                 Window w = new() { Content = cb, Width = 300, Height = 100 };
                 w.Show();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 ThemeTestHelpers.ApplyStandardThemeCycle();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
                 _ = cb.ApplyTemplate();
                 w.UpdateLayout();
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
                 bool transitioned = VisualStateManager.GoToState(cb, "Focused", useTransitions: false);
                 Assert.True(transitioned, "GoToState('Focused') must return true after theme cycle.");
-                DrainDispatcher(w.Dispatcher);
+                WpfTestSta.DrainDispatcher(w.Dispatcher);
 
-                Border? accentLine = FindVisualChildByName<Border>(cb, "FocusAccentLine");
-                Assert.NotNull(accentLine);
+                Border accentLine = Assert.IsAssignableFrom<Border>(FindVisualChildByName<Border>(cb, "FocusAccentLine"));
                 Assert.Equal(Visibility.Collapsed, accentLine.Visibility);
                 Assert.Equal(0.0, accentLine.Opacity, 0.01);
                 w.Close();

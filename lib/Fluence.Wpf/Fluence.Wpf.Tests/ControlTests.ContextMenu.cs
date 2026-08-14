@@ -26,6 +26,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using Fluence.Wpf.Controls;
 using Xunit;
@@ -42,24 +44,23 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void ContextMenu_DefaultStyle_StyleRegistered()
+        public Task ContextMenu_DefaultStyle_StyleRegisteredAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
-                Style? style = app?.TryFindResource(typeof(ContextMenu)) as Style;
-                Assert.NotNull(style);
+                Style style = Assert.IsType<Style>(app?.TryFindResource(typeof(ContextMenu)));
             });
         }
 
         [Fact]
-        public void ContextMenu_DefaultStyle_BackgroundAndBorderBrushResolve()
+        public Task ContextMenu_DefaultStyle_BackgroundAndBorderBrushResolveAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Assert.NotNull(app?.TryFindResource("SolidBackgroundFillColorTertiaryBrush"));
@@ -68,31 +69,20 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ContextMenu_DefaultStyle_HasDropShadowSetterTrue()
+        public Task ContextMenu_DefaultStyle_HasDropShadowSetterTrueAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
-                Style? style = app?.TryFindResource(typeof(ContextMenu)) as Style;
-                Assert.NotNull(style);
+                Style style = Assert.IsType<Style>(app?.TryFindResource(typeof(ContextMenu)));
 
                 // HasDropShadow only activates when the Popup opens; verify the
                 // Setter is present and declared True rather than applying the style
                 // without a live popup (which returns the default value).
-                bool found = false;
-                foreach (SetterBase? setter in style.Setters)
-                {
-                    if (setter is Setter s && s.Property == System.Windows.Controls.ContextMenu.HasDropShadowProperty
-                        && true.Equals(s.Value))
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                Assert.True(found,
-                    "ContextMenu style must contain <Setter Property='HasDropShadow' Value='True'/>.");
+                bool found = style.Setters.OfType<Setter>().Any(s => s.Property == System.Windows.Controls.ContextMenu.HasDropShadowProperty && true.Equals(s.Value));
+                Assert.True(found, "ContextMenu style must contain <Setter Property='HasDropShadow' Value='True'/>.");
             });
         }
 
@@ -101,24 +91,23 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void MenuItem_DefaultStyle_StyleRegistered()
+        public Task MenuItem_DefaultStyle_StyleRegisteredAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
-                Style? style = app?.TryFindResource(typeof(MenuItem)) as Style;
-                Assert.NotNull(style);
+                Style style = Assert.IsType<Style>(app?.TryFindResource(typeof(MenuItem)));
             });
         }
 
         [Fact]
-        public void MenuItem_DefaultStyle_HoverBrushResolves()
+        public Task MenuItem_DefaultStyle_HoverBrushResolvesAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Assert.NotNull(app?.TryFindResource("SubtleFillColorSecondaryBrush"));
@@ -127,17 +116,18 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void MenuItem_DefaultStyle_FontSize14()
+        public Task MenuItem_DefaultStyle_FontSize14Async()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
-                MenuItem mi = new() { Header = "Test" };
-                Style? style = app?.TryFindResource(typeof(MenuItem)) as Style;
-                Assert.NotNull(style);
-                mi.Style = style;
+                MenuItem mi = new()
+                {
+                    Header = "Test",
+                    Style = Assert.IsType<Style>(app?.TryFindResource(typeof(MenuItem))),
+                };
                 Assert.Equal(14.0, mi.FontSize, 0.01);
             });
         }
@@ -147,11 +137,11 @@ namespace Fluence.Wpf.Tests
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public void ContextMenu_ThemeCycle_BrushesResolveAfterEachSwitch()
+        public Task ContextMenu_ThemeCycle_BrushesResolveAfterEachSwitchAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 string[] keys =

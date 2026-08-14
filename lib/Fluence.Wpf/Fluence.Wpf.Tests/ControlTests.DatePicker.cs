@@ -29,6 +29,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
@@ -48,15 +50,14 @@ namespace Fluence.Wpf.Tests
     public partial class ControlTests
     {
         [Fact]
-        public void DatePicker_DefaultStyle_AppliesTemplateParts()
+        public Task DatePicker_DefaultStyle_AppliesTemplatePartsAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
-                Style? style = app?.TryFindResource(typeof(Controls.DatePicker)) as Style;
-                Assert.NotNull(style);
+                Style style = Assert.IsType<Style>(app?.TryFindResource(typeof(Controls.DatePicker)));
 
                 Window window = new() { Width = 500, Height = 400 };
                 Controls.DatePicker picker = new();
@@ -65,27 +66,19 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
 
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? dayList = template.FindName("PART_DayList", picker) as Selector;
-                    Selector? monthList = template.FindName("PART_MonthList", picker) as Selector;
-                    Selector? yearList = template.FindName("PART_YearList", picker) as Selector;
-                    ButtonBase? acceptButton = template.FindName("PART_AcceptButton", picker) as ButtonBase;
-                    ButtonBase? cancelButton = template.FindName("PART_CancelButton", picker) as ButtonBase;
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector dayList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_DayList", picker));
+                    Selector monthList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MonthList", picker));
+                    Selector yearList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_YearList", picker));
+                    ButtonBase acceptButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_AcceptButton", picker));
+                    ButtonBase cancelButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_CancelButton", picker));
 
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(dayList);
-                    Assert.NotNull(monthList);
-                    Assert.NotNull(yearList);
-                    Assert.NotNull(acceptButton);
-                    Assert.NotNull(cancelButton);
                     _ = Assert.IsAssignableFrom<Controls.ListBox>(dayList);
                     _ = Assert.IsAssignableFrom<Controls.Button>(flyoutButton);
                     Assert.False(popup.StaysOpen, "The selector flyout must be light-dismiss (StaysOpen=false).");
@@ -99,11 +92,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_SelectedDate_UpdatesFieldSegmentsAndPlaceholder()
+        public Task DatePicker_SelectedDate_UpdatesFieldSegmentsAndPlaceholderAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -113,23 +106,17 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
 
-                    TextBlock? first = template.FindName("FirstSegmentText", picker) as TextBlock;
-                    TextBlock? second = template.FindName("SecondSegmentText", picker) as TextBlock;
-                    TextBlock? third = template.FindName("ThirdSegmentText", picker) as TextBlock;
-                    TextBlock? placeholder = template.FindName("PlaceholderTextBlock", picker) as TextBlock;
-                    FrameworkElement? segmentsHost = template.FindName("SegmentsHost", picker) as FrameworkElement;
+                    TextBlock first = Assert.IsType<TextBlock>(template.FindName("FirstSegmentText", picker));
+                    TextBlock second = Assert.IsType<TextBlock>(template.FindName("SecondSegmentText", picker));
+                    TextBlock third = Assert.IsType<TextBlock>(template.FindName("ThirdSegmentText", picker));
+                    TextBlock placeholder = Assert.IsType<TextBlock>(template.FindName("PlaceholderTextBlock", picker));
+                    FrameworkElement segmentsHost = Assert.IsAssignableFrom<FrameworkElement>(template.FindName("SegmentsHost", picker));
 
-                    Assert.NotNull(first);
-                    Assert.NotNull(second);
-                    Assert.NotNull(third);
-                    Assert.NotNull(placeholder);
-                    Assert.NotNull(segmentsHost);
 
                     Assert.Equal(Visibility.Visible, placeholder.Visibility);
                     Assert.Equal(Visibility.Collapsed, segmentsHost.Visibility);
@@ -137,7 +124,7 @@ namespace Fluence.Wpf.Tests
 
                     DateTime date = new(2024, 5, 17, 0, 0, 0, DateTimeKind.Unspecified);
                     picker.SelectedDate = date;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(Visibility.Collapsed, placeholder.Visibility);
                     Assert.Equal(Visibility.Visible, segmentsHost.Visibility);
@@ -160,11 +147,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_FieldClick_OpensPopupAndPopulatesColumns()
+        public Task DatePicker_FieldClick_OpensPopupAndPopulatesColumnsAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -174,38 +161,30 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? dayList = template.FindName("PART_DayList", picker) as Selector;
-                    Selector? monthList = template.FindName("PART_MonthList", picker) as Selector;
-                    Selector? yearList = template.FindName("PART_YearList", picker) as Selector;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(dayList);
-                    Assert.NotNull(monthList);
-                    Assert.NotNull(yearList);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector dayList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_DayList", picker));
+                    Selector monthList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MonthList", picker));
+                    Selector yearList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_YearList", picker));
 
                     picker.SelectedDate = new DateTime(2024, 5, 17, 0, 0, 0, DateTimeKind.Unspecified);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "Clicking the field must open the selector flyout.");
 
                     // The open reveal (slide down from Y=-8 with a fade) must exist in the
                     // template and settle at rest once the 167ms storyboard completes.
-                    TranslateTransform? translate =
-                        template.FindName("FlyoutSurfaceTranslate", picker) as TranslateTransform;
-                    Assert.NotNull(translate);
-                    Border? surface = template.FindName("FlyoutSurface", picker) as Border;
-                    Assert.NotNull(surface);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000,
-                            () => Math.Abs(translate.Y) < 0.001 && surface.Opacity >= 1.0),
+                    TranslateTransform translate =
+                        Assert.IsType<TranslateTransform>(template.FindName("FlyoutSurfaceTranslate", picker));
+                    Border surface = Assert.IsType<Border>(template.FindName("FlyoutSurface", picker));
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000,
+                            () => Math.Abs(translate.Y) < 0.001 && surface.Opacity >= 1.0).ConfigureAwait(true),
                         "The flyout reveal must settle at Y=0 and full opacity.");
 
                     Assert.Equal(12, monthList.Items.Count);
@@ -223,11 +202,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_Accept_CommitsSelectionAndRaisesSelectedDateChanged()
+        public Task DatePicker_Accept_CommitsSelectionAndRaisesSelectedDateChangedAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -237,30 +216,23 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? dayList = template.FindName("PART_DayList", picker) as Selector;
-                    Selector? monthList = template.FindName("PART_MonthList", picker) as Selector;
-                    Selector? yearList = template.FindName("PART_YearList", picker) as Selector;
-                    ButtonBase? acceptButton = template.FindName("PART_AcceptButton", picker) as ButtonBase;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(dayList);
-                    Assert.NotNull(monthList);
-                    Assert.NotNull(yearList);
-                    Assert.NotNull(acceptButton);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector dayList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_DayList", picker));
+                    Selector monthList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MonthList", picker));
+                    Selector yearList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_YearList", picker));
+                    ButtonBase acceptButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_AcceptButton", picker));
 
                     DateTime oldDate = new(2024, 5, 17, 0, 0, 0, DateTimeKind.Unspecified);
                     picker.SelectedDate = oldDate;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the accept scenario.");
 
                     DatePickerSelectedValueChangedEventArgs? captured = null;
@@ -269,17 +241,17 @@ namespace Fluence.Wpf.Tests
                     monthList.SelectedIndex = 0;
                     yearList.SelectedIndex = 2025 - picker.MinYear;
                     dayList.SelectedIndex = 9;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(acceptButton);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     DateTime expected = new(2025, 1, 10, 0, 0, 0, DateTimeKind.Unspecified);
                     Assert.Equal(expected, picker.SelectedDate);
                     Assert.NotNull(captured);
                     Assert.Equal(oldDate, captured.OldDate);
                     Assert.Equal(expected, captured.NewDate);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => !popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => !popup.IsOpen).ConfigureAwait(true),
                         "Accept must close the selector flyout.");
                 }
                 finally
@@ -290,11 +262,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_Cancel_RevertsPendingSelection()
+        public Task DatePicker_Cancel_RevertsPendingSelectionAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -304,28 +276,22 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? dayList = template.FindName("PART_DayList", picker) as Selector;
-                    Selector? monthList = template.FindName("PART_MonthList", picker) as Selector;
-                    ButtonBase? cancelButton = template.FindName("PART_CancelButton", picker) as ButtonBase;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(dayList);
-                    Assert.NotNull(monthList);
-                    Assert.NotNull(cancelButton);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector dayList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_DayList", picker));
+                    Selector monthList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MonthList", picker));
+                    ButtonBase cancelButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_CancelButton", picker));
 
                     DateTime original = new(2024, 5, 17, 0, 0, 0, DateTimeKind.Unspecified);
                     picker.SelectedDate = original;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the cancel scenario.");
 
                     bool raised = false;
@@ -333,14 +299,14 @@ namespace Fluence.Wpf.Tests
 
                     monthList.SelectedIndex = 0;
                     dayList.SelectedIndex = 0;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(cancelButton);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(original, picker.SelectedDate);
                     Assert.False(raised, "Cancel must not raise SelectedDateChanged.");
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => !popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => !popup.IsOpen).ConfigureAwait(true),
                         "Cancel must close the selector flyout.");
                 }
                 finally
@@ -351,11 +317,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_DayColumn_AdjustsToMonthLength()
+        public Task DatePicker_DayColumn_AdjustsToMonthLengthAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -365,40 +331,34 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? dayList = template.FindName("PART_DayList", picker) as Selector;
-                    Selector? monthList = template.FindName("PART_MonthList", picker) as Selector;
-                    Selector? yearList = template.FindName("PART_YearList", picker) as Selector;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(dayList);
-                    Assert.NotNull(monthList);
-                    Assert.NotNull(yearList);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector dayList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_DayList", picker));
+                    Selector monthList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MonthList", picker));
+                    Selector yearList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_YearList", picker));
 
                     picker.SelectedDate = new DateTime(2023, 1, 31, 0, 0, 0, DateTimeKind.Unspecified);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the day-count scenario.");
 
                     Assert.Equal(31, dayList.Items.Count);
                     Assert.Equal(30, dayList.SelectedIndex);
 
                     monthList.SelectedIndex = 1;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(28, dayList.Items.Count);
                     Assert.Equal(27, dayList.SelectedIndex);
 
                     yearList.SelectedIndex = 2024 - picker.MinYear;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(29, dayList.Items.Count);
                 }
@@ -410,11 +370,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_AutomationPeer_ReportsNameFromDateOrPlaceholder()
+        public Task DatePicker_AutomationPeer_ReportsNameFromDateOrPlaceholderAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -424,11 +384,10 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    AutomationPeer? peer = UIElementAutomationPeer.CreatePeerForElement(picker);
-                    Assert.NotNull(peer);
+                    AutomationPeer peer = Assert.IsAssignableFrom<AutomationPeer>(UIElementAutomationPeer.CreatePeerForElement(picker));
                     _ = Assert.IsAssignableFrom<Automation.DatePickerAutomationPeer>(peer);
                     Assert.Equal("DatePicker", peer.GetClassName(), StringComparer.Ordinal);
                     Assert.Equal(AutomationControlType.Group, peer.GetAutomationControlType());
@@ -436,7 +395,7 @@ namespace Fluence.Wpf.Tests
 
                     DateTime date = new(2024, 5, 17, 0, 0, 0, DateTimeKind.Unspecified);
                     picker.SelectedDate = date;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     Assert.Equal(date.ToString("d", CultureInfo.CurrentCulture), peer.GetName(), StringComparer.Ordinal);
                 }
@@ -448,11 +407,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_FlyoutOpen_MovesKeyboardFocusIntoPopupAndCyclesTab()
+        public Task DatePicker_FlyoutOpen_MovesKeyboardFocusIntoPopupAndCyclesTabAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -465,27 +424,24 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
                     Assert.NotNull(popup.Child);
 
                     Assert.Equal(KeyboardNavigationMode.Cycle, KeyboardNavigation.GetTabNavigation(popup.Child));
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "Clicking the field must open the selector flyout.");
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () =>
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () =>
                             popup.Child is Visual root
                             && Keyboard.FocusedElement is Visual focused
-                            && focused.IsDescendantOf(root)),
+                            && focused.IsDescendantOf(root)).ConfigureAwait(true),
                         "Opening the flyout must move keyboard focus inside the popup.");
                 }
                 finally
@@ -496,11 +452,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_FlyoutEscape_ClosesWithoutCommitting()
+        public Task DatePicker_FlyoutEscape_ClosesWithoutCommittingAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -510,26 +466,21 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? dayList = template.FindName("PART_DayList", picker) as Selector;
-                    Selector? monthList = template.FindName("PART_MonthList", picker) as Selector;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(dayList);
-                    Assert.NotNull(monthList);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector dayList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_DayList", picker));
+                    Selector monthList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MonthList", picker));
 
                     DateTime original = new(2024, 5, 17, 0, 0, 0, DateTimeKind.Unspecified);
                     picker.SelectedDate = original;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the Escape scenario.");
                     Assert.NotNull(popup.Child);
 
@@ -538,11 +489,11 @@ namespace Fluence.Wpf.Tests
 
                     monthList.SelectedIndex = 0;
                     dayList.SelectedIndex = 0;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseKeyEvent(popup.Child, Key.Escape, UIElement.PreviewKeyDownEvent);
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => !popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => !popup.IsOpen).ConfigureAwait(true),
                         "Escape must close the selector flyout.");
                     Assert.Equal(original, picker.SelectedDate);
                     Assert.False(raised, "Escape must not raise SelectedDateChanged.");
@@ -555,11 +506,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_FlyoutEnter_CommitsPendingSelection()
+        public Task DatePicker_FlyoutEnter_CommitsPendingSelectionAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -569,38 +520,32 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    Selector? dayList = template.FindName("PART_DayList", picker) as Selector;
-                    Selector? monthList = template.FindName("PART_MonthList", picker) as Selector;
-                    Selector? yearList = template.FindName("PART_YearList", picker) as Selector;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(dayList);
-                    Assert.NotNull(monthList);
-                    Assert.NotNull(yearList);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    Selector dayList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_DayList", picker));
+                    Selector monthList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_MonthList", picker));
+                    Selector yearList = Assert.IsAssignableFrom<Selector>(template.FindName("PART_YearList", picker));
 
                     picker.SelectedDate = new DateTime(2024, 5, 17, 0, 0, 0, DateTimeKind.Unspecified);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the Enter scenario.");
                     Assert.NotNull(popup.Child);
 
                     monthList.SelectedIndex = 0;
                     yearList.SelectedIndex = 2025 - picker.MinYear;
                     dayList.SelectedIndex = 9;
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     RaiseKeyEvent(popup.Child, Key.Enter, UIElement.PreviewKeyDownEvent);
 
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => !popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => !popup.IsOpen).ConfigureAwait(true),
                         "Enter must close the selector flyout.");
                     Assert.Equal(new DateTime(2025, 1, 10, 0, 0, 0, DateTimeKind.Unspecified), picker.SelectedDate);
                 }
@@ -612,11 +557,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_SurfaceBrushes_ResolveAfterThemeCycle()
+        public Task DatePicker_SurfaceBrushes_ResolveAfterThemeCycleAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 ThemeTestHelpers.ApplyStandardThemeCycle();
@@ -633,11 +578,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_NonGregorianDefaultCulture_UsesGregorianMonthNames()
+        public Task DatePicker_NonGregorianDefaultCulture_UsesGregorianMonthNamesAsync()
         {
-            RunOnStaThread(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 CultureInfo originalCulture = CultureInfo.CurrentCulture;
@@ -650,23 +595,13 @@ namespace Fluence.Wpf.Tests
                     CultureInfo culture = CultureInfo.GetCultureInfo("ar-SA");
                     System.Threading.Thread.CurrentThread.CurrentCulture = culture;
 
-                    DateTimeFormatInfo gregorianFormat = (DateTimeFormatInfo)culture.DateTimeFormat.Clone();
-                    GregorianCalendar? gregorian = null;
-                    foreach (System.Globalization.Calendar optionalCalendar in culture.OptionalCalendars)
-                    {
-                        if (optionalCalendar is GregorianCalendar candidate)
-                        {
-                            gregorian = candidate;
-                            break;
-                        }
-                    }
-
-                    if (gregorian is null)
+                    if (culture.OptionalCalendars.OfType<GregorianCalendar>().FirstOrDefault() is not GregorianCalendar gregorian)
                     {
                         Assert.Skip("ar-SA offers no optional Gregorian calendar on this runtime.");
                         return;
                     }
 
+                    DateTimeFormatInfo gregorianFormat = (DateTimeFormatInfo)culture.DateTimeFormat.Clone();
                     gregorianFormat.Calendar = gregorian;
                     DateTime march = new(2024, 3, 15, 0, 0, 0, DateTimeKind.Unspecified);
                     string expectedMonthName = gregorianFormat.GetMonthName(3);
@@ -674,17 +609,13 @@ namespace Fluence.Wpf.Tests
                     Controls.DatePicker picker = new() { SelectedDate = march };
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    TextBlock? first = template.FindName("FirstSegmentText", picker) as TextBlock;
-                    TextBlock? second = template.FindName("SecondSegmentText", picker) as TextBlock;
-                    TextBlock? third = template.FindName("ThirdSegmentText", picker) as TextBlock;
-                    Assert.NotNull(first);
-                    Assert.NotNull(second);
-                    Assert.NotNull(third);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    TextBlock first = Assert.IsType<TextBlock>(template.FindName("FirstSegmentText", picker));
+                    TextBlock second = Assert.IsType<TextBlock>(template.FindName("SecondSegmentText", picker));
+                    TextBlock third = Assert.IsType<TextBlock>(template.FindName("ThirdSegmentText", picker));
 
                     List<string> segments = [first.Text, second.Text, third.Text];
                     Assert.True(segments.Contains(expectedMonthName),
@@ -710,11 +641,11 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DatePicker_FieldClickAfterLightDismiss_DoesNotImmediatelyReopen()
+        public Task DatePicker_FieldClickAfterLightDismiss_DoesNotImmediatelyReopenAsync()
         {
-            RunOnStaThread(() =>
+            return WpfTestSta.RunOnStaAsync(async () =>
             {
-                Application? app = EnsureApplication();
+                Application app = WpfTestSta.EnsureApplication();
                 _ = MergeGenericDictionary(app);
 
                 Window window = new() { Width = 500, Height = 400 };
@@ -724,45 +655,41 @@ namespace Fluence.Wpf.Tests
                 {
                     window.Content = picker;
                     window.Show();
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
-                    ControlTemplate? template = picker.Template;
-                    Assert.NotNull(template);
-                    ButtonBase? flyoutButton = template.FindName("PART_FlyoutButton", picker) as ButtonBase;
-                    Popup? popup = template.FindName("PART_Popup", picker) as Popup;
-                    ButtonBase? acceptButton = template.FindName("PART_AcceptButton", picker) as ButtonBase;
-                    Assert.NotNull(flyoutButton);
-                    Assert.NotNull(popup);
-                    Assert.NotNull(acceptButton);
+                    ControlTemplate template = Assert.IsAssignableFrom<ControlTemplate>(picker.Template);
+                    ButtonBase flyoutButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_FlyoutButton", picker));
+                    Popup popup = Assert.IsType<Popup>(template.FindName("PART_Popup", picker));
+                    ButtonBase acceptButton = Assert.IsAssignableFrom<ButtonBase>(template.FindName("PART_AcceptButton", picker));
 
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "The selector flyout must open before the light dismiss is simulated.");
 
                     // A light dismiss closes the popup outside the control's own pipeline,
                     // exactly like the StaysOpen=false dismissal on the field mousedown.
                     popup.SetCurrentValue(Popup.IsOpenProperty, value: false);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
 
                     // The click of the same press-release gesture must not reopen the flyout.
                     RaiseButtonClick(flyoutButton);
-                    DrainDispatcher(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     Assert.False(popup.IsOpen,
                         "A field click right after a light dismiss must not reopen the flyout (toggle, not flicker).");
 
                     // Once the lockout has elapsed, the field opens the flyout again.
-                    System.Threading.Thread.Sleep(300);
+                    await Task.Delay(300, TestContext.Current.CancellationToken).ConfigureAwait(true);
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "A field click after the lockout must reopen the flyout.");
 
                     // Accept-driven closes do not arm the lockout: an immediate reopen works.
                     RaiseButtonClick(acceptButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => !popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => !popup.IsOpen).ConfigureAwait(true),
                         "Accept must close the selector flyout.");
                     RaiseButtonClick(flyoutButton);
-                    Assert.True(WaitUntil(window.Dispatcher, 2000, () => popup.IsOpen),
+                    Assert.True(await WaitUntilAsync(window.Dispatcher, 2000, () => popup.IsOpen).ConfigureAwait(true),
                         "A field click right after an accept close must reopen the flyout immediately.");
                 }
                 finally

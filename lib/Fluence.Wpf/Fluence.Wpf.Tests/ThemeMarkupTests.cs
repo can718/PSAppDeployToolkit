@@ -28,6 +28,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Markup;
@@ -40,28 +41,34 @@ namespace Fluence.Wpf.Tests
     /// <summary>
     /// Tests for <see cref="ThemeResourceExtension"/> and <see cref="ThemeDictionary"/>.
     /// </summary>
-    public class ThemeMarkupTests
+    public class ThemeMarkupTests : IAsyncLifetime
     {
         private const string XamlNamespaces =
             "xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
             "xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" " +
             "xmlns:fluence=\"http://schemas.fluencewpf.com\"";
 
-        public ThemeMarkupTests()
+        public ValueTask InitializeAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return new ValueTask(WpfTestSta.RunOnStaAsync(static () =>
             {
                 _ = WpfTestSta.EnsureApplication();
                 ApplicationThemeManager.ResetForTesting();
                 ApplicationAccentColorManager.ResetForTesting();
                 Application.Current.Resources.MergedDictionaries.Clear();
-            });
+            }));
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            GC.SuppressFinalize(this);
+            return default;
         }
 
         [Fact]
-        public void ThemeResource_OnElement_UpdatesAcrossThemeChange()
+        public Task ThemeResource_OnElement_UpdatesAcrossThemeChangeAsync()
         {
-            WpfTestSta.Invoke(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
                 ApplicationThemeManager.Apply(ApplicationTheme.Light, BackdropType.None);
 
@@ -89,9 +96,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ThemeResource_InStyleSetter_UpdatesAcrossThemeChange()
+        public Task ThemeResource_InStyleSetter_UpdatesAcrossThemeChangeAsync()
         {
-            WpfTestSta.Invoke(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
                 ApplicationThemeManager.Apply(ApplicationTheme.Light, BackdropType.None);
 
@@ -121,9 +128,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ThemeDictionary_XamlParsed_SwapsValuesAcrossStandardThemeCycle()
+        public Task ThemeDictionary_XamlParsed_SwapsValuesAcrossStandardThemeCycleAsync()
         {
-            WpfTestSta.Invoke(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
                 ApplicationThemeManager.Apply(ApplicationTheme.Light, BackdropType.None);
 
@@ -179,9 +186,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ThemeDictionary_CodeFirst_UsesDefaultFallback()
+        public Task ThemeDictionary_CodeFirst_UsesDefaultFallbackAsync()
         {
-            WpfTestSta.Invoke(() =>
+            return WpfTestSta.RunOnStaAsync(() =>
             {
                 ApplicationThemeManager.Apply(ApplicationTheme.Light, BackdropType.None);
 
@@ -217,9 +224,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ThemeDictionary_HighContrast_PrefersPolarityTableThenGeneric()
+        public Task ThemeDictionary_HighContrast_PrefersPolarityTableThenGenericAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
                 ApplicationThemeManager.Apply(ApplicationTheme.Light, BackdropType.None);
 
@@ -267,9 +274,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ThemeDictionary_InSealedStyleResources_DoesNotThrowOnThemeChange()
+        public Task ThemeDictionary_InSealedStyleResources_DoesNotThrowOnThemeChangeAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
                 ApplicationThemeManager.Apply(ApplicationTheme.Light, BackdropType.None);
 
@@ -297,9 +304,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void ThemeDictionary_Discarded_IsGarbageCollected()
+        public Task ThemeDictionary_Discarded_IsGarbageCollectedAsync()
         {
-            WpfTestSta.Invoke(static () =>
+            return WpfTestSta.RunOnStaAsync(static () =>
             {
                 ApplicationThemeManager.Apply(ApplicationTheme.Light, BackdropType.None);
 
@@ -320,19 +327,16 @@ namespace Fluence.Wpf.Tests
 
         private static Color AssertForegroundMatchesToken(TextBlock probe)
         {
-            SolidColorBrush? tokenBrush = Application.Current.TryFindResource("TextFillColorPrimaryBrush") as SolidColorBrush;
-            Assert.NotNull(tokenBrush);
+            SolidColorBrush tokenBrush = Assert.IsType<SolidColorBrush>(Application.Current.TryFindResource("TextFillColorPrimaryBrush"));
 
-            SolidColorBrush? foreground = probe.Foreground as SolidColorBrush;
-            Assert.NotNull(foreground);
+            SolidColorBrush foreground = Assert.IsType<SolidColorBrush>(probe.Foreground);
             Assert.Equal(tokenBrush.Color, foreground.Color);
             return foreground.Color;
         }
 
         private static void AssertProbeBrush(Window window, Color expected)
         {
-            SolidColorBrush? brush = window.TryFindResource("ProbeBrush") as SolidColorBrush;
-            Assert.NotNull(brush);
+            SolidColorBrush brush = Assert.IsType<SolidColorBrush>(window.TryFindResource("ProbeBrush"));
             Assert.Equal(expected, brush.Color);
         }
 

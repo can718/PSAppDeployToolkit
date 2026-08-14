@@ -30,6 +30,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Xml;
@@ -64,9 +65,9 @@ namespace Fluence.Wpf.Tests
         ];
 
         [Fact]
-        public void DemoSamplePageWiring_MovesSlotContentAndAppliesTypedSources()
+        public Task DemoSamplePageWiring_MovesSlotContentAndAppliesTypedSourcesAsync()
         {
-            DemoTestHost.RunOnSta(static delegate
+            return WpfTestSta.RunOnStaAsync(static delegate
             {
                 _ = DemoTestHost.EnsureDemoTheme();
                 TextBlock demoContent = new() { Text = "Demo" };
@@ -96,9 +97,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSamplePageWiring_RejectsSourceCountMismatch()
+        public Task DemoSamplePageWiring_RejectsSourceCountMismatchAsync()
         {
-            DemoTestHost.RunOnSta(delegate
+            return WpfTestSta.RunOnStaAsync(delegate
             {
                 _ = DemoTestHost.EnsureDemoTheme();
                 StackPanel root = new();
@@ -111,9 +112,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSamplePageWiring_RejectsDuplicateSourceSlots()
+        public Task DemoSamplePageWiring_RejectsDuplicateSourceSlotsAsync()
         {
-            DemoTestHost.RunOnSta(delegate
+            return WpfTestSta.RunOnStaAsync(delegate
             {
                 _ = DemoTestHost.EnsureDemoTheme();
                 StackPanel root = new();
@@ -128,9 +129,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSamplePageWiring_RejectsUnusedContentSlots()
+        public Task DemoSamplePageWiring_RejectsUnusedContentSlotsAsync()
         {
-            DemoTestHost.RunOnSta(delegate
+            return WpfTestSta.RunOnStaAsync(delegate
             {
                 _ = DemoTestHost.EnsureDemoTheme();
                 StackPanel root = new();
@@ -143,9 +144,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSamplePageWiring_RejectsZeroContentSlot()
+        public Task DemoSamplePageWiring_RejectsZeroContentSlotAsync()
         {
-            DemoTestHost.RunOnSta(delegate
+            return WpfTestSta.RunOnStaAsync(delegate
             {
                 _ = DemoTestHost.EnsureDemoTheme();
                 StackPanel root = new();
@@ -158,9 +159,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSamplePageWiring_RejectsDuplicateContentSlots()
+        public Task DemoSamplePageWiring_RejectsDuplicateContentSlotsAsync()
         {
-            DemoTestHost.RunOnSta(delegate
+            return WpfTestSta.RunOnStaAsync(delegate
             {
                 _ = DemoTestHost.EnsureDemoTheme();
                 StackPanel root = new();
@@ -174,9 +175,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void DemoSampleControl_ReloadsExpandedSourceTabsWhenSourceChanges()
+        public Task DemoSampleControl_ReloadsExpandedSourceTabsWhenSourceChangesAsync()
         {
-            DemoTestHost.RunOnSta(static delegate
+            return WpfTestSta.RunOnStaAsync(static delegate
             {
                 _ = DemoTestHost.EnsureDemoTheme();
                 DemoSampleControl sample = new()
@@ -187,15 +188,14 @@ namespace Fluence.Wpf.Tests
                 Window window = DemoTestHost.CreateHostWindow(sample);
                 try
                 {
-                    Controls.Expander? expander = DemoTestHost.FindByName<Controls.Expander>(sample, "SourceExpander");
-                    Assert.NotNull(expander);
+                    Controls.Expander expander = Assert.IsAssignableFrom<Controls.Expander>(DemoTestHost.FindByName<Controls.Expander>(sample, "SourceExpander"));
                     expander.IsExpanded = true;
-                    DemoTestHost.Drain(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     AssertSourceCopyTag(sample, "<Grid />");
                     sample.XamlSource = "<StackPanel />";
-                    DemoTestHost.Drain(window.Dispatcher);
+                    WpfTestSta.DrainDispatcher(window.Dispatcher);
                     window.UpdateLayout();
 
                     AssertSourceCopyTag(sample, "<StackPanel />");
@@ -208,9 +208,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GallerySamplePages_AllVisibleDemoSamplesExposeSource()
+        public Task GallerySamplePages_AllVisibleDemoSamplesExposeSourceAsync()
         {
-            DemoTestHost.RunOnSta(static delegate
+            return WpfTestSta.RunOnStaAsync(static delegate
             {
                 foreach (Func<UIElement> factory in SamplePageFactories)
                 {
@@ -236,9 +236,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GallerySamplePages_SourceContractsMatchDisplayedClasses()
+        public Task GallerySamplePages_SourceContractsMatchDisplayedClassesAsync()
         {
-            DemoTestHost.RunOnSta(static delegate
+            return WpfTestSta.RunOnStaAsync(static delegate
             {
                 foreach (DemoSampleControl sample in CreateVisibleSamples())
                 {
@@ -273,9 +273,9 @@ namespace Fluence.Wpf.Tests
         }
 
         [Fact]
-        public void GallerySamplePages_CSharpSourcesUseReleaseReadySnippetStyle()
+        public Task GallerySamplePages_CSharpSourcesUseReleaseReadySnippetStyleAsync()
         {
-            DemoTestHost.RunOnSta(static delegate
+            return WpfTestSta.RunOnStaAsync(static delegate
             {
                 foreach (DemoSampleControl sample in CreateVisibleSamples())
                 {
@@ -303,12 +303,10 @@ namespace Fluence.Wpf.Tests
 
         private static void AssertSourceCopyTag(DemoSampleControl sample, string expectedSource)
         {
-            TabControl? tabs = DemoTestHost.FindByName<TabControl>(sample, "SourceTabControl");
-            Assert.NotNull(tabs);
+            TabControl tabs = Assert.IsAssignableFrom<TabControl>(DemoTestHost.FindByName<TabControl>(sample, "SourceTabControl"));
             _ = Assert.Single(tabs.Items);
             TabItem tab = (TabItem)tabs.Items[0];
-            Button? copy = DemoTestHost.FindByName<Button>(tab.Content as DependencyObject, "CopySourceButton");
-            Assert.NotNull(copy);
+            Button copy = Assert.IsAssignableFrom<Button>(DemoTestHost.FindByName<Button>(tab.Content as DependencyObject, "CopySourceButton"));
             Assert.Equal(expectedSource, copy.Tag as string, StringComparer.Ordinal);
         }
 
