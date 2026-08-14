@@ -26,13 +26,13 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-using Fluence.Wpf.Native;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Interop;
+using Windows.Win32;
 
 namespace Fluence.Wpf
 {
@@ -51,10 +51,7 @@ namespace Fluence.Wpf
         /// <exception cref="ArgumentNullException"><paramref name="window"/> is <see langword="null"/>.</exception>
         public static void Watch(Window window)
         {
-            if (window is null)
-            {
-                throw new ArgumentNullException(nameof(window));
-            }
+            ArgumentNullException.ThrowIfNull(window);
             lock (_lock)
             {
                 if (FindWatchedWindow(window) is not null)
@@ -87,10 +84,7 @@ namespace Fluence.Wpf
         /// <exception cref="ArgumentNullException"><paramref name="window"/> is <see langword="null"/>.</exception>
         public static void UnWatch(Window window)
         {
-            if (window is null)
-            {
-                throw new ArgumentNullException(nameof(window));
-            }
+            ArgumentNullException.ThrowIfNull(window);
             lock (_lock)
             {
                 if (FindWatchedWindow(window) is not WatchedWindow watched)
@@ -178,17 +172,17 @@ namespace Fluence.Wpf
 
         private static IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            bool isThemeRelevant = msg switch
+            bool isThemeRelevant = (uint)msg switch
             {
                 // WM_SETTINGCHANGE fires for every settings-class change (region, sound, region,
                 // policy, file types, etc.). Only the "ImmersiveColorSet" broadcast carries a
                 // theme/accent change. Without this filter the watcher debounces against any
                 // unrelated settings broadcast, swallowing a follow-up real theme change inside
                 // the 100 ms debounce window.
-                NativeConstants.WM_SETTINGCHANGE => IsImmersiveColorSetBroadcast(lParam),
-                NativeConstants.WM_DWMCOLORIZATIONCOLORCHANGED => true,
-                NativeConstants.WM_THEMECHANGED => true,
-                NativeConstants.WM_SYSCOLORCHANGE => true,
+                PInvoke.WM_SETTINGCHANGE => IsImmersiveColorSetBroadcast(lParam),
+                PInvoke.WM_DWMCOLORIZATIONCOLORCHANGED => true,
+                PInvoke.WM_THEMECHANGED => true,
+                PInvoke.WM_SYSCOLORCHANGE => true,
                 _ => false,
             };
 
