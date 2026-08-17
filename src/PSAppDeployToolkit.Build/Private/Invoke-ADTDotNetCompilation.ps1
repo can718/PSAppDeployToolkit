@@ -6,6 +6,23 @@
 
 function Invoke-ADTDotNetCompilation
 {
+    # Internal filter for processing dotnet.exe output.
+    filter Write-ADTDotNetOutputBuildLogEntry
+    {
+        if ([System.String]::IsNullOrWhiteSpace(($message = ($_ -replace '^\s+', "> ").Trim())))
+        {
+            return
+        }
+        if ($_ -match ': error ')
+        {
+            Write-ADTBuildLogEntry -Message $message -ForegroundColor DarkRed
+        }
+        else
+        {
+            Write-ADTBuildLogEntry -Message $message
+        }
+    }
+
     # Initialise the module build function.
     Initialize-ADTModuleBuildFunction
     $testFileChanges = $true
@@ -26,7 +43,7 @@ function Invoke-ADTDotNetCompilation
 
         # Confirm whether we've got a Git client present and whether we're in a repository or not.
         Write-ADTBuildLogEntry -Message "Locating Git on this system to determine whether debug DLLs require compilation."
-        if ($testFileChanges -and ($null -eq ($git = Get-Command -Name git -ErrorAction Ignore)) -or ($git.Source -notmatch '\\git\.exe$'))
+        if ($testFileChanges -and (($null -eq ($git = Get-Command -Name git -ErrorAction Ignore)) -or ($git.Source -notmatch '\\git\.exe$')))
         {
             Write-ADTBuildLogEntry -Message "Unable to locate git.exe on this system, compiling C# project sources unconditionally." -ForegroundColor Yellow
             $testFileChanges = $false
@@ -48,7 +65,7 @@ function Invoke-ADTDotNetCompilation
         # Process each build item.
         foreach ($buildItem in $Script:ModuleConstants.DotNetBuildItems)
         {
-            # Only build a debug version if there's changed to the C# files since the last DLL commit.
+            # Only build a debug version if there are changes to the C# files since the last DLL commit.
             $buildConfigs = [System.Collections.Generic.List[System.String]]'Release'
             if ($testFileChanges)
             {
@@ -108,28 +125,17 @@ function Invoke-ADTDotNetCompilation
             # Build the module configs we've determined we require.
             foreach ($buildType in ($buildConfigs | Select-Object -Unique))
             {
-                # We use dotnet msbuild here as it has better reproducibility and allows us to do compilation and unit tests all in one operation.
+                # We use dotnet msbuild here as it best matches the build process used by Visual Studio which is our IDE of choice.
                 Write-ADTBuildLogEntry -Message "Building [$($buildItem.SolutionPath)] solution in [$buildType] mode, please wait..."
-                & $dotnet msbuild $buildItem.SolutionPath -target:"Rebuild,VSTest" -restore -p:configuration=$buildType -p:platform="Any CPU" -nodeReuse:false -m | & {
-                    process
-                    {
-                        if ([System.String]::IsNullOrWhiteSpace(($message = ($_ -replace '^\s+', "> ").Trim())))
-                        {
-                            return
-                        }
-                        if ($_ -match ': error ')
-                        {
-                            Write-ADTBuildLogEntry -Message $message -ForegroundColor DarkRed
-                        }
-                        else
-                        {
-                            Write-ADTBuildLogEntry -Message $message
-                        }
-                    }
-                }
+                & $dotnet msbuild $buildItem.SolutionPath -target:Rebuild -restore -p:configuration=$buildType -p:platform="Any CPU" -nodeReuse:false -m | Write-ADTDotNetOutputBuildLogEntry
                 if ($Global:LASTEXITCODE)
                 {
                     throw "Failed to build solution [$($buildItem.SolutionPath -replace '^.+\\')] with exit code [$Global:LASTEXITCODE]."
+                }
+                & $dotnet test --solution $buildItem.SolutionPath --configuration $buildType --no-build --no-restore | Write-ADTDotNetOutputBuildLogEntry
+                if ($Global:LASTEXITCODE)
+                {
+                    throw "Unit testing solution [$($buildItem.SolutionPath -replace '^.+\\')] failed with exit code [$Global:LASTEXITCODE]."
                 }
 
                 # Run any publish actions if present.
@@ -139,6 +145,10 @@ function Invoke-ADTDotNetCompilation
                     {
                         Write-ADTBuildLogEntry -Message "Running publish action for [$([System.IO.Path]::GetFileName($publishItem.Key))], please wait..."
                         $null = & $dotnet publish $publishItem.Key -r win-x64  # The RID doesn't matter here, it's all IL but we need to specify it.
+                        if ($Global:LASTEXITCODE)
+                        {
+                            throw "Publishing item [$($publishItem.Key -replace '^.+\\')] failed with exit code [$Global:LASTEXITCODE]."
+                        }
                     }
                 }
 
