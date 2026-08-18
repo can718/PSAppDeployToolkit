@@ -37,7 +37,7 @@ $NewADTTemplateParameters = @{
         }
         if ($adtSession.AppProcessesToClose.Count -gt 0)
         {
-            #$saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
+            $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
         }
         Show-ADTInstallationWelcome @saiwParams
         Show-ADTInstallationProgress
