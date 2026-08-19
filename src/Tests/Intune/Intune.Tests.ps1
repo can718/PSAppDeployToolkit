@@ -256,11 +256,18 @@ Describe 'Intune Tests' {
             Start-Sleep -Seconds 8
             Wait-IntuneManagementExtension
 
+            $expectedDeferralAppNames = @(
+                $script:ParallelApps |
+                    Where-Object { $_.TemplateVersion -eq 'V4' -and (Get-PsadtForceCountdownDeferralExpectation -App $_).Expected } |
+                    ForEach-Object { $_.Name }
+            )
+
             $helperPath = Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1'
             $result = Invoke-ParallelAppPollWithRetry `
                 -UploadedApps    $script:UploadedApps `
                 -Operation       'Install' `
-                -HelperScriptPath $helperPath
+                -HelperScriptPath $helperPath `
+                -NoRetryAppNames  $expectedDeferralAppNames
 
             # Store results and run post-install scripts for succeeded apps.
             foreach ($appName in $result.Succeeded)

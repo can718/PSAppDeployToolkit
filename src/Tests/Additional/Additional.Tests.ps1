@@ -835,6 +835,15 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                 Set-ItResult -Skipped -Because 'Notepad++ environment not ready. Check logs for details.'
                 return
             }
+
+            $templateExpectedInstallerPath = Join-Path 'C:\Tools\Intune' (Split-Path -Path $notepadEnvironment.TargetInstallerPath -Leaf)
+            if (-not (Test-Path -LiteralPath $notepadEnvironment.TargetInstallerPath -PathType Leaf))
+            {
+                throw "[$LogPrefix] Target installer was not prepared: $($notepadEnvironment.TargetInstallerPath)"
+            }
+            New-Item -Path (Split-Path -Path $templateExpectedInstallerPath -Parent) -ItemType Directory -Force | Out-Null
+            Copy-Item -LiteralPath $notepadEnvironment.TargetInstallerPath -Destination $templateExpectedInstallerPath -Force
+            Write-Information "::info::[$LogPrefix] Copied target installer to template file path '$templateExpectedInstallerPath'." -InformationAction Continue
             # ----------------------------------------------------------------
             # Step 2 - Verify prerequisites
             # ----------------------------------------------------------------

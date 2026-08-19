@@ -1029,10 +1029,15 @@ jobs:
 
           $appPart = $stem
           $deploymentType = $null
+          $appVersion = $null
 
           if ($stem -match '^(?<app>.+?)_(?<action>Install|Uninstall|Repair)_\d{8}_\d{6}$') {
             $appPart = [string]$matches['app']
             $deploymentType = ([string]$matches['action']).ToLowerInvariant()
+          }
+
+          if ($appPart -match '(?<version>\d+(?:\.\d+){1,3})') {
+            $appVersion = [string]$matches['version']
           }
 
           $baseTokens = Get-NormalizedTokens -Text $appPart
@@ -1041,9 +1046,28 @@ jobs:
           return [pscustomobject]@{
             Name           = [string]$RecordingFileName
             AppNameRaw     = $appPart
+            AppVersion     = $appVersion
             AppTokens      = @($tokens)
             DeploymentType = $deploymentType
           }
+        }
+
+        function Get-ExpectedRecordingVersion {
+          param([string]$CaseName)
+
+          if ([string]::IsNullOrWhiteSpace($CaseName)) {
+            return $null
+          }
+
+          if ($CaseName -match '\[INTUNE:Notepad\+\+ ForceClose_Install\]') {
+            return '6.8.8'
+          }
+
+          if ($CaseName -match '\[INTUNE:Notepad\+\+_Install\]') {
+            return '6.6.4'
+          }
+
+          return $null
         }
 
         function Parse-CaseRecordingHint {
@@ -1081,10 +1105,15 @@ jobs:
           if (-not $caseHint) {
             return @()
           }
+          $expectedVersion = Get-ExpectedRecordingVersion -CaseName $CaseName
 
           $matched = foreach ($entry in $RecordingEntries) {
             $recordingMeta = Parse-RecordingNameMetadata -RecordingFileName ([string]$entry.Name)
             if (-not $recordingMeta -or $recordingMeta.AppTokens.Count -eq 0) {
+              continue
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($expectedVersion) -and $recordingMeta.AppVersion -ne $expectedVersion) {
               continue
             }
 

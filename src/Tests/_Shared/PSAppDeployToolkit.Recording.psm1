@@ -53,7 +53,12 @@ function Start-AdditionalTestRecording
         }
 
         $currentSession = Get-ADTSession
-        Write-ADTLogEntry -Message "Starting recording for [$($currentSession.AppName)] deployment type [$($currentSession.DeploymentType)]." -Severity Info
+        $recordingAppName = $currentSession.AppName
+        if (-not [System.String]::IsNullOrWhiteSpace($currentSession.AppVersion))
+        {
+            $recordingAppName = '{0}_{1}' -f $recordingAppName, $currentSession.AppVersion
+        }
+        Write-ADTLogEntry -Message "Starting recording for [$recordingAppName] deployment type [$($currentSession.DeploymentType)]." -Severity Info
         $recordingContext = & $script:terraForgeHelperModule {
             param
             (
@@ -62,7 +67,7 @@ function Start-AdditionalTestRecording
             )
 
             Start-TerraForgeRecording -AppName $AppName -DeploymentType $DeploymentType
-        } $currentSession.AppName $currentSession.DeploymentType
+        } $recordingAppName $currentSession.DeploymentType
         $script:recordingStarted = $recordingContext.Started
         $script:recordingOutputFile = $recordingContext.OutputFile
 
