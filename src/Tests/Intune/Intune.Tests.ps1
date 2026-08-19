@@ -277,14 +277,93 @@ Describe 'Intune Tests' {
 
         It '[INTUNE:<Name>_Install][<TemplateVersion>] <Name> should be installed' -ForEach $script:ParallelApps {
             $failures = @()
+            $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+            $expectForceCountdownDeferral = $false
+            $expectedDeferTimes = $null
+            $expectedForceCountdown = $null
 
-            if (-not $script:ParallelInstallResults[$Name])
+            if ($appConfig -and $appConfig.TemplateVersion -eq 'V4')
+            {
+                $templateParamsPath = Join-Path $PSScriptRoot "..\V4\$($appConfig.AppFolderName)\New-ADTTemplate.params.ps1"
+                if (Test-Path -LiteralPath $templateParamsPath -PathType Leaf)
+                {
+                    Remove-Variable -Name NewADTTemplateParameters, NotepadPlusPlusUseForceCloseProcessesCountdown -Scope Local -ErrorAction SilentlyContinue
+                    . $templateParamsPath
+
+                    if ($NewADTTemplateParameters -is [System.Collections.IDictionary] -and $NewADTTemplateParameters.PreInstallScriptBlock)
+                    {
+                        $preInstallScriptText = $NewADTTemplateParameters.PreInstallScriptBlock.ToString()
+                        $deferTimesMatch = [System.Text.RegularExpressions.Regex]::Match($preInstallScriptText, '(?m)^\s*DeferTimes\s*=\s*(?<Value>\d+)')
+                        $forceCountdownMatch = [System.Text.RegularExpressions.Regex]::Match($preInstallScriptText, '(?m)^\s*ForceCountdown\s*=\s*(?<Value>\d+)')
+                        if ($deferTimesMatch.Success)
+                        {
+                            $expectedDeferTimes = $deferTimesMatch.Groups['Value'].Value
+                        }
+                        if ($forceCountdownMatch.Success)
+                        {
+                            $expectedForceCountdown = $forceCountdownMatch.Groups['Value'].Value
+                        }
+
+                        $hasDeferTimes = $null -ne $expectedDeferTimes
+                        $hasForceCountdown = $null -ne $expectedForceCountdown
+                        $hasForceCloseProcessesCountdown = $preInstallScriptText.Contains('ForceCloseProcessesCountdown')
+                        $expectForceCountdownDeferral = $hasDeferTimes -and $hasForceCountdown -and -not $hasForceCloseProcessesCountdown
+                    }
+                }
+            }
+
+            if ($expectForceCountdownDeferral)
+            {
+                if ($script:ParallelInstallResults[$Name])
+                {
+                    $failures += '[Install Status] app installed successfully, but ForceCountdown deferral was expected'
+                }
+
+                if ($appConfig)
+                {
+                    $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Install'
+                    if (-not $logValidation.LogFile)
+                    {
+                        $failures += "[Log Validation] $($logValidation.Message)"
+                    }
+                    else
+                    {
+                        $logContent = Get-Content -LiteralPath $logValidation.LogFile -Raw -ErrorAction SilentlyContinue
+                        if ($logContent -notmatch 'Evaluating disk space requirements\.')
+                        {
+                            $failures += '[Log Validation] expected disk space requirement check line was not found'
+                        }
+                        if ($logContent -notmatch 'Successfully passed minimum disk space requirement check\.')
+                        {
+                            $failures += '[Log Validation] expected disk space pass line was not found'
+                        }
+                        $expectedDeferTimesPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedDeferTimes)
+                        $expectedForceCountdownPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedForceCountdown)
+                        if ($logContent -notmatch "The user has \[$expectedDeferTimesPattern\] deferrals remaining\.")
+                        {
+                            $failures += "[Log Validation] expected deferral count [$expectedDeferTimes] line was not found"
+                        }
+                        if ($logContent -notmatch "Close applications countdown has \[$expectedForceCountdownPattern\] seconds remaining\.")
+                        {
+                            $failures += "[Log Validation] expected ForceCountdown [$expectedForceCountdown]-second countdown line was not found"
+                        }
+                        if ($logContent -notmatch 'Countdown timer has elapsed and deferrals remaining\. Force deferral\.')
+                        {
+                            $failures += '[Log Validation] expected force deferral line was not found'
+                        }
+                        if ($logContent -notmatch 'install was deferred .* exit code \[1602\]')
+                        {
+                            $failures += '[Log Validation] expected deferred finalization with exit code 1602 was not found'
+                        }
+                    }
+                }
+            }
+            elseif (-not $script:ParallelInstallResults[$Name])
             {
                 $failures += '[Install Status] app was not installed successfully via Intune MDM sync'
             }
 
-            $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
-            if ($appConfig)
+            if ($appConfig -and -not $expectForceCountdownDeferral)
             {
                 $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Install'
                 if (-not $logValidation.Success)
