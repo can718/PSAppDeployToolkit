@@ -299,6 +299,12 @@ Describe 'Intune Tests' {
                     {
                         $failures += "[Log Validation] $($logValidation.Message)"
                     }
+
+                    $versionValidation = Test-PsadtAppFileVersion -App $appConfig -ExpectedState 'Deferral'
+                    if (-not $versionValidation.Success)
+                    {
+                        $failures += "[Version Validation] $($versionValidation.Message)"
+                    }
                 }
             }
             elseif (-not $script:ParallelInstallResults[$Name])
@@ -312,6 +318,12 @@ Describe 'Intune Tests' {
                 if (-not $logValidation.Success)
                 {
                     $failures += "[Log Validation] $($logValidation.Message)"
+                }
+
+                $versionValidation = Test-PsadtAppFileVersion -App $appConfig -ExpectedState 'Install'
+                if (-not $versionValidation.Success)
+                {
+                    $failures += "[Version Validation] $($versionValidation.Message)"
                 }
             }
 

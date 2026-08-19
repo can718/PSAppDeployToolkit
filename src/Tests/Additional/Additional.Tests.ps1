@@ -802,6 +802,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             $script:notepadInstallCmd = $notepadParameters.InstallCmd
             $script:notepadUninstallCmd = $notepadParameters.UninstallCmd
             $script:notepadLogPrefix = $LogPrefix
+            $script:notepadVersionValidationApp = $notepadParameters
             $script:notepadLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName $notepadParameters.AppFolderName -Name $Name
 
             Write-Information "::info::[$LogPrefix] Step 0: Verifying template validation gate..."
@@ -920,34 +921,18 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
 
                     $deferLogValidation = Test-PsadtForceCountdownDeferralLog -App $script:notepadLogValidationApp -DeploymentType 'Install'
                     $deferLogValidation.Success | Should -BeTrue -Because "[$($script:notepadLogPrefix)] PSADT ForceCountdown deferral log validation: $($deferLogValidation.Message)"
+
+                    $versionValidation = Test-PsadtAppFileVersion -App $script:notepadVersionValidationApp -ExpectedState 'Deferral'
+                    $versionValidation.Success | Should -BeTrue -Because "[$($script:notepadLogPrefix)] expected failed/deferred install to retain old Notepad++ version: $($versionValidation.Message)"
                     return
                 }
 
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
                 $script:notepadInstallDeploySucceeded = $true
-                #---------------------------------------------------------------
-                # Step 8 - Check version of installed Notepad++
-                #---------------------------------------------------------------
-                $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
-                if (Test-Path $notepadExePath)
-                {
-                    $notepadFileVersion = (Get-Item -Path $notepadExePath).VersionInfo.FileVersion
-                    Write-Information "[$($script:notepadLogPrefix)] FileVersion: $notepadFileVersion" -InformationAction Continue
-                    $expectedNotepadVersionPattern = '^' + [System.Text.RegularExpressions.Regex]::Escape($script:notepadAppVersion) + '(\.|$)'
-                    if ($notepadFileVersion -match $expectedNotepadVersionPattern)
-                    {
-                        Write-Information "[$($script:notepadLogPrefix)] The expected target version is installed ($($script:notepadAppVersion))." -InformationAction Continue
-                    }
-                    else
-                    {
-                        Write-Warning "[$($script:notepadLogPrefix)] Main exe version is not the expected target value: $notepadFileVersion"
-                    }
-                }
-                else
-                {
-                    Write-Information "[$($script:notepadLogPrefix)] File not found at: $notepadExePath" -InformationAction Continue
-                }
+
+                $versionValidation = Test-PsadtAppFileVersion -App $script:notepadVersionValidationApp -ExpectedState 'Install'
+                $versionValidation.Success | Should -BeTrue -Because "[$($script:notepadLogPrefix)] expected successful install to have target Notepad++ version: $($versionValidation.Message)"
 
                 Assert-PSADTDeploymentLogValidation -App $script:notepadLogValidationApp -DeploymentType 'Install' -LogPrefix $script:notepadLogPrefix
             }

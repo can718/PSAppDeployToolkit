@@ -58,6 +58,9 @@
         InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
         UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
         RegVersionValue = '6.6.4'
+        VersionCheckFilePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
+        ExpectedDeferralFileVersionPattern = '^(6\.23|6\.2\.3)(\.|$)'
+        ExpectedDeferralFileVersionDescription = 'legacy version 6.2.3'
         PreInstallScript = {
             # Install lower version as prerequisite for upgrade test.
             $installerDir = 'C:\Tools\Intune\Notepad6.2.3'
@@ -134,6 +137,9 @@
         InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
         UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
         RegVersionValue = '6.8.8'
+        VersionCheckFilePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
+        ExpectedInstallFileVersionPattern = '^6\.8\.8(\.|$)'
+        ExpectedInstallFileVersionDescription = '6.8.8'
         PreInstallScript = {
             # Install lower version as prerequisite for upgrade test.
             $installerDir = 'C:\Tools\Intune\Notepad6.2.3'

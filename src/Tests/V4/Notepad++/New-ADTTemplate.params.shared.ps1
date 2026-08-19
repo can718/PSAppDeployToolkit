@@ -1,4 +1,4 @@
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+﻿[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
     'PSUseDeclaredVarsMoreThanAssignments',
     'NewADTTemplateParameters',
     Justification = 'This hashtable is consumed by external test harness code after the script is loaded.'

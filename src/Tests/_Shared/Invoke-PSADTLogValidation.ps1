@@ -269,6 +269,40 @@ function Test-PsadtForceCountdownDeferralLog
     return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCountdown deferral log validation passed for DeferTimes [$($expectation.DeferTimes)] and ForceCountdown [$($expectation.ForceCountdown)]." }
 }
 
+function Test-PsadtAppFileVersion
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Deferral')]
+        [string]$ExpectedState
+    )
+
+    $filePath = $App.VersionCheckFilePath
+    $pattern = if ($ExpectedState -eq 'Deferral') { $App.ExpectedDeferralFileVersionPattern } else { $App.ExpectedInstallFileVersionPattern }
+    $description = if ($ExpectedState -eq 'Deferral') { $App.ExpectedDeferralFileVersionDescription } else { $App.ExpectedInstallFileVersionDescription }
+
+    if ([string]::IsNullOrWhiteSpace($filePath) -or [string]::IsNullOrWhiteSpace($pattern))
+    {
+        return @{ Success = $true; Skipped = $true; FilePath = $filePath; FileVersion = $null; Message = "No file version expectation configured for app [$($App.Name)] state [$ExpectedState]." }
+    }
+
+    if (-not (Test-Path -LiteralPath $filePath -PathType Leaf))
+    {
+        return @{ Success = $false; Skipped = $false; FilePath = $filePath; FileVersion = $null; Message = "Expected version check file not found: $filePath" }
+    }
+
+    $fileVersion = (Get-Item -LiteralPath $filePath).VersionInfo.FileVersion
+    if ($fileVersion -match $pattern)
+    {
+        return @{ Success = $true; Skipped = $false; FilePath = $filePath; FileVersion = $fileVersion; Message = "File version [$fileVersion] matched expected $ExpectedState version [$description]." }
+    }
+
+    return @{ Success = $false; Skipped = $false; FilePath = $filePath; FileVersion = $fileVersion; Message = "File version [$fileVersion] did not match expected $ExpectedState version [$description] using pattern [$pattern]." }
+}
+
 # ---------------------------------------------------------------------------
 # Region: PSADT Log Parsing
 # ---------------------------------------------------------------------------
