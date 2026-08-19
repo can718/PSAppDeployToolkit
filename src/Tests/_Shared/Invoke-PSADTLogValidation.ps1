@@ -146,6 +146,129 @@
     }
 }
 
+function Get-PsadtForceCountdownDeferralExpectation
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App
+    )
+
+    $result = @{
+        Expected = $false
+        DeferTimes = $null
+        ForceCountdown = $null
+        TemplateParamsPath = $null
+        Message = $null
+    }
+
+    if ($App.TemplateVersion -ne 'V4')
+    {
+        return $result
+    }
+
+    $testsRoot = Split-Path -Path $PSScriptRoot -Parent
+    $templateParamsPath = Join-Path $testsRoot "V4\$($App.AppFolderName)\New-ADTTemplate.params.ps1"
+    $result.TemplateParamsPath = $templateParamsPath
+    if (-not (Test-Path -LiteralPath $templateParamsPath -PathType Leaf))
+    {
+        $result.Message = "Template parameter file not found: $templateParamsPath"
+        return $result
+    }
+
+    Remove-Variable -Name NewADTTemplateParameters, NotepadPlusPlusUseForceCloseProcessesCountdown, NotepadPlusPlusTargetVersion, NotepadPlusPlusInstallerPath -Scope Local -ErrorAction SilentlyContinue
+    . $templateParamsPath
+
+    if (-not (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore))
+    {
+        $result.Message = "Variable `$NewADTTemplateParameters not found in [$templateParamsPath]."
+        return $result
+    }
+
+    $templateParams = (Get-Variable -Name NewADTTemplateParameters -Scope Local).Value
+    if ($null -eq $templateParams -or $templateParams -isnot [System.Collections.IDictionary] -or -not $templateParams.PreInstallScriptBlock)
+    {
+        $result.Message = "Invalid or missing PreInstallScriptBlock in [$templateParamsPath]."
+        return $result
+    }
+
+    $preInstallScriptText = $templateParams.PreInstallScriptBlock.ToString()
+    $deferTimesMatch = [System.Text.RegularExpressions.Regex]::Match($preInstallScriptText, '(?m)^\s*DeferTimes\s*=\s*(?<Value>\d+)')
+    $forceCountdownMatch = [System.Text.RegularExpressions.Regex]::Match($preInstallScriptText, '(?m)^\s*ForceCountdown\s*=\s*(?<Value>\d+)')
+    if ($deferTimesMatch.Success)
+    {
+        $result.DeferTimes = $deferTimesMatch.Groups['Value'].Value
+    }
+    if ($forceCountdownMatch.Success)
+    {
+        $result.ForceCountdown = $forceCountdownMatch.Groups['Value'].Value
+    }
+
+    $hasForceCloseProcessesCountdown = $preInstallScriptText.Contains('ForceCloseProcessesCountdown')
+    $result.Expected = ($null -ne $result.DeferTimes) -and ($null -ne $result.ForceCountdown) -and -not $hasForceCloseProcessesCountdown
+    return $result
+}
+
+function Test-PsadtForceCountdownDeferralLog
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType
+    )
+
+    $expectation = Get-PsadtForceCountdownDeferralExpectation -App $App
+    if (-not $expectation.Expected)
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = "ForceCountdown deferral is not expected for app [$($App.Name)]. $($expectation.Message)" }
+    }
+
+    $logValidation = Invoke-PsadtLogValidation -App $App -DeploymentType $DeploymentType
+    if (-not $logValidation.LogFile)
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = $logValidation.Message }
+    }
+
+    $logContent = Get-Content -LiteralPath $logValidation.LogFile -Raw -ErrorAction SilentlyContinue
+    $failures = @()
+    if ($logContent -notmatch 'Evaluating disk space requirements\.')
+    {
+        $failures += 'expected disk space requirement check line was not found'
+    }
+    if ($logContent -notmatch 'Successfully passed minimum disk space requirement check\.')
+    {
+        $failures += 'expected disk space pass line was not found'
+    }
+
+    $expectedDeferTimesPattern = [System.Text.RegularExpressions.Regex]::Escape($expectation.DeferTimes)
+    $expectedForceCountdownPattern = [System.Text.RegularExpressions.Regex]::Escape($expectation.ForceCountdown)
+    if ($logContent -notmatch "The user has \[$expectedDeferTimesPattern\] deferrals remaining\.")
+    {
+        $failures += "expected deferral count [$($expectation.DeferTimes)] line was not found"
+    }
+    if ($logContent -notmatch "Close applications countdown has \[$expectedForceCountdownPattern\] seconds remaining\.")
+    {
+        $failures += "expected ForceCountdown [$($expectation.ForceCountdown)]-second countdown line was not found"
+    }
+    if ($logContent -notmatch 'Countdown timer has elapsed and deferrals remaining\. Force deferral\.')
+    {
+        $failures += 'expected force deferral line was not found'
+    }
+    if ($logContent -notmatch "$($DeploymentType.ToLowerInvariant()) was deferred .* exit code \[1602\]")
+    {
+        $failures += "expected deferred finalization with exit code 1602 was not found"
+    }
+
+    if ($failures.Count)
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $logValidation.LogFile; Message = ($failures -join '; ') }
+    }
+
+    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCountdown deferral log validation passed for DeferTimes [$($expectation.DeferTimes)] and ForceCountdown [$($expectation.ForceCountdown)]." }
+}
+
 # ---------------------------------------------------------------------------
 # Region: PSADT Log Parsing
 # ---------------------------------------------------------------------------

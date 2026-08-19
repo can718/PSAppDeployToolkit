@@ -126,11 +126,14 @@
         AppFolderName = 'Notepad++ ForceClose'
         AppName = 'Notepad++ (PSADT v4 Notepad++ ForceClose)'
         AppVendor = 'Don HO don.h@free.fr'
-        AppVersion = '6.6.4'
+        AppVersion = '6.8.8'
         ContentSubPath = 'NotepadPlusPlusForceClose'
+        TargetInstallerDir = 'C:\Tools\SCCM\NotepadPlusPlus\6.8.8'
+        TargetInstallerName = 'npp.6.8.8.Installer.exe'
+        TargetInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-7/npp.6.8.8.Installer.exe'
         InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
         UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
-        RegVersionValue = '6.6.4'
+        RegVersionValue = '6.8.8'
         PreInstallScript = {
             # Install lower version as prerequisite for upgrade test.
             $installerDir = 'C:\Tools\Intune\Notepad6.2.3'
@@ -152,16 +155,16 @@
             }
 
             # Download new version installer.
-            $newDir = 'C:\Tools\Intune\Notepad6.6.4'
-            $newPath = Join-Path $newDir 'npp.6.6.4.Installer.exe'
+            $newDir = 'C:\Tools\Intune\Notepad6.8.8'
+            $newPath = Join-Path $newDir 'npp.6.8.8.Installer.exe'
             if (-not (Test-Path $newPath))
             {
                 New-Item -Path $newDir -ItemType Directory -Force | Out-Null
-                Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-5/npp.6.6.4.Installer.exe' -OutFile $newPath -UseBasicParsing
+                Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-7/npp.6.8.8.Installer.exe' -OutFile $newPath -UseBasicParsing
             }
 
             # Keep a copy at the V4 template default file path.
-            $templateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
+            $templateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.8.8.Installer.exe'
             Copy-Item -Path $newPath -Destination $templateExpectedInstallerPath -Force
         }
         PostInstallScript = {
@@ -170,13 +173,13 @@
             {
                 $notepadFileVersion = (Get-Item -Path $notepadExePath).VersionInfo.FileVersion
                 Write-Information "[Notepad++ ForceClose] FileVersion: $notepadFileVersion" -InformationAction Continue
-                if ($notepadFileVersion -match '^6\.23(\.|$)' -or $notepadFileVersion -match '^6\.2\.3(\.|$)')
+                if ($notepadFileVersion -match '^6\.8\.8(\.|$)')
                 {
-                    Write-Information '[Notepad++ ForceClose] The currently retained version is the legacy version (6.23).' -InformationAction Continue
+                    Write-Information '[Notepad++ ForceClose] The expected target version is installed (6.8.8).' -InformationAction Continue
                 }
                 else
                 {
-                    Write-Warning "[Notepad++ ForceClose] Main exe version is not an expected legacy value: $notepadFileVersion"
+                    Write-Warning "[Notepad++ ForceClose] Main exe version is not the expected target value: $notepadFileVersion"
                 }
             }
             else
@@ -189,7 +192,7 @@
             $null = $FilesDir
             New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++' `
-                -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '6.6.4'
+                -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '6.8.8'
         }
     }
     @{

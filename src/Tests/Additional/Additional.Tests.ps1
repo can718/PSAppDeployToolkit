@@ -754,29 +754,10 @@ Describe 'VLC SCCM Deployment' -Tag 'VLC' {
 Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
     Context 'Build Notepad++ package from V4 template and deploy into SCCM' {
 
-        BeforeAll {
-            $notepadParameters = Get-SharedPSADTAppParameters -Name 'Notepad++'
-            $ctx = New-PSADTAppTestContextSafe -Parameters $notepadParameters -LogPrefix 'Notepad++'
-
-            $script:v4Dir = $ctx.V4Dir
-            $script:notepadSourceScript = $ctx.SourceScript
-            $script:notepadPackageDir = $ctx.PackageDir
-            $script:notepadAppName = $ctx.AppName
-            $script:notepadAppVendor = $ctx.AppVendor
-            $script:notepadAppVersion = $ctx.AppVersion
-            $script:notepadDTName = $ctx.DeploymentTypeName
-            $script:notepadContentUNC = $ctx.ContentUNC
-            $script:targetCollection = $ctx.TargetCollection
-            $script:notepadInstallDeploySucceeded = $false
-            $script:siteCode = $ctx.SiteCode
-            $script:siteServer = $ctx.SiteServer
-            $script:cmModulePath = $ctx.CmModulePath
-            $script:notepadDetectScript = $notepadParameters.DetectScript
-            $script:notepadDescriptionTemplate = $notepadParameters.DescriptionTemplate
-            $script:notepadInstallCmd = $notepadParameters.InstallCmd
-            $script:notepadUninstallCmd = $notepadParameters.UninstallCmd
-            $script:notepadLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'Notepad++' -Name 'Notepad++'
-        }
+        $script:NotepadSccmApps = @(
+            @{ Name = 'Notepad++'; TestId = 'NotepadPlusPlus'; LogPrefix = 'Notepad++' }
+            @{ Name = 'Notepad++ ForceClose'; TestId = 'NotepadPlusPlusForceClose'; LogPrefix = 'Notepad++ ForceClose' }
+        )
 
         AfterAll {
             # if (Test-Path $script:notepadPackageDir)
@@ -799,23 +780,57 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Notepad++_Install] [v4] Notepad++ should installed' {
-            Write-Information '::info::[Notepad++] Step 0: Verifying template validation gate...'
+        It '[MCM:<TestId>_Install] [v4] <Name> should installed' -ForEach $script:NotepadSccmApps {
+            $notepadParameters = Get-SharedPSADTAppParameters -Name $Name
+            $ctx = New-PSADTAppTestContextSafe -Parameters $notepadParameters -LogPrefix $LogPrefix
+
+            $script:v4Dir = $ctx.V4Dir
+            $script:notepadSourceScript = $ctx.SourceScript
+            $script:notepadPackageDir = $ctx.PackageDir
+            $script:notepadAppName = $ctx.AppName
+            $script:notepadAppVendor = $ctx.AppVendor
+            $script:notepadAppVersion = $ctx.AppVersion
+            $script:notepadDTName = $ctx.DeploymentTypeName
+            $script:notepadContentUNC = $ctx.ContentUNC
+            $script:targetCollection = $ctx.TargetCollection
+            $script:notepadInstallDeploySucceeded = $false
+            $script:siteCode = $ctx.SiteCode
+            $script:siteServer = $ctx.SiteServer
+            $script:cmModulePath = $ctx.CmModulePath
+            $script:notepadDetectScript = $notepadParameters.DetectScript
+            $script:notepadDescriptionTemplate = $notepadParameters.DescriptionTemplate
+            $script:notepadInstallCmd = $notepadParameters.InstallCmd
+            $script:notepadUninstallCmd = $notepadParameters.UninstallCmd
+            $script:notepadLogPrefix = $LogPrefix
+            $script:notepadLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName $notepadParameters.AppFolderName -Name $Name
+
+            Write-Information "::info::[$LogPrefix] Step 0: Verifying template validation gate..."
             if (-not (Test-PSADTTemplateValidationGate))
             {
                 Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
                 return
             }
-            Write-Information '::info::[Notepad++] Template validation gate satisfied.' -InformationAction Continue
+            Write-Information "::info::[$LogPrefix] Template validation gate satisfied." -InformationAction Continue
 
             # ----------------------------------------------------------------
             # Step 1 - Prepare local Notepad++ upgrade environment
             # ----------------------------------------------------------------
-            $notepadEnvironment = Initialize-NotepadPlusPlusSccmEnvironment -LaunchLegacyProcess -LogPrefix 'Notepad++'
+            $notepadEnvironmentParams = @{
+                LaunchLegacyProcess = $true
+                LogPrefix           = $LogPrefix
+            }
+            foreach ($installerParameterName in 'TargetInstallerDir', 'TargetInstallerName', 'TargetInstallerUri')
+            {
+                if ($notepadParameters[$installerParameterName])
+                {
+                    $notepadEnvironmentParams[$installerParameterName] = $notepadParameters[$installerParameterName]
+                }
+            }
+            $notepadEnvironment = Initialize-NotepadPlusPlusSccmEnvironment @notepadEnvironmentParams
             # check if the environment is ready
             if (-not $notepadEnvironment)
             {
-                Write-Information '::info::[Notepad++] Notepad++ environment not ready. Skipping test.' -InformationAction Continue
+                Write-Information "::info::[$LogPrefix] Notepad++ environment not ready. Skipping test." -InformationAction Continue
                 Set-ItResult -Skipped -Because 'Notepad++ environment not ready. Check logs for details.'
                 return
             }
@@ -827,8 +842,8 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                         -TemplateEnvName 'PSADT_TEMPLATE_V4_DIR' `
                         -SiteCode $script:siteCode `
                         -SiteServer $script:siteServer `
-                        -SourceScriptLabel 'Notepad++\Invoke-AppDeployToolkit.ps1' `
-                        -LogPrefix 'Notepad++' `
+                        -SourceScriptLabel "$($notepadParameters.AppFolderName)\Invoke-AppDeployToolkit.ps1" `
+                        -LogPrefix $LogPrefix `
                         -UseInformationLogs))
             {
                 return
@@ -837,7 +852,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             # ----------------------------------------------------------------
             # Step 3 - Copy V4 template to Notepad++ package directory
             # ----------------------------------------------------------------
-            Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:notepadPackageDir -LogPrefix 'Notepad++' -UseInformationLogs
+            Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:notepadPackageDir -LogPrefix $LogPrefix -UseInformationLogs
 
             # ----------------------------------------------------------------
             # Step 4 - Verify SMB content share and directories exist
@@ -846,7 +861,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                         -CmModulePath $script:cmModulePath `
                         -PackageDir $script:notepadPackageDir `
                         -ContentUNC $script:notepadContentUNC `
-                        -LogPrefix 'Notepad++' `
+                        -LogPrefix $LogPrefix `
                         -UseInformationLogs))
             {
                 return
@@ -855,9 +870,9 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             # ----------------------------------------------------------------
             # Step 5 - Import application into SCCM
             # ----------------------------------------------------------------
-            Write-Verbose '[Notepad++] Step 5: Importing Notepad++ application into SCCM...'
+            Write-Verbose "[$LogPrefix] Step 5: Importing Notepad++ application into SCCM..."
             Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
-                Write-Information '::info::[Notepad++] SCCM module imported and CMSite location set. Running SCCM operations...' -InformationAction Continue
+                Write-Information "::info::[$($script:notepadLogPrefix)] SCCM module imported and CMSite location set. Running SCCM operations..." -InformationAction Continue
                 $createAppParams = @{
                     AppName            = $script:notepadAppName
                     Vendor             = $script:notepadAppVendor
@@ -876,24 +891,38 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                 {
                     $createAppParams.UninstallCmd = $script:notepadUninstallCmd
                 }
-                Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix 'Notepad++'
+                Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix $script:notepadLogPrefix
 
                 # ----------------------------------------------------------------
                 # Step 6 - Distribute content
                 # ----------------------------------------------------------------
-                Write-Verbose '[Notepad++] Step 6: Triggering content distribution...'
-                Start-PSADTContentDistributionAndAssert -AppName $script:notepadAppName -LogPrefix 'Notepad++'
+                Write-Verbose "[$($script:notepadLogPrefix)] Step 6: Triggering content distribution..."
+                Start-PSADTContentDistributionAndAssert -AppName $script:notepadAppName -LogPrefix $script:notepadLogPrefix
 
                 # ----------------------------------------------------------------
                 # Step 6b - Deploy application to collection
                 # ----------------------------------------------------------------
-                Write-Verbose "[Notepad++] Step 6b: Deploying application to collection '$($script:targetCollection)'..."
-                New-PSADTRequiredDeployment -AppName $script:notepadAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'Notepad++'
+                Write-Verbose "[$($script:notepadLogPrefix)] Step 6b: Deploying application to collection '$($script:targetCollection)'..."
+                New-PSADTRequiredDeployment -AppName $script:notepadAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix $script:notepadLogPrefix
 
                 # ----------------------------------------------------------------
                 # Step 7 - Poll application deployment status
                 # ----------------------------------------------------------------
-                Write-Information '[Notepad++] Step 7: Polling application deployment status...' -InformationAction Continue
+                Write-Information "[$($script:notepadLogPrefix)] Step 7: Polling application deployment status..." -InformationAction Continue
+                $forceCountdownDeferral = Get-PsadtForceCountdownDeferralExpectation -App $script:notepadLogValidationApp
+                if ($forceCountdownDeferral.Expected)
+                {
+                    $deploymentSummary = Invoke-WinSCPPollDeploymentStatus -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Deployment'
+                    if ($deploymentSummary)
+                    {
+                        Write-Information $deploymentSummary -InformationAction Continue
+                    }
+
+                    $deferLogValidation = Test-PsadtForceCountdownDeferralLog -App $script:notepadLogValidationApp -DeploymentType 'Install'
+                    $deferLogValidation.Success | Should -BeTrue -Because "[$($script:notepadLogPrefix)] PSADT ForceCountdown deferral log validation: $($deferLogValidation.Message)"
+                    return
+                }
+
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
                 $script:notepadInstallDeploySucceeded = $true
@@ -904,22 +933,23 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                 if (Test-Path $notepadExePath)
                 {
                     $notepadFileVersion = (Get-Item -Path $notepadExePath).VersionInfo.FileVersion
-                    Write-Information "[Notepad++] FileVersion: $notepadFileVersion" -InformationAction Continue
-                    if ($notepadFileVersion -match '^6\.23(\.|$)' -or $notepadFileVersion -match '^6\.2\.3(\.|$)')
+                    Write-Information "[$($script:notepadLogPrefix)] FileVersion: $notepadFileVersion" -InformationAction Continue
+                    $expectedNotepadVersionPattern = '^' + [System.Text.RegularExpressions.Regex]::Escape($script:notepadAppVersion) + '(\.|$)'
+                    if ($notepadFileVersion -match $expectedNotepadVersionPattern)
                     {
-                        Write-Information '[Notepad++] The currently retained version is the legacy version (6.23).' -InformationAction Continue
+                        Write-Information "[$($script:notepadLogPrefix)] The expected target version is installed ($($script:notepadAppVersion))." -InformationAction Continue
                     }
                     else
                     {
-                        Write-Warning "[Notepad++] Main exe version is not an expected legacy value: $notepadFileVersion"
+                        Write-Warning "[$($script:notepadLogPrefix)] Main exe version is not the expected target value: $notepadFileVersion"
                     }
                 }
                 else
                 {
-                    Write-Information "[Notepad++] File not found at: $notepadExePath" -InformationAction Continue
+                    Write-Information "[$($script:notepadLogPrefix)] File not found at: $notepadExePath" -InformationAction Continue
                 }
 
-                Assert-PSADTDeploymentLogValidation -App $script:notepadLogValidationApp -DeploymentType 'Install' -LogPrefix 'Notepad++'
+                Assert-PSADTDeploymentLogValidation -App $script:notepadLogValidationApp -DeploymentType 'Install' -LogPrefix $script:notepadLogPrefix
             }
         }
     }

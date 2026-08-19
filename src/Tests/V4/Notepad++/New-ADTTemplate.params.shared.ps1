@@ -9,6 +9,14 @@ if (-not (Get-Variable -Name NotepadPlusPlusUseForceCloseProcessesCountdown -Sco
 {
     $NotepadPlusPlusUseForceCloseProcessesCountdown = $false
 }
+if (-not (Get-Variable -Name NotepadPlusPlusTargetVersion -Scope Local -ErrorAction Ignore))
+{
+    $NotepadPlusPlusTargetVersion = '6.6.4'
+}
+if (-not (Get-Variable -Name NotepadPlusPlusInstallerPath -Scope Local -ErrorAction Ignore))
+{
+    $NotepadPlusPlusInstallerPath = "C:\Tools\Intune\npp.$NotepadPlusPlusTargetVersion.Installer.exe"
+}
 
 $notepadPlusPlusPreInstallScriptBlock = if ($NotepadPlusPlusUseForceCloseProcessesCountdown)
 {
@@ -53,7 +61,7 @@ $NewADTTemplateParameters = @{
     SessionProperties        = @{
         AppVendor                   = 'Don HO don.h@free.fr'
         AppName                     = 'Notepad++'
-        AppVersion                  = '6.6.4'
+        AppVersion                  = $NotepadPlusPlusTargetVersion
         AppArch                     = 'x64'
         AppLang                     = 'EN'
         AppRevision                 = '01'
@@ -71,7 +79,7 @@ $NewADTTemplateParameters = @{
         DeployAppScriptVersion      = '4.2.0'
     }
     Destination              = 'C:\PSADT\NotepadPlusPlus'
-    Files                    = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
+    Files                    = $NotepadPlusPlusInstallerPath
     PreInstallScriptBlock    = $notepadPlusPlusPreInstallScriptBlock
 
     InstallScriptBlock       = {
