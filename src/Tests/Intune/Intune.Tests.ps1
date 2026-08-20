@@ -20,6 +20,13 @@ BeforeAll {
     # Load shared helper functions.
     . (Join-Path $script:_tfScriptRoot 'IntuneTestHelpers.ps1')
 
+    $script:SharedEnvironmentHelpersPath = Join-Path $script:_tfScriptRoot '..\_Shared\TestAppEnvironment.Helpers.ps1'
+    if (-not (Test-Path -LiteralPath $script:SharedEnvironmentHelpersPath -PathType Leaf))
+    {
+        throw "Required shared helper file not found: $script:SharedEnvironmentHelpersPath"
+    }
+    . $script:SharedEnvironmentHelpersPath
+
     # Load TerraForge helper script at script scope so exported functions
     # remain available in later Pester blocks (BeforeEach/AfterEach).
     $script:TerraForgeHelperPath = [System.IO.Path]::GetFullPath((Join-Path $script:_tfScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
