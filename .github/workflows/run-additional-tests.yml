@@ -1257,8 +1257,8 @@ jobs:
             return $null
           }
 
-          # Supported case hint format: [MCM:App_Action], e.g. [MCM:WinSCP_Install]
-          if ($CaseName -notmatch '\[MCM:(?<app>[A-Za-z0-9_+\- ]+?)_(?<action>Install|Uninstall|Repair)\]') {
+          # Supported case hint format: [MCM:App_Action] with an optional suffix, e.g. [MCM:Notepad++_Install_FirstDeferral]
+          if ($CaseName -notmatch '\[MCM:(?<app>[A-Za-z0-9_+\- ]+?)_(?<action>Install|Uninstall|Repair)(?:_[^\]]+)?\]') {
             return $null
           }
 

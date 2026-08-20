@@ -1061,7 +1061,7 @@ jobs:
             return $null
           }
 
-          if ($CaseName -notmatch '\[INTUNE:(?<app>[A-Za-z0-9_+\- ]+?)_(?<action>Install|Uninstall|Repair)\]') {
+          if ($CaseName -notmatch '\[INTUNE:(?<app>[A-Za-z0-9_+\- ]+?)_(?<action>Install|Uninstall|Repair)(?:_[^\]]+)?\]') {
             return $null
           }
 
