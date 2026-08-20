@@ -618,7 +618,7 @@ jobs:
         # Discover all targeted tests first so we can report how many were not executed.
         $discoveryConfig = New-PesterConfiguration
         $discoveryConfig.Run.Path = $additionalTestsPath
-        $discoveryConfig.Filter.Tag = @('Validation', 'WinSCP', 'VLC', 'Notepad++')
+        $discoveryConfig.Filter.Tag = @('Validation', 'WinSCP', 'VLC', 'Notepad++', '7-Zip')
         $discoveryConfig.Run.SkipRun = $true
         $discoveryConfig.Run.PassThru = $true
         $discoveryResult = Invoke-Pester -Configuration $discoveryConfig
@@ -649,7 +649,7 @@ jobs:
         }
 
         # 2) Run the SCCM package suites in parallel after validation succeeds.
-        $tagsToRun = @('WinSCP', 'VLC', 'Notepad++','DigiExam','Everything')
+        $tagsToRun = @('WinSCP', 'VLC', 'Notepad++', '7-Zip', 'DigiExam', 'Everything')
         $indexedTags = for ($i = 0; $i -lt $tagsToRun.Count; $i++) {
           [pscustomobject]@{ Index = $i; Tag = $tagsToRun[$i] }
         }
@@ -1208,6 +1208,14 @@ jobs:
                 $null = $expanded.Add('vlc')
                 $null = $expanded.Add('media')
                 $null = $expanded.Add('player')
+              }
+              'zip' { $null = $expanded.Add('sevenzipforceclose') }
+              'sevenzip' { $null = $expanded.Add('sevenzipforceclose') }
+              'forceclose' { $null = $expanded.Add('sevenzipforceclose') }
+              'sevenzipforceclose' {
+                $null = $expanded.Add('zip')
+                $null = $expanded.Add('sevenzip')
+                $null = $expanded.Add('forceclose')
               }
             }
           }

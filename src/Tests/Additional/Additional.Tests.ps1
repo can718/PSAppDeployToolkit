@@ -775,6 +775,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             $script:notepadDescriptionTemplate = $notepadParameters.DescriptionTemplate
             $script:notepadInstallCmd = $notepadParameters.InstallCmd
             $script:notepadUninstallCmd = $notepadParameters.UninstallCmd
+            $script:notepadVersionValidationApp = $notepadParameters
             $script:notepadLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'Notepad++' -Name 'Notepad++'
         }
 
@@ -894,32 +895,129 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                 # Step 7 - Poll application deployment status
                 # ----------------------------------------------------------------
                 Write-Information '[Notepad++] Step 7: Polling application deployment status...' -InformationAction Continue
-                $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Deployment'
-                Write-Information $deploymentSummary -InformationAction Continue
-                $script:notepadInstallDeploySucceeded = $true
-                #---------------------------------------------------------------
-                # Step 8 - Check version of installed Notepad++
-                #---------------------------------------------------------------
-                $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
-                if (Test-Path $notepadExePath)
+                $deploymentSummary = Invoke-WinSCPPollDeploymentStatus -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Deployment'
+                if ($deploymentSummary)
                 {
-                    $notepadFileVersion = (Get-Item -Path $notepadExePath).VersionInfo.FileVersion
-                    Write-Information "[Notepad++] FileVersion: $notepadFileVersion" -InformationAction Continue
-                    if ($notepadFileVersion -match '^6\.23(\.|$)' -or $notepadFileVersion -match '^6\.2\.3(\.|$)')
-                    {
-                        Write-Information '[Notepad++] The currently retained version is the legacy version (6.23).' -InformationAction Continue
-                    }
-                    else
-                    {
-                        Write-Warning "[Notepad++] Main exe version is not an expected legacy value: $notepadFileVersion"
-                    }
-                }
-                else
-                {
-                    Write-Information "[Notepad++] File not found at: $notepadExePath" -InformationAction Continue
+                    Write-Information $deploymentSummary -InformationAction Continue
                 }
 
-                Assert-PSADTDeploymentLogValidation -App $script:notepadLogValidationApp -DeploymentType 'Install' -LogPrefix 'Notepad++'
+                $deferLogValidation = Test-PsadtForceCountdownDeferralLog -App $script:notepadLogValidationApp -DeploymentType 'Install'
+                $deferLogValidation.Success | Should -BeTrue -Because "[Notepad++] PSADT ForceCountdown deferral log validation: $($deferLogValidation.Message)"
+
+                $versionValidation = Test-PsadtAppFileVersion -App $script:notepadVersionValidationApp -ExpectedState 'Deferral'
+                $versionValidation.Success | Should -BeTrue -Because "[Notepad++] expected failed/deferred install to retain old Notepad++ version: $($versionValidation.Message)"
+            }
+        }
+    }
+}
+
+Describe '7-Zip ForceClose SCCM Deployment' -Tag '7-Zip' {
+    Context 'Build 7-Zip ForceClose package from V4 template and deploy into SCCM' {
+
+        BeforeEach {
+            $testInfo = $____Pester.CurrentTest
+            $script:CurrentTestClass = '7-Zip ForceClose Package Preparation and SCCM Deployment / Build 7-Zip ForceClose package from V4 template and deploy into SCCM'
+            $script:CurrentTestMethod = $testInfo.Name
+            $script:CurrentTestKey = New-TFTestCaseKey -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod
+            Invoke-TFReportTestCase -TestClass $script:CurrentTestClass -TestMethod $script:CurrentTestMethod -TestKey $script:CurrentTestKey
+        }
+
+        AfterEach {
+            $currentTest = $____Pester.CurrentTest
+            Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
+        }
+
+        It '[MCM:SevenZipForceClose_Install] [v4] 7-Zip ForceClose should installed' {
+            $sevenZipParameters = Get-SharedPSADTAppParameters -Name '7-Zip ForceClose'
+            $ctx = New-PSADTAppTestContextSafe -Parameters $sevenZipParameters -LogPrefix '7-Zip ForceClose'
+
+            $script:v4Dir = $ctx.V4Dir
+            $script:sevenZipPackageDir = $ctx.PackageDir
+            $script:sevenZipAppName = $ctx.AppName
+            $script:sevenZipAppVendor = $ctx.AppVendor
+            $script:sevenZipAppVersion = $ctx.AppVersion
+            $script:sevenZipDTName = $ctx.DeploymentTypeName
+            $script:sevenZipContentUNC = $ctx.ContentUNC
+            $script:targetCollection = $ctx.TargetCollection
+            $script:siteCode = $ctx.SiteCode
+            $script:siteServer = $ctx.SiteServer
+            $script:cmModulePath = $ctx.CmModulePath
+            $script:sevenZipDetectScript = $sevenZipParameters.DetectScript
+            $script:sevenZipDescriptionTemplate = $sevenZipParameters.DescriptionTemplate
+            $script:sevenZipInstallCmd = $sevenZipParameters.InstallCmd
+            $script:sevenZipUninstallCmd = $sevenZipParameters.UninstallCmd
+            $script:sevenZipLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName $sevenZipParameters.AppFolderName -Name '7-Zip ForceClose'
+
+            Write-Information '::info::[7-Zip ForceClose] Step 0: Verifying template validation gate...'
+            if (-not (Test-PSADTTemplateValidationGate))
+            {
+                Set-ItResult -Skipped -Because 'Template validation gate not satisfied. Run Validation first or set PSADT_TEMPLATE_VALIDATION_PASSED=true.'
+                return
+            }
+            Write-Information '::info::[7-Zip ForceClose] Template validation gate satisfied.' -InformationAction Continue
+
+            $sevenZipEnvironment = Initialize-SevenZipForceCloseSccmEnvironment -LaunchProcess -LogPrefix '7-Zip ForceClose'
+            if (-not $sevenZipEnvironment)
+            {
+                Set-ItResult -Skipped -Because '7-Zip ForceClose environment not ready. Check logs for details.'
+                return
+            }
+
+            $templateExpectedInstallerPath = Join-Path 'C:\Tools\Intune' (Split-Path -Path $sevenZipEnvironment.TargetInstallerPath -Leaf)
+            New-Item -Path (Split-Path -Path $templateExpectedInstallerPath -Parent) -ItemType Directory -Force | Out-Null
+            Copy-Item -LiteralPath $sevenZipEnvironment.TargetInstallerPath -Destination $templateExpectedInstallerPath -Force
+
+            if (-not (Test-PSADTPackageBuildPrerequisites `
+                        -TemplateDir $script:v4Dir `
+                        -TemplateEnvName 'PSADT_TEMPLATE_V4_DIR' `
+                        -SiteCode $script:siteCode `
+                        -SiteServer $script:siteServer `
+                        -SourceScriptLabel '7-Zip ForceClose\Invoke-AppDeployToolkit.ps1' `
+                        -LogPrefix '7-Zip ForceClose' `
+                        -UseInformationLogs))
+            {
+                return
+            }
+
+            Initialize-PSADTPackageDirectoryFromTemplateV4 -TemplateDir $script:v4Dir -PackageDir $script:sevenZipPackageDir -LogPrefix '7-Zip ForceClose' -UseInformationLogs
+
+            if (-not (Assert-PSADTContentPathReady `
+                        -CmModulePath $script:cmModulePath `
+                        -PackageDir $script:sevenZipPackageDir `
+                        -ContentUNC $script:sevenZipContentUNC `
+                        -LogPrefix '7-Zip ForceClose' `
+                        -UseInformationLogs))
+            {
+                return
+            }
+
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                $createAppParams = @{
+                    AppName            = $script:sevenZipAppName
+                    Vendor             = $script:sevenZipAppVendor
+                    Version            = $script:sevenZipAppVersion
+                    DeploymentTypeName = $script:sevenZipDTName
+                    ContentUNC         = $script:sevenZipContentUNC
+                    PackageDir         = $script:sevenZipPackageDir
+                    DetectScript       = $script:sevenZipDetectScript
+                    Description        = ($script:sevenZipDescriptionTemplate -f $script:sevenZipAppVersion, (Get-Date -Format 'yyyy-MM-dd'))
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:sevenZipInstallCmd))
+                {
+                    $createAppParams.InstallCmd = $script:sevenZipInstallCmd
+                }
+                if (-not [string]::IsNullOrWhiteSpace($script:sevenZipUninstallCmd))
+                {
+                    $createAppParams.UninstallCmd = $script:sevenZipUninstallCmd
+                }
+                Invoke-PSADTApplicationWithDeploymentTypeSafe -Parameters $createAppParams -LogPrefix '7-Zip ForceClose'
+
+                Start-PSADTContentDistributionAndAssert -AppName $script:sevenZipAppName -LogPrefix '7-Zip ForceClose'
+                New-PSADTRequiredDeployment -AppName $script:sevenZipAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix '7-Zip ForceClose'
+
+                $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:sevenZipAppName -SiteCode $script:siteCode -Label 'Deployment'
+                Write-Information $deploymentSummary -InformationAction Continue
+                Assert-PSADTDeploymentLogValidation -App $script:sevenZipLogValidationApp -DeploymentType 'Install' -LogPrefix '7-Zip ForceClose'
             }
         }
     }

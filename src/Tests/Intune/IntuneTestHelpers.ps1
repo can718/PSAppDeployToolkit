@@ -625,6 +625,8 @@ function Invoke-ParallelAppPollWithRetry
 
         [string[]]$AppNames,
 
+        [string[]]$NoRetryAppNames,
+
         [int]$MaxRetryCount = 1
     )
 
@@ -693,6 +695,11 @@ function Invoke-ParallelAppPollWithRetry
             if ($jobResult -ne $true)
             {
                 Write-Information "[$appName] $Operation poll result (attempt $attempt): $jobResult" -InformationAction Continue
+                if ($NoRetryAppNames -contains $appName)
+                {
+                    Write-Information "[$appName] $Operation poll failed as expected; skipping retry." -InformationAction Continue
+                    continue
+                }
                 $nextFailedApps += $appName
             }
             else

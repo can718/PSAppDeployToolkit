@@ -1013,6 +1013,14 @@ jobs:
                 $null = $expanded.Add('media')
                 $null = $expanded.Add('player')
               }
+              'zip' { $null = $expanded.Add('sevenzipforceclose') }
+              'sevenzip' { $null = $expanded.Add('sevenzipforceclose') }
+              'forceclose' { $null = $expanded.Add('sevenzipforceclose') }
+              'sevenzipforceclose' {
+                $null = $expanded.Add('zip')
+                $null = $expanded.Add('sevenzip')
+                $null = $expanded.Add('forceclose')
+              }
             }
           }
 

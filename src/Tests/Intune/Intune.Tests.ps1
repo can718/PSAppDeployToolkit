@@ -256,11 +256,18 @@ Describe 'Intune Tests' {
             Start-Sleep -Seconds 8
             Wait-IntuneManagementExtension
 
+            $expectedDeferralAppNames = @(
+                $script:ParallelApps |
+                    Where-Object { $_.TemplateVersion -eq 'V4' -and (Get-PsadtForceCountdownDeferralExpectation -App $_).Expected } |
+                    ForEach-Object { $_.Name }
+            )
+
             $helperPath = Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1'
             $result = Invoke-ParallelAppPollWithRetry `
                 -UploadedApps    $script:UploadedApps `
                 -Operation       'Install' `
-                -HelperScriptPath $helperPath
+                -HelperScriptPath $helperPath `
+                -NoRetryAppNames  $expectedDeferralAppNames
 
             # Store results and run post-install scripts for succeeded apps.
             foreach ($appName in $result.Succeeded)
@@ -277,14 +284,42 @@ Describe 'Intune Tests' {
 
         It '[INTUNE:<Name>_Install][<TemplateVersion>] <Name> should be installed' -ForEach $script:ParallelApps {
             $failures = @()
+            $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+            $expectForceCountdownDeferral = $false
 
-            if (-not $script:ParallelInstallResults[$Name])
+            if ($appConfig -and $appConfig.TemplateVersion -eq 'V4')
+            {
+                $expectForceCountdownDeferral = (Get-PsadtForceCountdownDeferralExpectation -App $appConfig).Expected
+            }
+
+            if ($expectForceCountdownDeferral)
+            {
+                if ($script:ParallelInstallResults[$Name])
+                {
+                    $failures += '[Install Status] app installed successfully, but ForceCountdown deferral was expected'
+                }
+
+                if ($appConfig)
+                {
+                    $logValidation = Test-PsadtForceCountdownDeferralLog -App $appConfig -DeploymentType 'Install'
+                    if (-not $logValidation.Success)
+                    {
+                        $failures += "[Log Validation] $($logValidation.Message)"
+                    }
+
+                    $versionValidation = Test-PsadtAppFileVersion -App $appConfig -ExpectedState 'Deferral'
+                    if (-not $versionValidation.Success)
+                    {
+                        $failures += "[Version Validation] $($versionValidation.Message)"
+                    }
+                }
+            }
+            elseif (-not $script:ParallelInstallResults[$Name])
             {
                 $failures += '[Install Status] app was not installed successfully via Intune MDM sync'
             }
 
-            $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
-            if ($appConfig)
+            if ($appConfig -and -not $expectForceCountdownDeferral)
             {
                 $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Install'
                 if (-not $logValidation.Success)

@@ -22,6 +22,13 @@ if (-not (Test-Path -LiteralPath $sharedLogValidationPath -PathType Leaf))
 }
 . $sharedLogValidationPath
 
+$sharedEnvironmentHelpersPath = Join-Path $PSScriptRoot '..\_Shared\TestAppEnvironment.Helpers.ps1'
+if (-not (Test-Path -LiteralPath $sharedEnvironmentHelpersPath -PathType Leaf))
+{
+    throw "Required shared helper file not found: $sharedEnvironmentHelpersPath"
+}
+. $sharedEnvironmentHelpersPath
+
 function script:Invoke-WinSCPPollDeploymentStatus
 {
     <#
@@ -737,54 +744,47 @@ function script:Initialize-NotepadPlusPlusSccmEnvironment
         [switch]$LaunchLegacyProcess
     )
 
-    $legacyInstallerPath = Save-PSADTTestInstaller `
-        -DestinationDirectory $LegacyInstallerDir `
-        -FileName $LegacyInstallerName `
-        -Uri $LegacyInstallerUri `
-        -LogPrefix $LogPrefix
+    return Initialize-NotepadPlusPlusLegacyTestEnvironment `
+        -LegacyInstallerDir $LegacyInstallerDir `
+        -LegacyInstallerName $LegacyInstallerName `
+        -LegacyInstallerUri $LegacyInstallerUri `
+        -TargetInstallerDir $TargetInstallerDir `
+        -TargetInstallerName $TargetInstallerName `
+        -TargetInstallerUri $TargetInstallerUri `
+        -TemplateExpectedInstallerPath $null `
+        -LegacyVersionPattern $LegacyVersionPattern `
+        -LogPrefix $LogPrefix `
+        -LaunchLegacyProcess:$LaunchLegacyProcess
+}
 
-    $legacyExePath = Join-Path ${env:ProgramFiles(x86)} 'Notepad++\notepad++.exe'
-    $installedLegacyVersion = $null
-    if (Test-Path -LiteralPath $legacyExePath -PathType Leaf)
-    {
-        $installedLegacyVersion = (Get-Item -LiteralPath $legacyExePath).VersionInfo.FileVersion
-    }
+function script:Initialize-SevenZipForceCloseSccmEnvironment
+{
+    <#
+        Prepares the local machine for the SCCM 7-Zip ForceClose scenario by
+        ensuring the MSI is available, installing 7-Zip when needed, and
+        launching 7zFM.exe to simulate an in-use app.
+    #>
+    param (
+        [string]$LegacyInstallerDir = 'C:\Tools\SCCM\SevenZipForceClose\23.01',
+        [string]$LegacyInstallerName = '7z2301-x64.msi',
+        [string]$LegacyInstallerUri = 'https://www.7-zip.org/a/7z2301-x64.msi',
+        [string]$TargetInstallerDir = 'C:\Tools\SCCM\SevenZipForceClose\24.09',
+        [string]$TargetInstallerName = '7z2409-x64.msi',
+        [string]$TargetInstallerUri = 'https://www.7-zip.org/a/7z2409-x64.msi',
+        [string]$LogPrefix = '7-Zip ForceClose',
+        [switch]$LaunchProcess
+    )
 
-    if ($installedLegacyVersion -match $LegacyVersionPattern)
-    {
-        Write-Information "::info::[$LogPrefix] Legacy version already installed: $installedLegacyVersion" -InformationAction Continue
-    }
-    else
-    {
-        Write-Information "::info::[$LogPrefix] Installing legacy Notepad++ prerequisite from '$legacyInstallerPath'." -InformationAction Continue
-        Start-Process -FilePath $legacyInstallerPath -ArgumentList '/S' -Wait -NoNewWindow
-    }
-
-    if ($LaunchLegacyProcess)
-    {
-        if (Test-Path -LiteralPath $legacyExePath -PathType Leaf)
-        {
-            Write-Information "::info::[$LogPrefix] Launching legacy Notepad++ process from '$legacyExePath'." -InformationAction Continue
-            Start-Process -FilePath $legacyExePath
-        }
-        else
-        {
-            Write-Warning "[$LogPrefix] Launch path not found: $legacyExePath"
-        }
-    }
-
-    $targetInstallerPath = Save-PSADTTestInstaller `
-        -DestinationDirectory $TargetInstallerDir `
-        -FileName $TargetInstallerName `
-        -Uri $TargetInstallerUri `
-        -LogPrefix $LogPrefix
-
-    return @{
-        LegacyInstallerPath = $legacyInstallerPath
-        LegacyExePath       = $legacyExePath
-        TargetInstallerPath = $targetInstallerPath
-        TargetInstallerDir  = $TargetInstallerDir
-    }
+    return Initialize-SevenZipForceCloseTestEnvironment `
+        -LegacyInstallerDir $LegacyInstallerDir `
+        -LegacyInstallerName $LegacyInstallerName `
+        -LegacyInstallerUri $LegacyInstallerUri `
+        -TargetInstallerDir $TargetInstallerDir `
+        -TargetInstallerName $TargetInstallerName `
+        -TargetInstallerUri $TargetInstallerUri `
+        -TemplateExpectedInstallerPath $null `
+        -LogPrefix $LogPrefix `
+        -LaunchProcess:$LaunchProcess
 }
 
 function script:Get-PSADTCmModulePath
