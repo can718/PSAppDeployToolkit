@@ -249,7 +249,7 @@ Describe 'Intune Tests' {
             $script:UploadedApps.Count | Should -Be $script:ParallelApps.Count
         }
 
-        It '[INTUNE:InstallSync] MDM sync, then parallel poll for all installations' {
+        It '[INTUNE:InstallSync] MDM sync, then parallel poll for expected install outcomes' {
             $script:UploadedApps | Should -Not -BeNullOrEmpty -Because 'Upload step must succeed first'
 
             Invoke-MdmSync
@@ -282,7 +282,7 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '[INTUNE:<Name>_Install][<TemplateVersion>] <Name> should be installed' -ForEach $script:ParallelApps {
+        It '[INTUNE:<Name>_Install][<TemplateVersion>] <Name> should reach expected install outcome' -ForEach $script:ParallelApps {
             $failures = @()
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
             $expectForceCountdownDeferral = $false

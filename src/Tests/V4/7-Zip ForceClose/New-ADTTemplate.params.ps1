@@ -44,11 +44,7 @@ $NewADTTemplateParameters = @{
     }
 
     InstallScriptBlock       = {
-        Start-ADTProcess -FilePath '7z2409-x64.msi' -ArgumentList '/qn /norestart'
-        $markerPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PSADT-7ZipForceClose'
-        New-Item -Path $markerPath -Force | Out-Null
-        New-ItemProperty -Path $markerPath -Name 'DisplayName' -Value 'PSADT 7-Zip ForceClose' -PropertyType String -Force | Out-Null
-        New-ItemProperty -Path $markerPath -Name 'DisplayVersion' -Value $adtSession.AppVersion -PropertyType String -Force | Out-Null
+        Start-ADTMsiProcess -Action Install -FilePath '7z2409-x64.msi'
     }
 
     PostInstallScriptBlock   = {
@@ -63,7 +59,7 @@ $NewADTTemplateParameters = @{
     }
 
     UninstallScriptBlock     = {
-        Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PSADT-7ZipForceClose' -Recurse -Force -ErrorAction SilentlyContinue
+        Start-ADTMsiProcess -Action Uninstall -FilePath '7z2409-x64.msi'
     }
 
     PostUninstallScriptBlock = {
@@ -76,7 +72,7 @@ $NewADTTemplateParameters = @{
     }
 
     RepairScriptBlock        = {
-        Start-ADTProcess -FilePath '7z2409-x64.msi' -ArgumentList '/qn /norestart'
+        Start-ADTMsiProcess -Action Repair -FilePath '7z2409-x64.msi' -RepairFromSource
     }
 
     PostRepairScriptBlock    = {

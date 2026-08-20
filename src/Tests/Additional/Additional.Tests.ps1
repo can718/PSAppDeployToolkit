@@ -800,7 +800,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Notepad++_Install] [v4] Notepad++ should installed' {
+        It '[MCM:Notepad++_Install_FirstDeferral] [v4] Notepad++ first install attempt should defer when app is open' {
             Write-Information '::info::[Notepad++] Step 0: Verifying template validation gate...'
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -888,24 +888,33 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                 # ----------------------------------------------------------------
                 # Step 6b - Deploy application to collection
                 # ----------------------------------------------------------------
+                Get-ChildItem -Path "$env:SystemRoot\Logs\Software" -Filter '*Notepad++*_Install.log' -File -ErrorAction SilentlyContinue |
+                    Remove-Item -Force -ErrorAction SilentlyContinue
                 Write-Verbose "[Notepad++] Step 6b: Deploying application to collection '$($script:targetCollection)'..."
+                $notepadInstallDeploymentCreated = $false
                 New-PSADTRequiredDeployment -AppName $script:notepadAppName -TargetCollection $script:targetCollection -DeployAction Install -LogPrefix 'Notepad++'
+                $notepadInstallDeploymentCreated = $true
 
                 # ----------------------------------------------------------------
-                # Step 7 - Poll application deployment status
+                # Step 7 - Wait for the first PSADT deferral log, not final SCCM success
                 # ----------------------------------------------------------------
-                Write-Information '[Notepad++] Step 7: Polling application deployment status...' -InformationAction Continue
-                $deploymentSummary = Invoke-WinSCPPollDeploymentStatus -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Deployment'
-                if ($deploymentSummary)
+                try
                 {
-                    Write-Information $deploymentSummary -InformationAction Continue
+                    Write-Information '[Notepad++] Step 7: Waiting for first install deferral log...' -InformationAction Continue
+                    $deferLogValidation = Wait-PSADTForceCountdownDeferralLog -App $script:notepadLogValidationApp -DeploymentType 'Install'
+                    $deferLogValidation.Success | Should -BeTrue -Because "[Notepad++] PSADT ForceCountdown deferral log validation: $($deferLogValidation.Message)"
+
+                    $versionValidation = Test-PsadtAppFileVersion -App $script:notepadVersionValidationApp -ExpectedState 'Deferral'
+                    $versionValidation.Success | Should -BeTrue -Because "[Notepad++] expected failed/deferred install to retain old Notepad++ version: $($versionValidation.Message)"
                 }
-
-                $deferLogValidation = Test-PsadtForceCountdownDeferralLog -App $script:notepadLogValidationApp -DeploymentType 'Install'
-                $deferLogValidation.Success | Should -BeTrue -Because "[Notepad++] PSADT ForceCountdown deferral log validation: $($deferLogValidation.Message)"
-
-                $versionValidation = Test-PsadtAppFileVersion -App $script:notepadVersionValidationApp -ExpectedState 'Deferral'
-                $versionValidation.Success | Should -BeTrue -Because "[Notepad++] expected failed/deferred install to retain old Notepad++ version: $($versionValidation.Message)"
+                finally
+                {
+                    if ($notepadInstallDeploymentCreated)
+                    {
+                        Remove-CMApplicationDeployment -Name $script:notepadAppName -CollectionName $script:targetCollection -Force -ErrorAction SilentlyContinue
+                        Write-Information '::info::[Notepad++] Removed install deployment after first deferral validation to avoid SCCM retry upgrading the app.' -InformationAction Continue
+                    }
+                }
             }
         }
     }

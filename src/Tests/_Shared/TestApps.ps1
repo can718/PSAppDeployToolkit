@@ -113,28 +113,34 @@ if (-not (Test-Path -LiteralPath $sharedEnvironmentHelpersPath -PathType Leaf))
         TargetInstallerUri = 'https://www.7-zip.org/a/7z2409-x64.msi'
         InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
         UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
-        RegDisplayName = 'PSADT 7-Zip ForceClose'
+        RegDisplayName = '7-Zip'
         RegVersionValue = '24.09'
         DetectionRuleBuilder = {
             param($FilesDir)
-            $null = $FilesDir
-            New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
-                -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PSADT-7ZipForceClose' `
-                -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '24.09'
+            $msiFile = Get-ChildItem -Path $FilesDir -Filter '7z2409-x64.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $msiFile) { throw 'No MSI file found for 7-Zip detection rule' }
+            $productCode = Get-MsiProductCode -MsiPath $msiFile.FullName
+            New-IntuneWin32AppDetectionRuleMSI -ProductCode $productCode
         }
         PreInstallScript = {
             Initialize-SevenZipForceCloseTestEnvironment -LaunchProcess -LogPrefix '7-Zip ForceClose'
         }
         PostInstallScript = {
-            $markerPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PSADT-7ZipForceClose'
-            if (Test-Path -LiteralPath $markerPath)
+            $sevenZipEntries = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            ) | ForEach-Object {
+                Get-ItemProperty -Path $PSItem -ErrorAction SilentlyContinue | Where-Object { $PSItem.DisplayName -like '7-Zip*' }
+            }
+            if ($sevenZipEntries)
             {
-                $markerVersion = (Get-ItemProperty -Path $markerPath -Name 'DisplayVersion' -ErrorAction SilentlyContinue).DisplayVersion
-                Write-Information "[7-Zip ForceClose] Marker DisplayVersion: $markerVersion" -InformationAction Continue
+                $sevenZipEntries | ForEach-Object {
+                    Write-Information "[7-Zip ForceClose] Installed 7-Zip entry: $($PSItem.DisplayName) $($PSItem.DisplayVersion)" -InformationAction Continue
+                }
             }
             else
             {
-                Write-Warning '[7-Zip ForceClose] Marker registry key was not found after install.'
+                Write-Warning '[7-Zip ForceClose] 7-Zip uninstall registry entry was not found after install.'
             }
         }
     }

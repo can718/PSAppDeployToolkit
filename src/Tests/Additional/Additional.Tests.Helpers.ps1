@@ -171,6 +171,51 @@ function script:Invoke-WinSCPPollDeploymentStatus
     return $summary
 }
 
+function script:Wait-PSADTForceCountdownDeferralLog
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [hashtable]$App,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType,
+        [int]$MaxWaitSeconds = 600,
+        [int]$PollInterval = 30
+    )
+
+    $elapsed = 0
+    $validation = $null
+    do
+    {
+        $validation = Test-PsadtForceCountdownDeferralLog -App $App -DeploymentType $DeploymentType
+        if ($validation.Success)
+        {
+            Write-Information "[$($App.Name)] First $DeploymentType deferral log found after ${elapsed}s: $($validation.LogFile)" -InformationAction Continue
+            return $validation
+        }
+
+        if ($elapsed -lt $MaxWaitSeconds)
+        {
+            Write-Information "[$($App.Name)] First $DeploymentType deferral log not found yet after ${elapsed}s: $($validation.Message)" -InformationAction Continue
+            Invoke-WinSCPSccmClientEvaluation | Out-Null
+            Start-Sleep -Seconds $PollInterval
+            $elapsed += $PollInterval
+        }
+        else
+        {
+            break
+        }
+    }
+    while ($elapsed -le $MaxWaitSeconds)
+
+    if (-not $validation)
+    {
+        $validation = @{ Success = $false; Skipped = $false; LogFile = $null; Message = 'Deferral log validation did not run.' }
+    }
+    $validation.Message = "Timed out waiting up to ${MaxWaitSeconds}s for first $DeploymentType deferral log. Last result: $($validation.Message)"
+    return $validation
+}
+
 function script:Test-PSADTTemplateValidationGate
 {
     <#
@@ -881,12 +926,17 @@ function script:Invoke-PSADTApplicationWithDeploymentTypeSafe
     $command = Get-Command -Name 'New-PSADTApplicationWithDeploymentType' -ErrorAction Stop
     $supportedParameters = $command.Parameters
     $filteredParameters = @{}
+    $parameterAliases = @{
+        InstallCmd   = 'InstallCommand'
+        UninstallCmd = 'UninstallCommand'
+    }
 
     foreach ($entry in $Parameters.GetEnumerator())
     {
-        if ($supportedParameters.ContainsKey($entry.Key))
+        $parameterName = if ($parameterAliases.ContainsKey($entry.Key)) { $parameterAliases[$entry.Key] } else { $entry.Key }
+        if ($supportedParameters.ContainsKey($parameterName))
         {
-            $filteredParameters[$entry.Key] = $entry.Value
+            $filteredParameters[$parameterName] = $entry.Value
         }
         else
         {

@@ -1,4 +1,4 @@
-#pragma warning disable PSPlaceOpenBrace
+﻿#pragma warning disable PSPlaceOpenBrace
 
 function Save-PSADTTestAppInstaller
 {
@@ -136,12 +136,9 @@ function Initialize-SevenZipForceCloseTestEnvironment
         [string]$TargetInstallerName = '7z2409-x64.msi',
         [string]$TargetInstallerUri = 'https://www.7-zip.org/a/7z2409-x64.msi',
         [string]$TemplateExpectedInstallerPath = 'C:\Tools\Intune\7z2409-x64.msi',
-        [string]$MarkerPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PSADT-7ZipForceClose',
         [string]$LogPrefix = '7-Zip ForceClose',
         [switch]$LaunchProcess
     )
-
-    Remove-Item -Path $MarkerPath -Recurse -Force -ErrorAction SilentlyContinue
 
     $legacyInstallerPath = Save-PSADTTestAppInstaller `
         -DestinationDirectory $LegacyInstallerDir `
