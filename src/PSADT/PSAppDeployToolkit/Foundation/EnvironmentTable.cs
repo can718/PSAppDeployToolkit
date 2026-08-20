@@ -94,7 +94,6 @@ namespace PSAppDeployToolkit.Foundation
                     try
                     {
                         EnvLogonServer = Dns.GetHostEntry(logonServer).HostName;
-
                     }
                     catch (Exception ex) when (ex.Message is not null)
                     {
@@ -308,7 +307,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <remarks>This property provides the location where applications can store data or
         /// configuration files that are accessible to every user account on the computer. The exact path may vary
         /// depending on the operating system version and configuration.</remarks>
-        public DirectoryInfo? EnvAllUsersProfile { get; } = GetEnvironmentFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        public DirectoryInfo? EnvAllUsersProfile { get; } = GetEnvironmentVariableDirectory("ALLUSERSPROFILE");
 
         /// <summary>
         /// Gets the application-specific data directory for the current environment.
@@ -503,7 +502,7 @@ namespace PSAppDeployToolkit.Foundation
         public DirectoryInfo? EnvUserProfile { get; } = GetEnvironmentFolderPath(Environment.SpecialFolder.UserProfile);
 
         /// <summary>
-        /// Gets the email address to which user notifications are sent.
+        /// Gets the full path to the current user's SendTo folder.
         /// </summary>
         public DirectoryInfo? EnvUserSendTo { get; } = GetEnvironmentFolderPath(Environment.SpecialFolder.SendTo);
 
@@ -1156,8 +1155,8 @@ namespace PSAppDeployToolkit.Foundation
         /// <summary>
         /// Gets the type of hardware used in the current environment.
         /// </summary>
-        /// <remarks>This property provides information about the hardware configuration, which can be
-        /// useful for diagnostics and performance tuning.</remarks>
+        /// <remarks>This property provides information about the hardware configuration, which can be useful
+        /// for diagnostics and performance tuning. Note that "VRTUAL" is the correct spelling.</remarks>
         private static readonly string _envHardwareType = HardwareInfo.SystemInformation.Version?.Contains("VRTUAL", StringComparison.Ordinal) is true || (HardwareInfo.SystemInformation.Manufacturer?.Contains("Microsoft", StringComparison.Ordinal) is true && HardwareInfo.SystemInformation.ProductName?.Contains("Surface", StringComparison.Ordinal) is not true)
             ? "Virtual:Hyper-V"
             : HardwareInfo.SystemInformation.Version?.Contains("A M I", StringComparison.Ordinal) is true
@@ -1180,7 +1179,7 @@ namespace PSAppDeployToolkit.Foundation
         /// manipulate files.</remarks>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "This needs to be an instance member.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0041:Make method static (deprecated, use CA1822 instead)", Justification = "This needs to be an instance member.")]
-        public IReadOnlyList<char> InvalidFileNameChars => new ReadOnlyCollection<char>(_invalidFileNameChars);
+        public IReadOnlyList<char> InvalidFileNameChars => _invalidFileNameCharsReadOnly;
 
         /// <summary>
         /// Gets the regular expression pattern used to identify invalid characters in file names.
@@ -1220,6 +1219,11 @@ namespace PSAppDeployToolkit.Foundation
         /// by the underlying operating system. It can be used to validate or sanitize file names to ensure
         /// compatibility across different environments.</remarks>
         private static readonly char[] _invalidFileNameChars = Path.GetInvalidFileNameChars();
+
+        /// <summary>
+        /// Gets a read-only collection of characters that are invalid in file names.
+        /// </summary>
+        private static readonly ReadOnlyCollection<char> _invalidFileNameCharsReadOnly = new(_invalidFileNameChars);
 
         /// <summary>
         /// Represents a compiled regular expression that matches any character considered invalid in a file name.
