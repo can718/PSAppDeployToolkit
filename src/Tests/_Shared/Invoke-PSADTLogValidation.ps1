@@ -284,6 +284,18 @@ function Test-PsadtAppFileVersion
     $pattern = if ($ExpectedState -eq 'Deferral') { $App.ExpectedDeferralFileVersionPattern } else { $App.ExpectedInstallFileVersionPattern }
     $description = if ($ExpectedState -eq 'Deferral') { $App.ExpectedDeferralFileVersionDescription } else { $App.ExpectedInstallFileVersionDescription }
 
+    if ($App.StateBackupScript)
+    {
+        try
+        {
+            & $App.StateBackupScript -AppName $App.Name -Phase "${ExpectedState}Validation"
+        }
+        catch
+        {
+            Write-Warning "[$($App.Name)] State backup failed during $ExpectedState validation: $($PSItem.Exception.Message)"
+        }
+    }
+
     if ([string]::IsNullOrWhiteSpace($filePath) -or [string]::IsNullOrWhiteSpace($pattern))
     {
         return @{ Success = $true; Skipped = $true; FilePath = $filePath; FileVersion = $null; Message = "No file version expectation configured for app [$($App.Name)] state [$ExpectedState]." }

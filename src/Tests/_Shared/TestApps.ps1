@@ -6,6 +6,96 @@
     Uses the Intune-style array/hashtable format and includes additional fields
     required by SCCM Additional tests.
 #>
+
+$notepadPlusPlusStateBackupScript = {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AppName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Phase
+    )
+
+    $backupRoot = 'C:\PSADT\NotepadPlusPlusState'
+    New-Item -Path $backupRoot -ItemType Directory -Force | Out-Null
+
+    $notepadExePath = Join-Path ${env:ProgramFiles(x86)} 'Notepad++\notepad++.exe'
+    $notepadProcesses = @(Get-Process -Name 'notepad++' -ErrorAction SilentlyContinue)
+    $registryRoots = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+
+    $registryMatches = foreach ($registryRoot in $registryRoots)
+    {
+        Get-ChildItem -Path $registryRoot -ErrorAction SilentlyContinue | ForEach-Object {
+            $properties = Get-ItemProperty -Path $PSItem.PSPath -ErrorAction SilentlyContinue
+            if ($properties -and $properties.DisplayName -like 'Notepad++*')
+            {
+                [ordered]@{
+                    Path = $PSItem.PSPath
+                    DisplayName = $properties.DisplayName
+                    DisplayVersion = $properties.DisplayVersion
+                }
+            }
+        }
+    }
+
+    $fileVersion = $null
+    $productVersion = $null
+    if (Test-Path -LiteralPath $notepadExePath -PathType Leaf)
+    {
+        $versionInfo = (Get-Item -LiteralPath $notepadExePath).VersionInfo
+        $fileVersion = $versionInfo.FileVersion
+        $productVersion = $versionInfo.ProductVersion
+    }
+
+    $state = [ordered]@{
+        Timestamp = (Get-Date).ToString('o')
+        ComputerName = $env:COMPUTERNAME
+        AppName = $AppName
+        Phase = $Phase
+        ProcessRunning = ($notepadProcesses.Count -gt 0)
+        ProcessIds = @($notepadProcesses | ForEach-Object { $PSItem.Id })
+        ExePath = $notepadExePath
+        ExeExists = (Test-Path -LiteralPath $notepadExePath -PathType Leaf)
+        FileVersion = $fileVersion
+        ProductVersion = $productVersion
+        Registry = @($registryMatches)
+    }
+
+    $safeAppName = ([regex]::Replace($AppName, '[^A-Za-z0-9._-]+', '_')).Trim('_')
+    $safePhase = ([regex]::Replace($Phase, '[^A-Za-z0-9._-]+', '_')).Trim('_')
+    $backupPath = Join-Path $backupRoot ('{0}_{1}_{2}.json' -f $safeAppName, $safePhase, (Get-Date -Format 'yyyyMMdd_HHmmss'))
+    $state | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $backupPath -Encoding UTF8
+    Write-Information "[$AppName] Saved Notepad++ state backup [$Phase]: $backupPath" -InformationAction Continue
+}
+
+$notepadPlusPlusProcessEnsureScript = {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AppName
+    )
+
+    if (Get-Process -Name 'notepad++' -ErrorAction SilentlyContinue)
+    {
+        Write-Information "[$AppName] Notepad++ process is already running." -InformationAction Continue
+        return
+    }
+
+    $notepadExePath = Join-Path ${env:ProgramFiles(x86)} 'Notepad++\notepad++.exe'
+    if (Test-Path -LiteralPath $notepadExePath -PathType Leaf)
+    {
+        Write-Information "[$AppName] Starting Notepad++ process before deployment." -InformationAction Continue
+        Start-Process -FilePath $notepadExePath
+        Start-Sleep -Seconds 3
+    }
+    else
+    {
+        Write-Warning "[$AppName] Launch path not found: $notepadExePath"
+    }
+}
+
 @(
     @{
         Name = 'VLC'
@@ -48,6 +138,7 @@
     }
     @{
         Name = 'Notepad++'
+        SkipIntune = $true
         SkipUninstall = $true
         TemplateVersion = 'V4'
         AppFolderName = 'Notepad++'
@@ -59,9 +150,10 @@
         UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
         RegVersionValue = '6.6.4'
         VersionCheckFilePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
+        StateBackupScript = $notepadPlusPlusStateBackupScript.GetNewClosure()
         ExpectedDeferralFileVersionPattern = '^(6\.23|6\.2\.3)(\.|$)'
         ExpectedDeferralFileVersionDescription = 'legacy version 6.2.3'
-        PreInstallScript = {
+        PreInstallScript = ({
             # Install lower version as prerequisite for upgrade test.
             $installerDir = 'C:\Tools\Intune\Notepad6.2.3'
             $installerPath = Join-Path $installerDir 'npp.6.2.3.Installer.exe'
@@ -71,15 +163,8 @@
                 Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-2/npp.6.2.3.Installer.exe' -OutFile $installerPath -UseBasicParsing
             }
             Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -NoNewWindow
-            $legacyNotepadExePath = Join-Path ${env:ProgramFiles(x86)} 'Notepad++\notepad++.exe'
-            if (Test-Path $legacyNotepadExePath)
-            {
-                Start-Process -FilePath $legacyNotepadExePath
-            }
-            else
-            {
-                Write-Warning "[Notepad++] Launch path not found: $legacyNotepadExePath"
-            }
+            & $notepadPlusPlusProcessEnsureScript -AppName 'Notepad++'
+            & $notepadPlusPlusStateBackupScript -AppName 'Notepad++' -Phase 'BeforeInstall'
 
             # Download new version installer.
             $newDir = 'C:\Tools\Intune\Notepad6.6.4'
@@ -93,8 +178,9 @@
             # Keep a copy at the V4 template default file path.
             $templateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
             Copy-Item -Path $newPath -Destination $templateExpectedInstallerPath -Force
-        }
-        PostInstallScript = {
+        }).GetNewClosure()
+        PostInstallScript = ({
+            & $notepadPlusPlusStateBackupScript -AppName 'Notepad++' -Phase 'PostInstall'
             $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
             if (Test-Path $notepadExePath)
             {
@@ -113,7 +199,7 @@
             {
                 Write-Information "[Notepad++] File not found at: $notepadExePath" -InformationAction Continue
             }
-        }
+        }).GetNewClosure()
         DetectionRuleBuilder = {
             param($FilesDir)
             $null = $FilesDir
@@ -134,13 +220,15 @@
         TargetInstallerDir = 'C:\Tools\SCCM\NotepadPlusPlus\6.8.8'
         TargetInstallerName = 'npp.6.8.8.Installer.exe'
         TargetInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-7/npp.6.8.8.Installer.exe'
+        RegDisplayName = 'Notepad++'
         InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
         UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
         RegVersionValue = '6.8.8'
         VersionCheckFilePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
+        StateBackupScript = $notepadPlusPlusStateBackupScript.GetNewClosure()
         ExpectedInstallFileVersionPattern = '^6\.8\.8(\.|$)'
         ExpectedInstallFileVersionDescription = '6.8.8'
-        PreInstallScript = {
+        PreInstallScript = ({
             # Install lower version as prerequisite for upgrade test.
             $installerDir = 'C:\Tools\Intune\Notepad6.2.3'
             $installerPath = Join-Path $installerDir 'npp.6.2.3.Installer.exe'
@@ -150,15 +238,8 @@
                 Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-2/npp.6.2.3.Installer.exe' -OutFile $installerPath -UseBasicParsing
             }
             Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -NoNewWindow
-            $legacyNotepadExePath = Join-Path ${env:ProgramFiles(x86)} 'Notepad++\notepad++.exe'
-            if (Test-Path $legacyNotepadExePath)
-            {
-                Start-Process -FilePath $legacyNotepadExePath
-            }
-            else
-            {
-                Write-Warning "[Notepad++ ForceClose] Launch path not found: $legacyNotepadExePath"
-            }
+            & $notepadPlusPlusProcessEnsureScript -AppName 'Notepad++ ForceClose'
+            & $notepadPlusPlusStateBackupScript -AppName 'Notepad++ ForceClose' -Phase 'BeforeInstall'
 
             # Download new version installer.
             $newDir = 'C:\Tools\Intune\Notepad6.8.8'
@@ -172,8 +253,9 @@
             # Keep a copy at the V4 template default file path.
             $templateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.8.8.Installer.exe'
             Copy-Item -Path $newPath -Destination $templateExpectedInstallerPath -Force
-        }
-        PostInstallScript = {
+        }).GetNewClosure()
+        PostInstallScript = ({
+            & $notepadPlusPlusStateBackupScript -AppName 'Notepad++ ForceClose' -Phase 'PostInstall'
             $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
             if (Test-Path $notepadExePath)
             {
@@ -192,7 +274,7 @@
             {
                 Write-Information "[Notepad++ ForceClose] File not found at: $notepadExePath" -InformationAction Continue
             }
-        }
+        }).GetNewClosure()
         DetectionRuleBuilder = {
             param($FilesDir)
             $null = $FilesDir
