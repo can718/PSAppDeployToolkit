@@ -363,6 +363,12 @@ Describe 'Intune Tests' {
             # Reassign all apps with uninstall intent.
             foreach ($appName in $appsForUninstall)
             {
+                $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $appName } | Select-Object -First 1
+                if ($appConfig -and $appConfig.PreUninstallScript)
+                {
+                    & $appConfig.PreUninstallScript
+                }
+
                 $appInfo = $script:UploadedApps[$appName]
                 Remove-IntuneWin32AppAssignmentGroup -ID $appInfo.Win32AppId -GroupID $script:GroupID
                 Add-IntuneWin32AppAssignmentGroup -Include -ID $appInfo.Win32AppId -GroupID $script:GroupID `

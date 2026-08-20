@@ -55,6 +55,15 @@ $NewADTTemplateParameters = @{
 
     PreUninstallScriptBlock  = {
         Start-AdditionalTestRecording
+
+        $saiwParams = @{
+            ForceCloseProcessesCountdown = 10
+        }
+        if ($adtSession.AppProcessesToClose.Count -gt 0)
+        {
+            $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
+        }
+        Show-ADTInstallationWelcome @saiwParams
         Show-ADTInstallationProgress
     }
 

@@ -125,6 +125,10 @@ if (-not (Test-Path -LiteralPath $sharedEnvironmentHelpersPath -PathType Leaf))
         PreInstallScript = {
             Initialize-SevenZipForceCloseTestEnvironment -LaunchProcess -LogPrefix '7-Zip ForceClose'
         }
+        PreUninstallScript = {
+            $sevenZipFileManager = Join-Path ${env:ProgramFiles} '7-Zip\7zFM.exe'
+            Start-PSADTTestAppProcess -FilePath $sevenZipFileManager -ProcessName '7zFM' -Description 'installed 7zFM' -LogPrefix '7-Zip ForceClose'
+        }
         PostInstallScript = {
             $sevenZipEntries = @(
                 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',

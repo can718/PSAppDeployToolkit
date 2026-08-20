@@ -1027,6 +1027,44 @@ Describe '7-Zip ForceClose SCCM Deployment' -Tag '7-Zip' {
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:sevenZipAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
                 Assert-PSADTDeploymentLogValidation -App $script:sevenZipLogValidationApp -DeploymentType 'Install' -LogPrefix '7-Zip ForceClose'
+                $script:sevenZipInstallDeploySucceeded = $true
+            }
+        }
+
+        It '[MCM:SevenZipForceClose_Uninstall] [v4] 7-Zip ForceClose should uninstall with ForceCloseProcessesCountdown' {
+            if (-not $script:sevenZipInstallDeploySucceeded)
+            {
+                Set-ItResult -Skipped -Because "Prerequisite test '7-Zip ForceClose should installed' did not complete successfully"
+                return
+            }
+
+            if (-not $script:cmModulePath)
+            {
+                Set-ItResult -Skipped -Because 'ConfigurationManager module not available - skipping SCCM steps'
+                return
+            }
+
+            if ([string]::IsNullOrWhiteSpace($script:siteCode) -or [string]::IsNullOrWhiteSpace($script:siteServer))
+            {
+                Set-ItResult -Skipped -Because 'SCCM siteCode or siteServer not configured (not an SCCM-managed environment)'
+                return
+            }
+
+            $sevenZipFileManager = Join-Path ${env:ProgramFiles} '7-Zip\7zFM.exe'
+            Start-PSADTTestAppProcess -FilePath $sevenZipFileManager -ProcessName '7zFM' -Description 'installed 7zFM' -LogPrefix '7-Zip ForceClose'
+
+            Invoke-PSADTInCMSiteContext -SiteCode $script:siteCode -SiteServer $script:siteServer -CmModulePath $script:cmModulePath -ScriptBlock {
+                $app = Get-CMApplication -Name $script:sevenZipAppName -ErrorAction SilentlyContinue
+                $app | Should -Not -BeNullOrEmpty -Because '7-Zip ForceClose application must exist before creating uninstall deployment'
+
+                New-PSADTRequiredDeployment -AppName $script:sevenZipAppName -TargetCollection $script:targetCollection -DeployAction Uninstall -LogPrefix '7-Zip ForceClose'
+
+                Write-Information '[7-Zip ForceClose] Polling uninstall deployment status...' -InformationAction Continue
+                [void](Assert-PSADTDeploymentSummarySuccess -AppName $script:sevenZipAppName -SiteCode $script:siteCode -Label 'Uninstall deployment')
+                Assert-PSADTDeploymentLogValidation -App $script:sevenZipLogValidationApp -DeploymentType 'Uninstall' -LogPrefix '7-Zip ForceClose'
+
+                $forceCloseLogValidation = Test-PsadtForceCloseCountdownLog -App $script:sevenZipLogValidationApp -DeploymentType 'Uninstall'
+                $forceCloseLogValidation.Success | Should -BeTrue -Because "[7-Zip ForceClose] PSADT ForceCloseProcessesCountdown validation: $($forceCloseLogValidation.Message)"
             }
         }
     }
