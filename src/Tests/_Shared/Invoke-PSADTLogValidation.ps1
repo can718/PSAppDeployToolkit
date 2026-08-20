@@ -242,11 +242,12 @@ function Test-PsadtForceCountdownDeferralLog
         $failures += 'expected disk space pass line was not found'
     }
 
-    $expectedDeferTimesPattern = [System.Text.RegularExpressions.Regex]::Escape($expectation.DeferTimes)
+    $expectedDeferralsRemaining = [Math]::Max(([int]$expectation.DeferTimes - 1), 0)
+    $expectedDeferralsRemainingPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedDeferralsRemaining.ToString())
     $expectedForceCountdownPattern = [System.Text.RegularExpressions.Regex]::Escape($expectation.ForceCountdown)
-    if ($logContent -notmatch "The user has \[$expectedDeferTimesPattern\] deferrals remaining\.")
+    if ($logContent -notmatch "(The user has|Defer history shows) \[$expectedDeferralsRemainingPattern\] deferrals remaining\.")
     {
-        $failures += "expected deferral count [$($expectation.DeferTimes)] line was not found"
+        $failures += "expected deferrals remaining [$expectedDeferralsRemaining] line was not found"
     }
     if ($logContent -notmatch "Close applications countdown has \[$expectedForceCountdownPattern\] seconds remaining\.")
     {
@@ -266,7 +267,7 @@ function Test-PsadtForceCountdownDeferralLog
         return @{ Success = $false; Skipped = $false; LogFile = $logValidation.LogFile; Message = ($failures -join '; ') }
     }
 
-    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCountdown deferral log validation passed for DeferTimes [$($expectation.DeferTimes)] and ForceCountdown [$($expectation.ForceCountdown)]." }
+    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCountdown deferral log validation passed for deferrals remaining [$expectedDeferralsRemaining] and ForceCountdown [$($expectation.ForceCountdown)]." }
 }
 
 function Test-PsadtAppFileVersion

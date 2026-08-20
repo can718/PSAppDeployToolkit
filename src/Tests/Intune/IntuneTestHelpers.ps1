@@ -884,7 +884,9 @@ function Wait-AppInstallation
             {
                 $props = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
                 $displayNameMatched = $props -and (($props.DisplayName -eq $DisplayName) -or ($props.DisplayName -like "$DisplayName*"))
-                if ($displayNameMatched -and $props.$ValueName -eq $ExpectedValue)
+                $actualValue = if ($props) { $props.$ValueName } else { $null }
+                $versionMatched = $actualValue -eq $ExpectedValue -or $actualValue -like "$ExpectedValue*"
+                if ($displayNameMatched -and $versionMatched)
                 {
                     $verified = $true
                     Write-Information "'$DisplayName' detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
