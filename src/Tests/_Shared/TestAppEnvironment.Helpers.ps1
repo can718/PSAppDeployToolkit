@@ -63,6 +63,51 @@ function Start-PSADTTestAppProcess
     }
 }
 
+function Invoke-PSADTTestMsiProcessWithRetry
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$ArgumentList,
+
+        [string]$LogPrefix = 'TestApp',
+
+        [string]$Description = 'MSI operation',
+
+        [int[]]$SuccessExitCodes = @(0, 3010),
+
+        [int[]]$RetryExitCodes = @(1618),
+
+        [int]$MaxAttempts = 5,
+
+        [int]$RetryDelaySeconds = 30
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++)
+    {
+        Write-Information "::info::[$LogPrefix] $Description attempt $attempt/$MaxAttempts." -InformationAction Continue
+        $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $ArgumentList -Wait -NoNewWindow -PassThru
+        $exitCode = $process.ExitCode
+        if ($SuccessExitCodes -contains $exitCode)
+        {
+            Write-Information "::info::[$LogPrefix] $Description completed with exit code $exitCode." -InformationAction Continue
+            return $true
+        }
+
+        if ($RetryExitCodes -contains $exitCode -and $attempt -lt $MaxAttempts)
+        {
+            Write-Warning "[$LogPrefix] $Description returned exit code $exitCode. Another installation may be in progress; retrying in $RetryDelaySeconds seconds."
+            Start-Sleep -Seconds $RetryDelaySeconds
+        }
+        else
+        {
+            Write-Warning "[$LogPrefix] $Description failed with exit code $exitCode."
+            return $false
+        }
+    }
+
+    return $false
+}
+
 function Initialize-NotepadPlusPlusLegacyTestEnvironment
 {
     param (
@@ -164,12 +209,27 @@ function Initialize-SevenZipForceCloseTestEnvironment
         if ($entry.PSChildName -match '^\{[0-9A-Fa-f-]+\}$')
         {
             Write-Information "::info::[$LogPrefix] Removing existing 7-Zip installation '$($entry.DisplayName)' before installing legacy prerequisite." -InformationAction Continue
-            Start-Process -FilePath 'msiexec.exe' -ArgumentList "/x $($entry.PSChildName) /qn /norestart" -Wait -NoNewWindow
+            $uninstalled = Invoke-PSADTTestMsiProcessWithRetry `
+                -ArgumentList "/x $($entry.PSChildName) /qn /norestart" `
+                -Description "Uninstall existing 7-Zip '$($entry.DisplayName)'" `
+                -SuccessExitCodes @(0, 3010, 1605) `
+                -LogPrefix $LogPrefix
+            if (-not $uninstalled)
+            {
+                return $null
+            }
         }
     }
 
     Write-Information "::info::[$LogPrefix] Installing legacy 7-Zip prerequisite from '$legacyInstallerPath'." -InformationAction Continue
-    Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i `"$legacyInstallerPath`" /qn /norestart" -Wait -NoNewWindow
+    $installed = Invoke-PSADTTestMsiProcessWithRetry `
+        -ArgumentList "/i `"$legacyInstallerPath`" /qn /norestart" `
+        -Description 'Install legacy 7-Zip prerequisite' `
+        -LogPrefix $LogPrefix
+    if (-not $installed)
+    {
+        return $null
+    }
 
     if (-not [System.String]::IsNullOrWhiteSpace($TemplateExpectedInstallerPath))
     {
@@ -178,6 +238,12 @@ function Initialize-SevenZipForceCloseTestEnvironment
     }
 
     $sevenZipFileManager = Join-Path ${env:ProgramFiles} '7-Zip\7zFM.exe'
+    if (-not (Test-Path -LiteralPath $sevenZipFileManager -PathType Leaf))
+    {
+        Write-Warning "[$LogPrefix] Legacy 7-Zip prerequisite did not create expected launch path: $sevenZipFileManager"
+        return $null
+    }
+
     if ($LaunchProcess)
     {
         Start-PSADTTestAppProcess -FilePath $sevenZipFileManager -ProcessName '7zFM' -Description 'legacy 7zFM' -LogPrefix $LogPrefix

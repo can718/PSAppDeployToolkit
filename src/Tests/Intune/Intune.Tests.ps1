@@ -16,28 +16,18 @@ param()
 function Get-IntuneTestApps
 {
     $apps = @(& (Join-Path $PSScriptRoot '..\_Shared\TestApps.ps1'))
-    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-    Write-Information "[Intune Debug] Get-IntuneTestApps initial count=$($apps.Count); Include='$env:PSADT_INTUNE_INCLUDE_APP_NAMES'; Exclude='$env:PSADT_INTUNE_EXCLUDE_APP_NAMES'." -InformationAction Continue
 
     $includeNames = @($env:PSADT_INTUNE_INCLUDE_APP_NAMES -split ';' | Where-Object { -not [System.String]::IsNullOrWhiteSpace($_) })
     if ($includeNames.Count -gt 0)
     {
-        # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-        Write-Information "[Intune Debug] Applying include filter: '$($includeNames -join ', ')'." -InformationAction Continue
         $apps = @($apps | Where-Object { $includeNames -contains $_.Name })
     }
 
     $excludeNames = @($env:PSADT_INTUNE_EXCLUDE_APP_NAMES -split ';' | Where-Object { -not [System.String]::IsNullOrWhiteSpace($_) })
     if ($excludeNames.Count -gt 0)
     {
-        # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-        Write-Information "[Intune Debug] Applying exclude filter: '$($excludeNames -join ', ')'." -InformationAction Continue
         $apps = @($apps | Where-Object { $excludeNames -notcontains $_.Name })
     }
-
-    $appNames = @($apps | ForEach-Object { if ($_ -is [hashtable]) { $_['Name'] } else { $_.Name } })
-    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-    Write-Information "[Intune Debug] Get-IntuneTestApps final count=$($apps.Count); Apps='$($appNames -join ', ')'." -InformationAction Continue
 
     return $apps
 }
@@ -141,9 +131,6 @@ Describe 'Intune Tests' {
                 $groupResult.SkipReason
             }
         }
-
-        # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-        Write-Information "[Intune Debug] Describe BeforeAll complete. Include='$env:PSADT_INTUNE_INCLUDE_APP_NAMES'; Exclude='$env:PSADT_INTUNE_EXCLUDE_APP_NAMES'; GroupID='$script:GroupID'; SkipReason='$script:Win32WrapAndUploadSkipReason'." -InformationAction Continue
     }
 
     BeforeEach {
@@ -192,43 +179,23 @@ Describe 'Intune Tests' {
             # Pester 6 isolates Discovery-time local variables from the Run phase.
             $script:ParallelApps = @($global:PSADTIntuneParallelAppsForPester)
             $script:ParallelInstallResults = @{}
-
-            $debugAppNames = @($script:ParallelApps | ForEach-Object { if ($_ -is [hashtable]) { $_['Name'] } else { $_.Name } })
-            $debugAppTypes = @($script:ParallelApps | ForEach-Object { if ($null -eq $_) { '<null>' } else { $_.GetType().FullName } })
-            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-            Write-Information "[Intune Debug] Context BeforeAll complete. Include='$env:PSADT_INTUNE_INCLUDE_APP_NAMES'; Exclude='$env:PSADT_INTUNE_EXCLUDE_APP_NAMES'; GroupID='$script:GroupID'; SkipReason='$script:Win32WrapAndUploadSkipReason'; AppCount=$((@($script:ParallelApps)).Count); Apps='$($debugAppNames -join ', ')'; AppTypes='$($debugAppTypes -join ', ')'." -InformationAction Continue
         }
 
         It '[INTUNE:BatchUpload] Batch upload all apps and assign to group' {
             $script:UploadedApps = @{}
-            $debugAppNames = @($script:ParallelApps | ForEach-Object { if ($_ -is [hashtable]) { $_['Name'] } else { $_.Name } })
-            $debugAppTypes = @($script:ParallelApps | ForEach-Object { if ($null -eq $_) { '<null>' } else { $_.GetType().FullName } })
-            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-            Write-Information "[Intune Debug] BatchUpload started. Include='$env:PSADT_INTUNE_INCLUDE_APP_NAMES'; Exclude='$env:PSADT_INTUNE_EXCLUDE_APP_NAMES'; GroupID='$script:GroupID'; IntuneWinAppUtil='$script:IntuneWinAppUtil'; AppCount=$((@($script:ParallelApps)).Count); Apps='$($debugAppNames -join ', ')'; AppTypes='$($debugAppTypes -join ', ')'." -InformationAction Continue
-
-            try
-            {
 
             foreach ($app in $script:ParallelApps)
             {
                 Write-Information "--- Processing $($app.Name) ---" -InformationAction Continue
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] BatchUpload app start. Name='$($app.Name)'; TemplateVersion='$($app.TemplateVersion)'; AppFolderName='$($app.AppFolderName)'; SkipUninstall='$($app.SkipUninstall)'." -InformationAction Continue
 
                 # Run pre-install script if defined (e.g., install lower version for upgrade).
                 if ($app.PreInstallScript)
                 {
-                    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                    Write-Information "[Intune Debug] Running PreInstallScript for '$($app.Name)'." -InformationAction Continue
                     & $app.PreInstallScript
-                    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                    Write-Information "[Intune Debug] Completed PreInstallScript for '$($app.Name)'." -InformationAction Continue
                 }
 
                 # Prepare working directory (dispatches to V3/V4 internally).
                 $env = New-IntuneTestWorkDir -App $app -BasePath $script:BasePath
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] WorkDir prepared for '$($app.Name)'. WorkDir='$($env.WorkDir)'; FilesDir='$($env.FilesDir)'." -InformationAction Continue
 
                 # Wrap into .intunewin package.
                 $packageParams = @{
@@ -248,19 +215,11 @@ Describe 'Intune Tests' {
                     $null
                 }
                 if ($effectiveSetupFileName) { $packageParams.SetupFileName = $effectiveSetupFileName }
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Wrapping package for '$($app.Name)'. SetupFileName='$effectiveSetupFileName'." -InformationAction Continue
                 $package = New-IntuneWinPackage @packageParams
                 $package.IntuneWinPath | Should -Not -BeNullOrEmpty
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Package created for '$($app.Name)'. DisplayName='$($package.DisplayName)'; IntuneWinPath='$($package.IntuneWinPath)'." -InformationAction Continue
 
                 # Build detection rule (unified signature: all builders accept $FilesDir).
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Building detection rule for '$($app.Name)'." -InformationAction Continue
                 $DetectionRule = & $app.DetectionRuleBuilder $env.FilesDir
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Detection rule built for '$($app.Name)'. RuleType='$($DetectionRule.GetType().FullName)'." -InformationAction Continue
 
                 # Upload to Intune.
                 $intuneDisplayName = '{0}-{1}' -f $package.DisplayName, $script:IntuneDisplayNameSuffix
@@ -297,20 +256,12 @@ Describe 'Intune Tests' {
 
                 if ($effectiveInstallCmd) { $publishParams.InstallCmd = $effectiveInstallCmd }
                 if ($effectiveUninstallCmd) { $publishParams.UninstallCmd = $effectiveUninstallCmd }
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Publishing '$($app.Name)'. DisplayName='$intuneDisplayName'; InstallCmd='$effectiveInstallCmd'; UninstallCmd='$effectiveUninstallCmd'." -InformationAction Continue
                 $win32App = Publish-IntuneWin32App @publishParams
                 $win32App | Should -Not -BeNullOrEmpty
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Published '$($app.Name)'. Win32AppId='$($win32App.id)'." -InformationAction Continue
 
                 # Assign to test group.
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Assigning '$($app.Name)' to GroupID='$script:GroupID'." -InformationAction Continue
                 Add-IntuneWin32AppAssignmentGroup -Include -ID $win32App.id -GroupID $script:GroupID `
                     -Intent 'required' -Notification 'showAll' -Verbose
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Assigned '$($app.Name)' to GroupID='$script:GroupID'." -InformationAction Continue
 
                 $script:UploadedApps[$app.Name] = @{
                     Win32AppId = $win32App.id
@@ -323,19 +274,10 @@ Describe 'Intune Tests' {
             }
 
             $script:UploadedApps.Count | Should -Be $script:ParallelApps.Count
-            }
-            catch
-            {
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Error "[Intune Debug] BatchUpload failed. ExceptionType='$($_.Exception.GetType().FullName)'; Message='$($_.Exception.Message)'"
-                throw
-            }
         }
 
         It '[INTUNE:InstallSync] MDM sync, then parallel poll for expected install outcomes' {
             $script:UploadedApps | Should -Not -BeNullOrEmpty -Because 'Upload step must succeed first'
-            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-            Write-Information "[Intune Debug] InstallSync started. UploadedApps='$($script:UploadedApps.Keys -join ', ')'." -InformationAction Continue
 
             Invoke-MdmSync
             Start-Sleep -Seconds 8
@@ -346,8 +288,6 @@ Describe 'Intune Tests' {
                     Where-Object { $_.TemplateVersion -eq 'V4' -and (Get-PsadtForceCountdownDeferralExpectation -App $_).Expected } |
                     ForEach-Object { $_.Name }
             )
-                    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                    Write-Information "[Intune Debug] InstallSync expected deferral apps='$($expectedDeferralAppNames -join ', ')'." -InformationAction Continue
 
             $helperPath = Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1'
             $result = Invoke-ParallelAppPollWithRetry `
@@ -355,8 +295,6 @@ Describe 'Intune Tests' {
                 -Operation       'Install' `
                 -HelperScriptPath $helperPath `
                 -NoRetryAppNames  $expectedDeferralAppNames
-            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-            Write-Information "[Intune Debug] InstallSync poll result. Succeeded='$($result.Succeeded -join ', ')'; Failed='$($result.Failed -join ', ')'." -InformationAction Continue
 
             # Store results and run post-install scripts for succeeded apps.
             foreach ($appName in $result.Succeeded)
@@ -366,11 +304,7 @@ Describe 'Intune Tests' {
                 $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $appName } | Select-Object -First 1
                 if ($appConfig -and $appConfig.PostInstallScript)
                 {
-                    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                    Write-Information "[Intune Debug] Running PostInstallScript for '$appName'." -InformationAction Continue
                     & $appConfig.PostInstallScript
-                    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                    Write-Information "[Intune Debug] Completed PostInstallScript for '$appName'." -InformationAction Continue
                 }
             }
         }
@@ -387,8 +321,6 @@ Describe 'Intune Tests' {
 
             if ($expectForceCountdownDeferral)
             {
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Install assertion for '$Name' expects ForceCountdown deferral." -InformationAction Continue
                 if ($script:ParallelInstallResults[$Name])
                 {
                     $failures += '[Install Status] app installed successfully, but ForceCountdown deferral was expected'
@@ -411,8 +343,6 @@ Describe 'Intune Tests' {
             }
             elseif (-not $script:ParallelInstallResults[$Name])
             {
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Install assertion for '$Name' did not find success in ParallelInstallResults." -InformationAction Continue
                 $failures += '[Install Status] app was not installed successfully via Intune MDM sync'
             }
 
@@ -430,8 +360,6 @@ Describe 'Intune Tests' {
 
         It '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
             $script:ParallelInstallResults.Count | Should -BeGreaterThan 0 -Because 'At least one app must have installed'
-            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-            Write-Information "[Intune Debug] UninstallSync started. ParallelInstallResults='$($script:ParallelInstallResults.Keys -join ', ')'." -InformationAction Continue
 
             # Build uninstall candidate list from installed apps, honoring per-app filters.
             $appsForUninstall = @()
@@ -450,12 +378,8 @@ Describe 'Intune Tests' {
 
             if (-not $appsForUninstall)
             {
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] UninstallSync has no candidates after SkipUninstall filtering." -InformationAction Continue
                 Set-ItResult -Skipped -Because 'All installed apps are filtered out from uninstall test by SkipUninstall.'
             }
-            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-            Write-Information "[Intune Debug] UninstallSync candidates='$($appsForUninstall -join ', ')'." -InformationAction Continue
 
             # Reassign all apps with uninstall intent.
             foreach ($appName in $appsForUninstall)
@@ -463,21 +387,13 @@ Describe 'Intune Tests' {
                 $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $appName } | Select-Object -First 1
                 if ($appConfig -and $appConfig.PreUninstallScript)
                 {
-                    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                    Write-Information "[Intune Debug] Running PreUninstallScript for '$appName'." -InformationAction Continue
                     & $appConfig.PreUninstallScript
-                    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                    Write-Information "[Intune Debug] Completed PreUninstallScript for '$appName'." -InformationAction Continue
                 }
 
                 $appInfo = $script:UploadedApps[$appName]
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Reassigning '$appName' to uninstall intent. Win32AppId='$($appInfo.Win32AppId)'." -InformationAction Continue
                 Remove-IntuneWin32AppAssignmentGroup -ID $appInfo.Win32AppId -GroupID $script:GroupID
                 Add-IntuneWin32AppAssignmentGroup -Include -ID $appInfo.Win32AppId -GroupID $script:GroupID `
                     -Intent 'uninstall' -Notification 'showAll' -Verbose
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Reassigned '$appName' to uninstall intent." -InformationAction Continue
             }
 
             Invoke-MdmSync
@@ -490,8 +406,6 @@ Describe 'Intune Tests' {
                 -Operation       'Uninstall' `
                 -HelperScriptPath $helperPath `
                 -AppNames        $appsForUninstall
-            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-            Write-Information "[Intune Debug] UninstallSync poll result. Succeeded='$($result.Succeeded -join ', ')'; Failed='$($result.Failed -join ', ')'." -InformationAction Continue
 
             # Store results for per-app assertion in subsequent It blocks.
             $script:ParallelUninstallResults = @{}
@@ -523,9 +437,6 @@ Describe 'Intune Tests' {
         }
 
         AfterAll {
-            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-            Write-Information "[Intune Debug] Context AfterAll started. UploadedAppsCount=$(if ($script:UploadedApps) { $script:UploadedApps.Count } else { 0 }); GroupID='$script:GroupID'." -InformationAction Continue
-
             # Clean up all uploaded Intune apps.
             if ($script:UploadedApps)
             {
@@ -541,14 +452,10 @@ Describe 'Intune Tests' {
             Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
             if ($script:GroupID)
             {
-                # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                Write-Information "[Intune Debug] Starting Azure AD test group cleanup for GroupID='$script:GroupID'." -InformationAction Continue
                 try
                 {
                     Invoke-MgGraphRequest -Method DELETE -Uri "https://graph.microsoft.com/v1.0/groups/$($script:GroupID)" -ErrorAction Stop
                     Start-Sleep -Seconds 5
-                    # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-                    Write-Information "[Intune Debug] Finished Azure AD test group cleanup for GroupID='$script:GroupID'." -InformationAction Continue
                 }
                 catch
                 {
@@ -556,8 +463,6 @@ Describe 'Intune Tests' {
                 }
             }
 
-            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-            Write-Information "[Intune Debug] Context AfterAll complete." -InformationAction Continue
             Remove-Variable -Name PSADTIntuneParallelAppsForPester -Scope Global -ErrorAction SilentlyContinue
         }
     }
