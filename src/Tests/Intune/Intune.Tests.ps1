@@ -131,6 +131,8 @@ Describe 'Intune Tests' {
                 $groupResult.SkipReason
             }
         }
+
+        Write-Information "[Intune Debug] Context BeforeAll complete. GroupID='$script:GroupID'; SkipReason='$script:Win32WrapAndUploadSkipReason'; AppCount=$((@($script:ParallelApps)).Count); Apps='$((@($script:ParallelApps).Name) -join ', ')'." -InformationAction Continue
     }
 
     BeforeEach {
@@ -182,6 +184,7 @@ Describe 'Intune Tests' {
 
         It '[INTUNE:BatchUpload] Batch upload all apps and assign to group' {
             $script:UploadedApps = @{}
+            Write-Information "[Intune Debug] BatchUpload started. GroupID='$script:GroupID'; IntuneWinAppUtil='$script:IntuneWinAppUtil'; AppCount=$((@($script:ParallelApps)).Count); Apps='$((@($script:ParallelApps).Name) -join ', ')'." -InformationAction Continue
 
             foreach ($app in $script:ParallelApps)
             {
@@ -436,6 +439,8 @@ Describe 'Intune Tests' {
         }
 
         AfterAll {
+            Write-Information "[Intune Debug] Context AfterAll started. UploadedAppsCount=$(if ($script:UploadedApps) { $script:UploadedApps.Count } else { 0 }); GroupID='$script:GroupID'." -InformationAction Continue
+
             # Clean up all uploaded Intune apps.
             if ($script:UploadedApps)
             {
@@ -451,9 +456,20 @@ Describe 'Intune Tests' {
             Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
             if ($script:GroupID)
             {
-                Remove-MgGroup -GroupId $script:GroupID -ErrorAction Stop
-                Start-Sleep -Seconds 5
+                Write-Information "[Intune Debug] Starting Azure AD test group cleanup for GroupID='$script:GroupID'." -InformationAction Continue
+                try
+                {
+                    Invoke-MgGraphRequest -Method DELETE -Uri "https://graph.microsoft.com/v1.0/groups/$($script:GroupID)" -ErrorAction Stop
+                    Start-Sleep -Seconds 5
+                    Write-Information "[Intune Debug] Finished Azure AD test group cleanup for GroupID='$script:GroupID'." -InformationAction Continue
+                }
+                catch
+                {
+                    Write-Warning "[Intune] Failed to clean up Azure AD test group '$($script:GroupID)': $($_.Exception.Message)"
+                }
             }
+
+            Write-Information "[Intune Debug] Context AfterAll complete." -InformationAction Continue
         }
     }
 }
