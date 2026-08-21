@@ -368,10 +368,11 @@ Describe 'Intune Tests' {
                 if ($appConfig -and $appConfig.SkipUninstall)
                 {
                     Write-Information "[Parallel Uninstall] Skipping uninstall for '$appName' due to SkipUninstall filter." -InformationAction Continue
-                    continue
                 }
-
-                $appsForUninstall += $appName
+                else
+                {
+                    $appsForUninstall += $appName
+                }
             }
 
             if (-not $appsForUninstall)
@@ -413,7 +414,7 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '[INTUNE:<Name>_Uninstall][<TemplateVersion>] <Name> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) {
+        It '[INTUNE:<Name>_Uninstall][<TemplateVersion>] <Name> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) -AllowNullOrEmptyForEach {
             $failures = @()
 
             if (-not $script:ParallelUninstallResults[$Name])
