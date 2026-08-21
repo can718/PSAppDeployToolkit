@@ -470,11 +470,10 @@ function Get-PsadtLogErrorSummary
     $recent = @()
     foreach ($msg in $reversed)
     {
-        if (-not $seen.ContainsKey($msg))
+        if ($recent.Count -lt 3 -and -not $seen.ContainsKey($msg))
         {
             $seen[$msg] = $true
             $recent += $msg
-            if ($recent.Count -ge 3) { break }
         }
     }
     [array]::Reverse($recent)

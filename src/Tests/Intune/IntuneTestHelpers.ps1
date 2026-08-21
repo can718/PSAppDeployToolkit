@@ -663,67 +663,68 @@ function Invoke-ParallelAppPollWithRetry
 
     for ($attempt = 0; $attempt -le $MaxRetryCount; $attempt++)
     {
-        if ($attempt -gt 0)
+        if ($appsToCheck)
         {
-            Write-Information "[Parallel $Operation] Retry attempt $attempt for failed apps: $($appsToCheck -join ', ')" -InformationAction Continue
-
-            Invoke-MdmSync
-            Start-Sleep -Seconds 8
-            Wait-IntuneManagementExtension
-
-            $retryJobs = foreach ($appName in $appsToCheck)
+            if ($attempt -gt 0)
             {
-                $appInfo = $UploadedApps[$appName]
-                $displayName = $appInfo.RegDisplayName
-                $valueName = $appInfo.RegVersionName
-                $expectedValue = $appInfo.RegVersionValue
-                Start-ThreadJob -Name "${Operation}Retry$attempt-$appName" -ScriptBlock {
-                    . $using:HelperScriptPath
-                    & $using:waitFunction -DisplayName $using:displayName -ValueName $using:valueName -ExpectedValue $using:expectedValue -SkipImeRestartAndSync
+                Write-Information "[Parallel $Operation] Retry attempt $attempt for failed apps: $($appsToCheck -join ', ')" -InformationAction Continue
+
+                Invoke-MdmSync
+                Start-Sleep -Seconds 8
+                Wait-IntuneManagementExtension
+
+                $retryJobs = foreach ($appName in $appsToCheck)
+                {
+                    $appInfo = $UploadedApps[$appName]
+                    $displayName = $appInfo.RegDisplayName
+                    $valueName = $appInfo.RegVersionName
+                    $expectedValue = $appInfo.RegVersionValue
+                    Start-ThreadJob -Name "${Operation}Retry$attempt-$appName" -ScriptBlock {
+                        . $using:HelperScriptPath
+                        & $using:waitFunction -DisplayName $using:displayName -ValueName $using:valueName -ExpectedValue $using:expectedValue -SkipImeRestartAndSync
+                    }
+                }
+
+                Write-Information "Waiting for $($retryJobs.Count) retry $($Operation.ToLower()) polls..." -InformationAction Continue
+                $retryJobs | Wait-Job | Out-Null
+            }
+
+            $nextFailedApps = @()
+            foreach ($appName in $appsToCheck)
+            {
+                $jobName = if ($attempt -eq 0) { "$Operation-$appName" } else { "${Operation}Retry$attempt-$appName" }
+                $jobResult = Get-Job -Name $jobName -ErrorAction SilentlyContinue | Receive-Job
+                if ($jobResult -ne $true)
+                {
+                    Write-Information "[$appName] $Operation poll result (attempt $attempt): $jobResult" -InformationAction Continue
+                    if ($NoRetryAppNames -contains $appName)
+                    {
+                        Write-Information "[$appName] $Operation poll failed as expected; skipping retry." -InformationAction Continue
+                    }
+                    else
+                    {
+                        $nextFailedApps += $appName
+                    }
+                }
+                else
+                {
+                    if (-not ($succeededApps -contains $appName))
+                    {
+                        $succeededApps += $appName
+                    }
                 }
             }
 
-            Write-Information "Waiting for $($retryJobs.Count) retry $($Operation.ToLower()) polls..." -InformationAction Continue
-            $retryJobs | Wait-Job | Out-Null
-        }
-
-        $nextFailedApps = @()
-        foreach ($appName in $appsToCheck)
-        {
-            $jobName = if ($attempt -eq 0) { "$Operation-$appName" } else { "${Operation}Retry$attempt-$appName" }
-            $jobResult = Get-Job -Name $jobName -ErrorAction SilentlyContinue | Receive-Job
-            if ($jobResult -ne $true)
+            if ($attempt -gt 0)
             {
-                Write-Information "[$appName] $Operation poll result (attempt $attempt): $jobResult" -InformationAction Continue
-                if ($NoRetryAppNames -contains $appName)
-                {
-                    Write-Information "[$appName] $Operation poll failed as expected; skipping retry." -InformationAction Continue
-                    continue
-                }
-                $nextFailedApps += $appName
+                $retryJobs | Remove-Job -Force
             }
             else
             {
-                if (-not ($succeededApps -contains $appName))
-                {
-                    $succeededApps += $appName
-                }
+                $jobs | Remove-Job -Force
             }
-        }
 
-        if ($attempt -gt 0)
-        {
-            $retryJobs | Remove-Job -Force
-        }
-        else
-        {
-            $jobs | Remove-Job -Force
-        }
-
-        $appsToCheck = @($nextFailedApps)
-        if (-not $appsToCheck)
-        {
-            break
+            $appsToCheck = @($nextFailedApps)
         }
     }
 
@@ -770,7 +771,7 @@ function Wait-IntuneManagementExtension
     # Trigger sync at: 0 s, 300 s (5 min), 600 s (10 min)
     $syncAtSeconds = @(0, 300, 600) | Select-Object -First $MaxSyncAttempts
 
-    while ($waited -le $MaxWaitSeconds)
+    while (-not $installed -and $waited -le $MaxWaitSeconds)
     {
         # Trigger an MDM sync at scheduled intervals.
         if ($syncCount -lt $MaxSyncAttempts -and $waited -ge $syncAtSeconds[$syncCount])
@@ -785,13 +786,17 @@ function Wait-IntuneManagementExtension
         {
             $installed = $true
             Write-Information "IntuneManagementExtension installed after $waited s." -InformationAction Continue
-            break
         }
-
-        if ($waited -ge $MaxWaitSeconds) { break }
-        Write-Information "Waiting for IntuneManagementExtension... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
-        Start-Sleep -Seconds $PollIntervalSeconds
-        $waited += $PollIntervalSeconds
+        elseif ($waited -lt $MaxWaitSeconds)
+        {
+            Write-Information "Waiting for IntuneManagementExtension... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
+            Start-Sleep -Seconds $PollIntervalSeconds
+            $waited += $PollIntervalSeconds
+        }
+        else
+        {
+            $waited += $PollIntervalSeconds
+        }
     }
 
     if (-not $installed)
@@ -875,7 +880,7 @@ function Wait-AppInstallation
     $nextSyncAt = 0
 
     Write-Information "Polling for '$DisplayName' installation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
-    while ($waited -lt $MaxWaitSeconds)
+    while (-not $verified -and $waited -lt $MaxWaitSeconds)
     {
         foreach ($root in $uninstallRoots)
         {
@@ -886,20 +891,17 @@ function Wait-AppInstallation
                 $displayNameMatched = $props -and (($props.DisplayName -eq $DisplayName) -or ($props.DisplayName -like "$DisplayName*"))
                 $actualValue = if ($props) { $props.$ValueName } else { $null }
                 $versionMatched = $actualValue -eq $ExpectedValue -or $actualValue -like "$ExpectedValue*"
-                if ($displayNameMatched -and $versionMatched)
+                if (-not $verified -and $displayNameMatched -and $versionMatched)
                 {
                     $verified = $true
                     Write-Information "'$DisplayName' detected in registry after $waited s (path: $($subKey.PSPath))." -InformationAction Continue
                     Write-Information "[Succeed] '$DisplayName' installation verification successful." -InformationAction Continue
-                    break
                 }
             }
-            if ($verified) { break }
         }
-        if ($verified) { break }
 
         # Trigger MDM sync and restart IME at regular intervals to accelerate install.
-        if (-not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt)
+        if (-not $verified -and -not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt)
         {
             Write-Information "'$DisplayName' not yet installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
             Invoke-MdmSync
@@ -911,9 +913,12 @@ function Wait-AppInstallation
             $nextSyncAt = $waited + $SyncIntervalSeconds
         }
 
-        Write-Information "'$DisplayName' not yet installed; waiting $PollIntervalSeconds s... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
-        Start-Sleep -Seconds $PollIntervalSeconds
-        $waited += $PollIntervalSeconds
+        if (-not $verified)
+        {
+            Write-Information "'$DisplayName' not yet installed; waiting $PollIntervalSeconds s... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
+            Start-Sleep -Seconds $PollIntervalSeconds
+            $waited += $PollIntervalSeconds
+        }
     }
 
     return $verified
@@ -958,7 +963,7 @@ function Wait-AppUninstallation
     $nextSyncAt = 0
 
     Write-Information "Polling for '$DisplayName' uninstallation (DisplayName='$DisplayName', timeout: $($MaxWaitSeconds / 60) min)..." -InformationAction Continue
-    while ($waited -lt $MaxWaitSeconds)
+    while (-not $removed -and $waited -lt $MaxWaitSeconds)
     {
         $found = $false
         foreach ($root in $uninstallRoots)
@@ -968,13 +973,11 @@ function Wait-AppUninstallation
             {
                 $props = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
                 $displayNameMatched = $props -and (($props.DisplayName -eq $DisplayName) -or ($props.DisplayName -like "$DisplayName*"))
-                if ($displayNameMatched -and $props.$ValueName -eq $ExpectedValue)
+                if (-not $found -and $displayNameMatched -and $props.$ValueName -eq $ExpectedValue)
                 {
                     $found = $true
-                    break
                 }
             }
-            if ($found) { break }
         }
 
         if (-not $found)
@@ -982,11 +985,10 @@ function Wait-AppUninstallation
             $removed = $true
             Write-Information "'$DisplayName' no longer detected in registry after $waited s." -InformationAction Continue
             Write-Information "[Succeed] '$DisplayName' uninstallation verification successful." -InformationAction Continue
-            break
         }
 
         # Trigger MDM sync and restart IME at regular intervals to accelerate uninstall.
-        if (-not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt)
+        if (-not $removed -and -not $SkipImeRestartAndSync -and $waited -ge $nextSyncAt)
         {
             Write-Information "'$DisplayName' still installed; triggering MDM sync and restarting IME at $waited s..." -InformationAction Continue
             Invoke-MdmSync
@@ -998,9 +1000,12 @@ function Wait-AppUninstallation
             $nextSyncAt = $waited + $SyncIntervalSeconds
         }
 
-        Write-Information "'$DisplayName' still installed; waiting $PollIntervalSeconds s... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
-        Start-Sleep -Seconds $PollIntervalSeconds
-        $waited += $PollIntervalSeconds
+        if (-not $removed)
+        {
+            Write-Information "'$DisplayName' still installed; waiting $PollIntervalSeconds s... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
+            Start-Sleep -Seconds $PollIntervalSeconds
+            $waited += $PollIntervalSeconds
+        }
     }
 
     return $removed
@@ -1075,14 +1080,18 @@ function Initialize-IntuneTestGroup
 
         # Wait for group to propagate.
         $maxWait = 20; $waited = 0
-        while ($waited -lt $maxWait)
+        $groupAvailable = $false
+        while (-not $groupAvailable -and $waited -lt $maxWait)
         {
-            if (Get-MgGroup -GroupId $result.GroupId -ErrorAction SilentlyContinue) { break }
-            Write-Information "Waiting for group to propagate... ($waited s)" -InformationAction Continue
-            Start-Sleep -Seconds 5
-            $waited += 5
+            $groupAvailable = [System.Convert]::ToBoolean((Get-MgGroup -GroupId $result.GroupId -ErrorAction SilentlyContinue))
+            if (-not $groupAvailable)
+            {
+                Write-Information "Waiting for group to propagate... ($waited s)" -InformationAction Continue
+                Start-Sleep -Seconds 5
+                $waited += 5
+            }
         }
-        if ($waited -ge $maxWait)
+        if (-not $groupAvailable)
         {
             throw "Group '$testGroupName' did not propagate within $maxWait seconds."
         }
@@ -1097,12 +1106,13 @@ function Initialize-IntuneTestGroup
         {
             $addMaxRetries = 6
             $addRetry = 0
-            while ($true)
+            $memberAdded = $false
+            while (-not $memberAdded -and $addRetry -lt $addMaxRetries)
             {
                 try
                 {
                     New-MgGroupMember -GroupId $result.GroupId -DirectoryObjectId $device.Id -ErrorAction Stop
-                    break
+                    $memberAdded = $true
                 }
                 catch
                 {
