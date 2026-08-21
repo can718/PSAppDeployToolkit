@@ -243,12 +243,14 @@ function Test-PsadtForceCountdownDeferralLog
         $failures += 'expected disk space pass line was not found'
     }
 
-    $expectedDeferralsRemaining = [Math]::Max(([int]$expectation.DeferTimes - 1), 0)
-    $expectedDeferralsRemainingPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedDeferralsRemaining.ToString())
+    $expectedInitialDeferralsRemaining = [int]$expectation.DeferTimes
+    $expectedUpdatedDeferralsRemaining = [Math]::Max(($expectedInitialDeferralsRemaining - 1), 0)
+    $expectedInitialDeferralsRemainingPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedInitialDeferralsRemaining.ToString())
+    $expectedUpdatedDeferralsRemainingPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedUpdatedDeferralsRemaining.ToString())
     $expectedForceCountdownPattern = [System.Text.RegularExpressions.Regex]::Escape($expectation.ForceCountdown)
-    if ($logContent -notmatch "(The user has|Defer history shows) \[$expectedDeferralsRemainingPattern\] deferrals remaining\.")
+    if (($logContent -notmatch "The user has \[$expectedInitialDeferralsRemainingPattern\] deferrals remaining\.") -and ($logContent -notmatch "Setting deferral history: \[DeferTimesRemaining = $expectedUpdatedDeferralsRemainingPattern\]\."))
     {
-        $failures += "expected deferrals remaining [$expectedDeferralsRemaining] line was not found"
+        $failures += "expected deferrals remaining [$expectedInitialDeferralsRemaining] or deferral history [$expectedUpdatedDeferralsRemaining] line was not found"
     }
     if ($logContent -notmatch "Close applications countdown has \[$expectedForceCountdownPattern\] seconds remaining\.")
     {
@@ -268,7 +270,7 @@ function Test-PsadtForceCountdownDeferralLog
         return @{ Success = $false; Skipped = $false; LogFile = $logValidation.LogFile; Message = ($failures -join '; ') }
     }
 
-    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCountdown deferral log validation passed for deferrals remaining [$expectedDeferralsRemaining] and ForceCountdown [$($expectation.ForceCountdown)]." }
+    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCountdown deferral log validation passed for deferrals remaining [$expectedInitialDeferralsRemaining], deferral history [$expectedUpdatedDeferralsRemaining], and ForceCountdown [$($expectation.ForceCountdown)]." }
 }
 
 function Test-PsadtForceCloseCountdownLog
