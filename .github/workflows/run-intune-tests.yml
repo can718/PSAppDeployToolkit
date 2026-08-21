@@ -493,26 +493,49 @@ jobs:
         $pesterStart = Get-Date
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
 
-        $discoveryConfig = New-PesterConfiguration
-        $discoveryConfig.Run.Path = '.\src\Tests\Intune'
-        $discoveryConfig.Run.SkipRun = $true
-        $discoveryConfig.Run.PassThru = $true
-        $discoveryResult = Invoke-Pester -Configuration $discoveryConfig
-        $discoveredTotal = [int]$discoveryResult.TotalCount
+        $env:PSADT_INTUNE_EXCLUDE_APP_NAMES = 'Notepad++'
 
-        $config = New-PesterConfiguration
-        $config.Run.Path = '.\src\Tests\Intune'
-        $config.Output.Verbosity = 'Detailed'
-        $config.TestResult.Enabled = $true
-        $config.TestResult.OutputPath = '.\src\Artifacts\TestOutput\IntuneTests.xml'
-        $config.TestResult.OutputFormat = 'NUnitXml'
-        $config.Run.PassThru = $true
-        $result = Invoke-Pester -Configuration $config
+        $mainDiscoveryConfig = New-PesterConfiguration
+        $mainDiscoveryConfig.Run.Path = '.\src\Tests\Intune'
+        $mainDiscoveryConfig.Run.SkipRun = $true
+        $mainDiscoveryConfig.Run.PassThru = $true
+        $mainDiscoveryResult = Invoke-Pester -Configuration $mainDiscoveryConfig
 
-        $executedTotal = [int]$result.TotalCount
-        $passed = [int]$result.PassedCount
-        $failed = [int]$result.FailedCount
-        $skipped = [int]$result.SkippedCount
+        $mainConfig = New-PesterConfiguration
+        $mainConfig.Run.Path = '.\src\Tests\Intune'
+        $mainConfig.Output.Verbosity = 'Detailed'
+        $mainConfig.TestResult.Enabled = $true
+        $mainConfig.TestResult.OutputPath = '.\src\Artifacts\TestOutput\IntuneTests.xml'
+        $mainConfig.TestResult.OutputFormat = 'NUnitXml'
+        $mainConfig.Run.PassThru = $true
+        $mainResult = Invoke-Pester -Configuration $mainConfig
+
+        Remove-Item -Path Env:\PSADT_INTUNE_EXCLUDE_APP_NAMES -ErrorAction SilentlyContinue
+        $env:PSADT_INTUNE_INCLUDE_APP_NAMES = 'Notepad++'
+
+        $notepadDiscoveryConfig = New-PesterConfiguration
+        $notepadDiscoveryConfig.Run.Path = '.\src\Tests\Intune'
+        $notepadDiscoveryConfig.Run.SkipRun = $true
+        $notepadDiscoveryConfig.Run.PassThru = $true
+        $notepadDiscoveryResult = Invoke-Pester -Configuration $notepadDiscoveryConfig
+
+        $notepadConfig = New-PesterConfiguration
+        $notepadConfig.Run.Path = '.\src\Tests\Intune'
+        $notepadConfig.Output.Verbosity = 'Detailed'
+        $notepadConfig.TestResult.Enabled = $true
+        $notepadConfig.TestResult.OutputPath = '.\src\Artifacts\TestOutput\IntuneTests-Notepad++.xml'
+        $notepadConfig.TestResult.OutputFormat = 'NUnitXml'
+        $notepadConfig.Run.PassThru = $true
+        $notepadResult = Invoke-Pester -Configuration $notepadConfig
+
+        Remove-Item -Path Env:\PSADT_INTUNE_INCLUDE_APP_NAMES -ErrorAction SilentlyContinue
+
+        $results = @($mainResult, $notepadResult)
+        $discoveredTotal = [int]$mainDiscoveryResult.TotalCount + [int]$notepadDiscoveryResult.TotalCount
+        $executedTotal = [int](($results | Measure-Object -Property TotalCount -Sum).Sum)
+        $passed = [int](($results | Measure-Object -Property PassedCount -Sum).Sum)
+        $failed = [int](($results | Measure-Object -Property FailedCount -Sum).Sum)
+        $skipped = [int](($results | Measure-Object -Property SkippedCount -Sum).Sum)
         $notRun = [math]::Max($discoveredTotal - $executedTotal, 0)
 
         "pester_discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8

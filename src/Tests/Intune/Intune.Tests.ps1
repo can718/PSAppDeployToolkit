@@ -13,6 +13,25 @@ param()
 #   5. Per-test AfterEach - TerraForge result update
 # ---------------------------------------------------------------------------
 
+function Get-IntuneTestApps
+{
+    $apps = @(& (Join-Path $PSScriptRoot '..\_Shared\TestApps.ps1'))
+
+    $includeNames = @($env:PSADT_INTUNE_INCLUDE_APP_NAMES -split ';' | Where-Object { -not [System.String]::IsNullOrWhiteSpace($_) })
+    if ($includeNames.Count -gt 0)
+    {
+        $apps = @($apps | Where-Object { $includeNames -contains $_.Name })
+    }
+
+    $excludeNames = @($env:PSADT_INTUNE_EXCLUDE_APP_NAMES -split ';' | Where-Object { -not [System.String]::IsNullOrWhiteSpace($_) })
+    if ($excludeNames.Count -gt 0)
+    {
+        $apps = @($apps | Where-Object { $excludeNames -notcontains $_.Name })
+    }
+
+    return $apps
+}
+
 BeforeAll {
     # Resolve script root for relative paths.
     $script:_tfScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
@@ -152,12 +171,12 @@ Describe 'Intune Tests' {
     Context 'Parallel Install - V3,V4 - Batch Upload, Single Sync, Parallel Poll install and uninstall of multiple apps' {
         # Define all apps to install in parallel.
         # Body-level assignment executes during Pester 5 Discovery (needed for -ForEach).
-        $script:ParallelApps = & (Join-Path $PSScriptRoot '..\_Shared\TestApps.ps1')
+        $script:ParallelApps = Get-IntuneTestApps
 
         BeforeAll {
             # Re-assign during Run phase to guarantee availability in It blocks.
             # Pester 5 may isolate Discovery-time $script: variables from the Run phase.
-            $script:ParallelApps = & (Join-Path $PSScriptRoot '..\_Shared\TestApps.ps1')
+            $script:ParallelApps = Get-IntuneTestApps
             $script:ParallelInstallResults = @{}
         }
 

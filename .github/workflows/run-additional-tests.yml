@@ -649,7 +649,7 @@ jobs:
         }
 
         # 2) Run the SCCM package suites in parallel after validation succeeds.
-        $tagsToRun = @('WinSCP', 'VLC', 'Notepad++', '7-Zip', 'DigiExam', 'Everything')
+        $tagsToRun = @('WinSCP', 'VLC', '7-Zip', 'DigiExam', 'Everything')
         $indexedTags = for ($i = 0; $i -lt $tagsToRun.Count; $i++) {
           [pscustomobject]@{ Index = $i; Tag = $tagsToRun[$i] }
         }
@@ -690,7 +690,20 @@ jobs:
           }
         } -ThrottleLimit 8
 
-        $allResults = @($validationResult) + @($parallelResults)
+        # 3) Run Notepad++ last by itself because only the first defer result is expected.
+        $notepadConfig = New-PesterConfiguration
+        $notepadConfig.Run.Path = $additionalTestsPath
+        $notepadConfig.Filter.Tag = @('Notepad++')
+        $notepadConfig.Output.Verbosity = 'Detailed'
+        $notepadConfig.TestResult.Enabled = $true
+        $notepadConfig.TestResult.OutputPath = '.\src\Artifacts\TestOutput\AdditionalTests-Notepad++.xml'
+        $notepadConfig.TestResult.OutputFormat = 'NUnitXml'
+        $notepadConfig.Run.PassThru = $true
+
+        $env:PSADT_TEMPLATE_VALIDATION_PASSED = 'true'
+        $notepadResult = Invoke-Pester -Configuration $notepadConfig
+
+        $allResults = @($validationResult) + @($notepadResult) + @($parallelResults)
         $passed = ($allResults | Measure-Object -Property PassedCount -Sum).Sum
         $failed = ($allResults | Measure-Object -Property FailedCount -Sum).Sum
         $skipped = ($allResults | Measure-Object -Property SkippedCount -Sum).Sum
