@@ -494,6 +494,7 @@ jobs:
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
 
         $env:PSADT_INTUNE_EXCLUDE_APP_NAMES = 'Notepad++'
+        $env:PSADT_INTUNE_CLEANUP_GROUP = 'false'
 
         $mainDiscoveryConfig = New-PesterConfiguration
         $mainDiscoveryConfig.Run.Path = '.\src\Tests\Intune'
@@ -512,6 +513,7 @@ jobs:
 
         Remove-Item -Path Env:\PSADT_INTUNE_EXCLUDE_APP_NAMES -ErrorAction SilentlyContinue
         $env:PSADT_INTUNE_INCLUDE_APP_NAMES = 'Notepad++'
+        $env:PSADT_INTUNE_CLEANUP_GROUP = 'true'
 
         $notepadDiscoveryConfig = New-PesterConfiguration
         $notepadDiscoveryConfig.Run.Path = '.\src\Tests\Intune'
@@ -529,6 +531,8 @@ jobs:
         $notepadResult = Invoke-Pester -Configuration $notepadConfig
 
         Remove-Item -Path Env:\PSADT_INTUNE_INCLUDE_APP_NAMES -ErrorAction SilentlyContinue
+        Remove-Item -Path Env:\PSADT_INTUNE_CLEANUP_GROUP -ErrorAction SilentlyContinue
+        Remove-Item -Path Env:\PSADT_INTUNE_TEST_GROUP_ID -ErrorAction SilentlyContinue
 
         $results = @($mainResult, $notepadResult)
         $discoveredTotal = [int]$mainDiscoveryResult.TotalCount + [int]$notepadDiscoveryResult.TotalCount

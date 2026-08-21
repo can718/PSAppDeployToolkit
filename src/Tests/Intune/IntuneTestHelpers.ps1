@@ -278,7 +278,7 @@ function New-IntuneTestWorkDirV3
     Write-Information "[$AppFolderName] Copied runner script '$([System.IO.Path]::GetFileName($RunnerScriptPath))' to '$workDir'." -InformationAction Continue
 
     return @{
-        WorkDir = $workDir
+        WorkDir  = $workDir
         FilesDir = $filesDir
     }
 }
@@ -1061,7 +1061,9 @@ function Initialize-IntuneTestGroup
         [string]$ClientId,
 
         [Parameter(Mandatory)]
-        [string]$ClientSecret
+        [string]$ClientSecret,
+
+        [string]$ExistingGroupId
     )
 
     $result = @{
@@ -1086,6 +1088,14 @@ function Initialize-IntuneTestGroup
     try
     {
         Connect-MgGraph -TenantId $TenantId -ClientSecretCredential $credential -NoWelcome -ErrorAction Stop
+
+        if (-not [System.String]::IsNullOrWhiteSpace($ExistingGroupId))
+        {
+            $existingGroup = Get-MgGroup -GroupId $ExistingGroupId -ErrorAction Stop
+            $result.GroupId = $existingGroup.Id
+            Write-Information "Reusing Azure AD test group with ObjectId: $($result.GroupId)" -InformationAction Continue
+            return $result
+        }
 
         # Remove existing test group if present.
         $testGroupName = "PSADT Test Group $deviceName"

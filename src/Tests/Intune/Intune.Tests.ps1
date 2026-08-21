@@ -117,8 +117,13 @@ Describe 'Intune Tests' {
         $groupResult = Initialize-IntuneTestGroup `
             -TenantId     $script:TenantID `
             -ClientId     $script:ClientID `
-            -ClientSecret $script:ClientSecret
+            -ClientSecret $script:ClientSecret `
+            -ExistingGroupId $env:PSADT_INTUNE_TEST_GROUP_ID
         $script:GroupID = $groupResult.GroupId
+        if ($script:GroupID)
+        {
+            $env:PSADT_INTUNE_TEST_GROUP_ID = $script:GroupID
+        }
 
         if ($groupResult.SkipReason)
         {
@@ -479,19 +484,25 @@ Describe 'Intune Tests' {
                 }
             }
 
-            # Clean up Azure AD test group.
-            Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
-            if ($script:GroupID)
+            # Clean up Azure AD test group only after the final split Intune run.
+            $cleanupGroup = $env:PSADT_INTUNE_CLEANUP_GROUP -ne 'false'
+            if ($script:GroupID -and $cleanupGroup)
             {
+                Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
                 try
                 {
                     Invoke-MgGraphRequest -Method DELETE -Uri "https://graph.microsoft.com/v1.0/groups/$($script:GroupID)" -ErrorAction Stop
                     Start-Sleep -Seconds 5
+                    Remove-Item Env:\PSADT_INTUNE_TEST_GROUP_ID -ErrorAction SilentlyContinue
                 }
                 catch
                 {
                     Write-Warning "[Intune] Failed to clean up Azure AD test group '$($script:GroupID)': $($_.Exception.Message)"
                 }
+            }
+            elseif ($script:GroupID)
+            {
+                Write-Information "Keeping Azure AD test group '$script:GroupID' for the next Intune test split." -InformationAction Continue
             }
 
             Remove-Item Env:\PSADT_INTUNE_PARALLEL_APP_NAMES_FOR_PESTER -ErrorAction SilentlyContinue
