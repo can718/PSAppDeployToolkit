@@ -838,6 +838,35 @@ function Invoke-MdmSync
     }
 }
 
+function Wait-PsadtForceCountdownDeferralLog
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App,
+
+        [int]$MaxWaitSeconds = 900,
+
+        [int]$PollIntervalSeconds = 60
+    )
+
+    $waited = 0
+    while ($waited -lt $MaxWaitSeconds)
+    {
+        $logValidation = Test-PsadtForceCountdownDeferralLog -App $App -DeploymentType 'Install'
+        if ($logValidation.Success)
+        {
+            Write-Information "[$($App.Name)] ForceCountdown deferral log detected after $waited s." -InformationAction Continue
+            return $true
+        }
+
+        Write-Information "[$($App.Name)] ForceCountdown deferral log not ready; waiting $PollIntervalSeconds s... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
+        Start-Sleep -Seconds $PollIntervalSeconds
+        $waited += $PollIntervalSeconds
+    }
+
+    return $false
+}
+
 # ---------------------------------------------------------------------------
 # Region: Installation Detection
 # ---------------------------------------------------------------------------

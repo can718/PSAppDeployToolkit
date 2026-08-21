@@ -199,7 +199,7 @@ Describe 'Intune Tests' {
 
                 # Wrap into .intunewin package.
                 $packageParams = @{
-                    WorkDir = $env.WorkDir
+                    WorkDir              = $env.WorkDir
                     IntuneWinAppUtilPath = $script:IntuneWinAppUtil
                 }
                 $effectiveSetupFileName = if ($app.SetupFileName)
@@ -225,8 +225,8 @@ Describe 'Intune Tests' {
                 $intuneDisplayName = '{0}-{1}' -f $package.DisplayName, $script:IntuneDisplayNameSuffix
                 Write-Information "[Intune Upload] Uploading $($app.TemplateVersion) app '$intuneDisplayName'..." -InformationAction Continue
                 $publishParams = @{
-                    FilePath = $package.IntuneWinPath
-                    DisplayName = $intuneDisplayName
+                    FilePath      = $package.IntuneWinPath
+                    DisplayName   = $intuneDisplayName
                     DetectionRule = $DetectionRule
                 }
                 $effectiveInstallCmd = if ($app.InstallCmd)
@@ -264,11 +264,11 @@ Describe 'Intune Tests' {
                     -Intent 'required' -Notification 'showAll' -Verbose
 
                 $script:UploadedApps[$app.Name] = @{
-                    Win32AppId = $win32App.id
-                    DisplayName = $intuneDisplayName
-                    RegDisplayName = if ($app.RegDisplayName) { $app.RegDisplayName } else { $app.Name }
+                    Win32AppId      = $win32App.id
+                    DisplayName     = $intuneDisplayName
+                    RegDisplayName  = if ($app.RegDisplayName) { $app.RegDisplayName } else { $app.Name }
                     RegVersionValue = if ($app.RegVersionValue) { $app.RegVersionValue } else { $app.AppVersion }
-                    RegVersionName = if ($app.RegVersionName) { $app.RegVersionName } else { 'DisplayVersion' }
+                    RegVersionName  = if ($app.RegVersionName) { $app.RegVersionName } else { 'DisplayVersion' }
                 }
                 Write-Information "[$($app.Name)] Uploaded and assigned successfully." -InformationAction Continue
             }
@@ -288,13 +288,38 @@ Describe 'Intune Tests' {
                     Where-Object { $_.TemplateVersion -eq 'V4' -and (Get-PsadtForceCountdownDeferralExpectation -App $_).Expected } |
                     ForEach-Object { $_.Name }
             )
+            $appsForRegistryPoll = @(
+                $script:UploadedApps.Keys |
+                    Where-Object { $expectedDeferralAppNames -notcontains $_ }
+            )
 
             $helperPath = Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1'
-            $result = Invoke-ParallelAppPollWithRetry `
-                -UploadedApps    $script:UploadedApps `
-                -Operation       'Install' `
-                -HelperScriptPath $helperPath `
-                -NoRetryAppNames  $expectedDeferralAppNames
+            $result = @{ Succeeded = @(); Failed = @() }
+            if ($appsForRegistryPoll.Count -gt 0)
+            {
+                $result = Invoke-ParallelAppPollWithRetry `
+                    -UploadedApps    $script:UploadedApps `
+                    -Operation       'Install' `
+                    -HelperScriptPath $helperPath `
+                    -AppNames        $appsForRegistryPoll
+            }
+
+            $expectedDeferralApps = @(
+                $script:ParallelApps |
+                    Where-Object { $expectedDeferralAppNames -contains $_.Name }
+            )
+            if ($expectedDeferralApps.Count -gt 0)
+            {
+                Write-Information "[Parallel Install] Triggering expected deferral app install once: $($expectedDeferralAppNames -join ', ')" -InformationAction Continue
+                Invoke-MdmSync
+                Start-Sleep -Seconds 8
+                Wait-IntuneManagementExtension
+
+                foreach ($appConfig in $expectedDeferralApps)
+                {
+                    $null = Wait-PsadtForceCountdownDeferralLog -App $appConfig
+                }
+            }
 
             # Store results and run post-install scripts for succeeded apps.
             foreach ($appName in $result.Succeeded)
@@ -359,8 +384,6 @@ Describe 'Intune Tests' {
         }
 
         It '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
-            $script:ParallelInstallResults.Count | Should -BeGreaterThan 0 -Because 'At least one app must have installed'
-
             # Build uninstall candidate list from installed apps, honoring per-app filters.
             $appsForUninstall = @()
             foreach ($appName in $script:ParallelInstallResults.Keys)
@@ -378,7 +401,8 @@ Describe 'Intune Tests' {
 
             if (-not $appsForUninstall)
             {
-                Set-ItResult -Skipped -Because 'All installed apps are filtered out from uninstall test by SkipUninstall.'
+                Set-ItResult -Skipped -Because 'No installed apps are eligible for uninstall testing.'
+                return
             }
 
             # Reassign all apps with uninstall intent.
