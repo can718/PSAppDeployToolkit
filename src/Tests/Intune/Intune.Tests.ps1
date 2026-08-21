@@ -142,10 +142,8 @@ Describe 'Intune Tests' {
             }
         }
 
-        $debugAppNames = @($script:ParallelApps | ForEach-Object { if ($_ -is [hashtable]) { $_['Name'] } else { $_.Name } })
-        $debugAppTypes = @($script:ParallelApps | ForEach-Object { if ($null -eq $_) { '<null>' } else { $_.GetType().FullName } })
         # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
-        Write-Information "[Intune Debug] Context BeforeAll complete. Include='$env:PSADT_INTUNE_INCLUDE_APP_NAMES'; Exclude='$env:PSADT_INTUNE_EXCLUDE_APP_NAMES'; GroupID='$script:GroupID'; SkipReason='$script:Win32WrapAndUploadSkipReason'; AppCount=$((@($script:ParallelApps)).Count); Apps='$($debugAppNames -join ', ')'; AppTypes='$($debugAppTypes -join ', ')'." -InformationAction Continue
+        Write-Information "[Intune Debug] Describe BeforeAll complete. Include='$env:PSADT_INTUNE_INCLUDE_APP_NAMES'; Exclude='$env:PSADT_INTUNE_EXCLUDE_APP_NAMES'; GroupID='$script:GroupID'; SkipReason='$script:Win32WrapAndUploadSkipReason'." -InformationAction Continue
     }
 
     BeforeEach {
@@ -185,14 +183,20 @@ Describe 'Intune Tests' {
 
     Context 'Parallel Install - V3,V4 - Batch Upload, Single Sync, Parallel Poll install and uninstall of multiple apps' {
         # Define all apps to install in parallel.
-        # Body-level assignment executes during Pester 5 Discovery (needed for -ForEach).
-        $script:ParallelApps = Get-IntuneTestApps
+        # Body-level assignment executes during Pester Discovery (needed for -ForEach).
+        $parallelAppsForEach = @(Get-IntuneTestApps)
+        $global:PSADTIntuneParallelAppsForPester = @($parallelAppsForEach)
 
         BeforeAll {
-            # Re-assign during Run phase to guarantee availability in It blocks.
-            # Pester 5 may isolate Discovery-time $script: variables from the Run phase.
-            $script:ParallelApps = Get-IntuneTestApps
+            # Rehydrate during Run phase to guarantee availability in It blocks.
+            # Pester 6 isolates Discovery-time local variables from the Run phase.
+            $script:ParallelApps = @($global:PSADTIntuneParallelAppsForPester)
             $script:ParallelInstallResults = @{}
+
+            $debugAppNames = @($script:ParallelApps | ForEach-Object { if ($_ -is [hashtable]) { $_['Name'] } else { $_.Name } })
+            $debugAppTypes = @($script:ParallelApps | ForEach-Object { if ($null -eq $_) { '<null>' } else { $_.GetType().FullName } })
+            # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
+            Write-Information "[Intune Debug] Context BeforeAll complete. Include='$env:PSADT_INTUNE_INCLUDE_APP_NAMES'; Exclude='$env:PSADT_INTUNE_EXCLUDE_APP_NAMES'; GroupID='$script:GroupID'; SkipReason='$script:Win32WrapAndUploadSkipReason'; AppCount=$((@($script:ParallelApps)).Count); Apps='$($debugAppNames -join ', ')'; AppTypes='$($debugAppTypes -join ', ')'." -InformationAction Continue
         }
 
         It '[INTUNE:BatchUpload] Batch upload all apps and assign to group' {
@@ -371,7 +375,7 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '[INTUNE:<Name>_Install][<TemplateVersion>] <Name> should reach expected install outcome' -ForEach $script:ParallelApps {
+        It '[INTUNE:<Name>_Install][<TemplateVersion>] <Name> should reach expected install outcome' -ForEach $parallelAppsForEach {
             $failures = @()
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
             $expectForceCountdownDeferral = $false
@@ -497,7 +501,7 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '[INTUNE:<Name>_Uninstall][<TemplateVersion>] <Name> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) -AllowNullOrEmptyForEach {
+        It '[INTUNE:<Name>_Uninstall][<TemplateVersion>] <Name> should be uninstalled' -ForEach ($parallelAppsForEach | Where-Object { -not $_.SkipUninstall }) -AllowNullOrEmptyForEach {
             $failures = @()
 
             if (-not $script:ParallelUninstallResults[$Name])
@@ -554,6 +558,7 @@ Describe 'Intune Tests' {
 
             # TEMP-INTUNE-DEBUG: remove after diagnosing CI failure.
             Write-Information "[Intune Debug] Context AfterAll complete." -InformationAction Continue
+            Remove-Variable -Name PSADTIntuneParallelAppsForPester -Scope Global -ErrorAction SilentlyContinue
         }
     }
 }
