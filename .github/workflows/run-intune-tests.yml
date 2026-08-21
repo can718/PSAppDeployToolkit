@@ -546,32 +546,6 @@ jobs:
         "pester_notrun=$notRun"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
 
         if ($failed -gt 0) {
-          Write-Host "::group::Failed Intune test details"
-          $xmlFiles = Get-ChildItem -Path '.\src\Artifacts\TestOutput\IntuneTests*.xml' -ErrorAction SilentlyContinue | Sort-Object Name
-          foreach ($xmlFile in $xmlFiles) {
-            try {
-              [xml]$xml = Get-Content -Path $xmlFile.FullName -Raw -Encoding UTF8
-              $failedCases = $xml.SelectNodes('//test-case[failure or @result="Failed" or @success="False"]')
-              foreach ($testCase in $failedCases) {
-                $caseName = if ($testCase.description) { [string]$testCase.description } else { [string]$testCase.name }
-                $message = if ($testCase.failure.message) { ([string]$testCase.failure.message).Trim() } else { '' }
-                $stackTrace = if ($testCase.failure.'stack-trace') { ([string]$testCase.failure.'stack-trace').Trim() } else { '' }
-
-                Write-Host "FAILED [$($xmlFile.Name)] $caseName"
-                if (-not [string]::IsNullOrWhiteSpace($message)) {
-                  Write-Host "  Message: $message"
-                }
-                if (-not [string]::IsNullOrWhiteSpace($stackTrace)) {
-                  Write-Host "  StackTrace:"
-                  $stackTrace -split "`r?`n" | Select-Object -First 12 | ForEach-Object { Write-Host "    $_" }
-                }
-              }
-            }
-            catch {
-              Write-Host "Unable to read failed test details from '$($xmlFile.FullName)': $($_.Exception.Message)"
-            }
-          }
-          Write-Host "::endgroup::"
           throw "One or more Intune tests failed. Failed count: $failed"
         }
 

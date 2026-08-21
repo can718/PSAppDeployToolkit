@@ -1083,7 +1083,7 @@ function Initialize-IntuneTestGroup
         $groupAvailable = $false
         while (-not $groupAvailable -and $waited -lt $maxWait)
         {
-            $groupAvailable = [System.Convert]::ToBoolean((Get-MgGroup -GroupId $result.GroupId -ErrorAction SilentlyContinue))
+            $groupAvailable = $null -ne (Get-MgGroup -GroupId $result.GroupId -ErrorAction SilentlyContinue)
             if (-not $groupAvailable)
             {
                 Write-Information "Waiting for group to propagate... ($waited s)" -InformationAction Continue
