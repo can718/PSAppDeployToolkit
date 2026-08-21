@@ -172,12 +172,19 @@ Describe 'Intune Tests' {
         # Define all apps to install in parallel.
         # Body-level assignment executes during Pester Discovery (needed for -ForEach).
         $parallelAppsForEach = @(Get-IntuneTestApps)
-        $global:PSADTIntuneParallelAppsForPester = @($parallelAppsForEach)
+        $env:PSADT_INTUNE_PARALLEL_APP_NAMES_FOR_PESTER = ConvertTo-Json -InputObject @($parallelAppsForEach | ForEach-Object { $_.Name }) -Compress
 
         BeforeAll {
             # Rehydrate during Run phase to guarantee availability in It blocks.
             # Pester 6 isolates Discovery-time local variables from the Run phase.
-            $script:ParallelApps = @($global:PSADTIntuneParallelAppsForPester)
+            $parallelAppNamesForRun = @($env:PSADT_INTUNE_PARALLEL_APP_NAMES_FOR_PESTER | ConvertFrom-Json)
+            $availableAppsForRun = @(Get-IntuneTestApps)
+            $script:ParallelApps = @(
+                foreach ($appName in $parallelAppNamesForRun)
+                {
+                    $availableAppsForRun | Where-Object { $_.Name -eq $appName } | Select-Object -First 1
+                }
+            )
             $script:ParallelInstallResults = @{}
         }
 
@@ -487,7 +494,7 @@ Describe 'Intune Tests' {
                 }
             }
 
-            Remove-Variable -Name PSADTIntuneParallelAppsForPester -Scope Global -ErrorAction SilentlyContinue
+            Remove-Item Env:\PSADT_INTUNE_PARALLEL_APP_NAMES_FOR_PESTER -ErrorAction SilentlyContinue
         }
     }
 }
