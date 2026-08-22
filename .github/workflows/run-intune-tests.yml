@@ -16,7 +16,7 @@ jobs:
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
-      TERRAFORGE_CONFIG_NAME: "Intune (Github)-Agent"
+      TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_INTUNE_CONFIG_NAME || 'Intune (Github)-Agent' }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
     steps:
@@ -34,7 +34,7 @@ jobs:
           }
           . $tfHelper
 
-          Invoke-TFLaunchAgent -ConfigName "Intune (Github)-Agent"
+          Invoke-TFLaunchAgent -ConfigName $env:TERRAFORGE_CONFIG_NAME
 
   run-intune-tests:
     name: Run Intune Tests
@@ -61,7 +61,7 @@ jobs:
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
-      TERRAFORGE_CONFIG_NAME: "Intune (Github)-Agent"
+      TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_INTUNE_CONFIG_NAME || 'Intune (Github)-Agent' }}
       AAD_USER_CODE: ${{ secrets.AAD_USER_CODE }}
       TEST_TENANTID: ${{ vars.TEST_TENANTID }}
       TEST_CLIENTID: ${{ vars.TEST_CLIENTID }}
@@ -301,16 +301,45 @@ jobs:
       id: setup-dotnet
       uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # https://github.com/actions/setup-dotnet/releases/tag/v4.3.1
       with:
-        dotnet-version: '10.0.x'
+        dotnet-version: '10.0.400'
+
+    - name: Ensure .NET Framework 4.7.2 targeting pack
+      id: setup-netfx472
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $referenceAssembly = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.2\mscorlib.dll'
+
+        if (-not (Test-Path -LiteralPath $referenceAssembly -PathType Leaf)) {
+          Write-Host '.NET Framework 4.7.2 targeting pack is missing; installing the Developer Pack.'
+          $installer = Join-Path $env:RUNNER_TEMP 'NDP472-DevPack-ENU.exe'
+          try {
+            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/?linkid=874338' -OutFile $installer -UseBasicParsing
+            $process = Start-Process -FilePath $installer -ArgumentList '/q', '/norestart' -Wait -PassThru
+            if ($process.ExitCode -notin 0, 3010) {
+              throw ".NET Framework 4.7.2 Developer Pack installation failed with exit code $($process.ExitCode)."
+            }
+          }
+          finally {
+            Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+          }
+        }
+
+        if (-not (Test-Path -LiteralPath $referenceAssembly -PathType Leaf)) {
+          throw ".NET Framework 4.7.2 reference assemblies were not found after installation: $referenceAssembly"
+        }
+
+        Write-Host ".NET Framework 4.7.2 reference assemblies: $referenceAssembly"
+        dotnet --info
 
     - name: Cache NuGet packages
       id: cache-nuget
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # https://github.com/actions/cache/releases/tag/v5.0.5
       with:
         path: ${{ env.NUGET_PACKAGES }}
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '**/packages.lock.json', '**/nuget.config', 'global.json') }}
         restore-keys: |
-          ${{ runner.os }}-nuget-
+          ${{ runner.os }}-${{ runner.arch }}-nuget-
 
     - name: Cache PowerShell modules
       id: psmodule-cache
