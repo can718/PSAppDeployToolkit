@@ -18,7 +18,13 @@
 
         [Parameter(Mandatory)]
         [ValidateSet('Install', 'Uninstall', 'Repair')]
-        [string]$DeploymentType
+        [string]$DeploymentType,
+
+        [ValidateRange(0, 300)]
+        [int]$FinalizationWaitSeconds = 30,
+
+        [ValidateRange(100, 5000)]
+        [int]$PollIntervalMilliseconds = 500
     )
 
     $testsRoot = Split-Path -Path $PSScriptRoot -Parent
@@ -105,26 +111,50 @@
     # Default log path: C:\Windows\Logs\Software
     $logPath = "$env:SystemRoot\Logs\Software"
     $logFilePattern = "${installName}_*_${DeploymentType}.log"
+    # Pattern: [InstallName] install completed in [X] seconds with exit code [N].
+    $exitCodePattern = [regex]::Escape($installName) + '\].*completed in \[.*\] seconds with exit code \[(\d+)\]'
+    $deadline = [DateTime]::UtcNow.AddSeconds($FinalizationWaitSeconds)
+    $logFile = $null
+    $exitCodeMatch = $null
+    do
+    {
+        $logFile = Get-ChildItem -Path $logPath -Filter $logFilePattern -File -ErrorAction SilentlyContinue |
+            Sort-Object -Property LastWriteTime -Descending |
+            Select-Object -First 1
 
-    $logFiles = Get-ChildItem -Path $logPath -Filter $logFilePattern -File -ErrorAction SilentlyContinue |
-        Sort-Object -Property LastWriteTime -Descending
+        if ($logFile)
+        {
+            # PSADT may remove the app's registry entry before post-deployment
+            # work finishes and writes the finalization line.
+            $logContent = Get-Content -LiteralPath $logFile.FullName -Raw -ErrorAction SilentlyContinue
+            if (-not [string]::IsNullOrEmpty($logContent))
+            {
+                $exitCodeMatches = [regex]::Matches($logContent, $exitCodePattern)
+                if ($exitCodeMatches.Count -gt 0)
+                {
+                    $exitCodeMatch = $exitCodeMatches[$exitCodeMatches.Count - 1]
+                    break
+                }
+            }
+        }
 
-    if (-not $logFiles)
+        if ([DateTime]::UtcNow -ge $deadline)
+        {
+            break
+        }
+        Start-Sleep -Milliseconds $PollIntervalMilliseconds
+    }
+    while ($true)
+
+    if (-not $logFile)
     {
         Write-Warning "[$($App.Name)] Log validation FAILED: No log file matching [$logFilePattern] found in [$logPath]."
         return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "Log file not found matching [$logFilePattern] in [$logPath]." }
     }
 
-    $logFile = $logFiles[0]
-    # Read the full log so validation can find the expected result even when
-    # multiple PSADT sessions are appended to the same file.
-    $logContent = Get-Content -LiteralPath $logFile.FullName -Raw -ErrorAction SilentlyContinue
-
-    # Pattern: [InstallName] install completed in [X] seconds with exit code [N].
-    $exitCodePattern = [regex]::Escape($installName) + '\].*completed in \[.*\] seconds with exit code \[(\d+)\]'
-    if ($logContent -match $exitCodePattern)
+    if ($exitCodeMatch)
     {
-        $exitCode = [int]$Matches[1]
+        $exitCode = [int]$exitCodeMatch.Groups[1].Value
         $successCodes = @($sessionProps.AppSuccessExitCodes) + @($sessionProps.AppRebootExitCodes)
         if ($exitCode -in $successCodes)
         {
