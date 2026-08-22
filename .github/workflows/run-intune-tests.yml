@@ -345,8 +345,10 @@ jobs:
       id: psmodule-cache
       uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306  # https://github.com/actions/cache/releases/tag/v5.0.3
       with:
-        path: ~\Documents\WindowsPowerShell\Modules
-        key: ${{ runner.os }}-psmodule-PSScriptAnalyzer-1.25.0-Pester-5.7.1-platyPS-0.14.2-Alt3.Docusaurus.Powershell-1.0.37
+        path: |
+          ~\Documents\PowerShell\Modules
+          ~\Documents\WindowsPowerShell\Modules
+        key: ${{ runner.os }}-psmodule-PSScriptAnalyzer-1.25.0-Pester-6.1.0-platyPS-0.14.2-Alt3.Docusaurus.Powershell-1.0.37
 
     - name: Install PowerShell modules
       id: install-psmodules
@@ -429,7 +431,7 @@ jobs:
         Import-Module -Name $powerShellGetModule.Path -Force
         Initialize-PSGalleryBootstrap
         Ensure-ModulePresent -Name PSScriptAnalyzer -RequiredVersion ([version]'1.25.0')
-        Ensure-ModulePresent -Name Pester -RequiredVersion ([version]'5.7.1') -SkipPublisherCheck
+        Ensure-ModulePresent -Name Pester -RequiredVersion ([version]'6.1.0') -SkipPublisherCheck
         Ensure-ModulePresent -Name platyPS -RequiredVersion ([version]'0.14.2')
         Ensure-ModulePresent -Name Alt3.Docusaurus.Powershell -RequiredVersion ([version]'1.0.37')
 

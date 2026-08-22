@@ -183,7 +183,9 @@ Describe 'Intune Tests' {
             # Rehydrate during Run phase to guarantee availability in It blocks.
             # Pester 6 isolates Discovery-time local variables from the Run phase.
             $parallelAppNamesForRun = @($env:PSADT_INTUNE_PARALLEL_APP_NAMES_FOR_PESTER | ConvertFrom-Json)
-            $availableAppsForRun = @(Get-IntuneTestApps)
+            # Top-level test-file functions belong to Pester's discovery scope and are not
+            # reliably available from nested run blocks in Pester 6.
+            $availableAppsForRun = @(& (Join-Path $script:_tfScriptRoot '..\_Shared\TestApps.ps1'))
             $script:ParallelApps = @(
                 foreach ($appName in $parallelAppNamesForRun)
                 {

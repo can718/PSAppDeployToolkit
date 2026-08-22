@@ -12,7 +12,10 @@ if (-not (Test-Path -LiteralPath $sharedEnvironmentHelpersPath -PathType Leaf))
 {
     throw "Required shared helper file not found: $sharedEnvironmentHelpersPath"
 }
-. $sharedEnvironmentHelpersPath
+if (-not (Get-Command -Name 'Initialize-NotepadPlusPlusLegacyTestEnvironment' -CommandType Function -ErrorAction SilentlyContinue))
+{
+    . $sharedEnvironmentHelpersPath
+}
 
 @(
     @{
