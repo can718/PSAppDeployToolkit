@@ -42,12 +42,12 @@ jobs:
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     outputs:
       steps_json:        ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
-      pester_discovered: ${{ steps.run-pester.outputs.pester_discovered || '0' }}
-      pester_total:      ${{ steps.run-pester.outputs.pester_total || '0' }}
-      pester_passed:     ${{ steps.run-pester.outputs.pester_passed || '0' }}
-      pester_failed:     ${{ steps.run-pester.outputs.pester_failed || '0' }}
-      pester_skipped:    ${{ steps.run-pester.outputs.pester_skipped || '0' }}
-      pester_notrun:     ${{ steps.run-pester.outputs.pester_notrun || '0' }}
+      pester_discovered: ${{ steps.collect-cases.outputs.pester_discovered || '0' }}
+      pester_total:      ${{ steps.collect-cases.outputs.pester_total || '0' }}
+      pester_passed:     ${{ steps.collect-cases.outputs.pester_passed || '0' }}
+      pester_failed:     ${{ steps.collect-cases.outputs.pester_failed || '0' }}
+      pester_skipped:    ${{ steps.collect-cases.outputs.pester_skipped || '0' }}
+      pester_notrun:     ${{ steps.collect-cases.outputs.pester_notrun || '0' }}
       cases_json:        ${{ steps.collect-cases.outputs.cases_json || '{}' }}
       cases_order_json:  ${{ steps.collect-cases.outputs.cases_order_json || '[]' }}
       recording_urls_json: ${{ steps.upload-to-blob.outputs.public_recording_urls_json || '[]' }}
@@ -597,6 +597,12 @@ jobs:
       shell: pwsh
       run: |
         $caseEntries = [ordered]@{}
+        $outcomePriority = @{
+          unknown = 0
+          skipped = 1
+          failure = 2
+          success = 3
+        }
 
         function Get-XmlAttributeValue {
           param(
@@ -679,7 +685,17 @@ jobs:
               if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
               $durationStr = "${mins}m ${secs}s"
 
-              if (-not $caseEntries.Contains($caseName)) {
+              $existingOutcome = if ($caseEntries.Contains($caseName)) {
+                (([string]$caseEntries[$caseName] -split '\|', 2)[0]).Trim().ToLowerInvariant()
+              }
+              else {
+                $null
+              }
+
+              if (
+                -not $caseEntries.Contains($caseName) -or
+                $outcomePriority[$outcome] -gt $outcomePriority[$existingOutcome]
+              ) {
                 $caseEntries[$caseName] = "$outcome | $durationStr"
               }
             }
@@ -691,8 +707,21 @@ jobs:
 
         $casesJson = if ($caseEntries.Count -gt 0) { $caseEntries | ConvertTo-Json -Compress } else { '{}' }
         $casesOrderJson = @($caseEntries.Keys) | ConvertTo-Json -Compress
+        $outcomes = @($caseEntries.Values | ForEach-Object { (([string]$_ -split '\|', 2)[0]).Trim().ToLowerInvariant() })
+        $passed = @($outcomes | Where-Object { $_ -eq 'success' }).Count
+        $failed = @($outcomes | Where-Object { $_ -eq 'failure' }).Count
+        $skipped = @($outcomes | Where-Object { $_ -eq 'skipped' }).Count
+        $notRun = @($outcomes | Where-Object { $_ -eq 'unknown' }).Count
+        $total = $caseEntries.Count
+
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_json=$casesJson`n", [System.Text.Encoding]::UTF8)
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_order_json=$casesOrderJson`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_discovered=$total`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_total=$total`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_passed=$passed`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_failed=$failed`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_skipped=$skipped`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_notrun=$notRun`n", [System.Text.Encoding]::UTF8)
         Write-Host "Collected $($caseEntries.Count) test case result(s)."
 
     - name: Generate case TRX and HTML report
@@ -991,12 +1020,12 @@ jobs:
       shell: pwsh
       env:
         JOB_STATUS: ${{ job.status }}
-        PESTER_DISCOVERED: ${{ steps.run-pester.outputs.pester_discovered || '0' }}
-        PESTER_TOTAL: ${{ steps.run-pester.outputs.pester_total || '0' }}
-        PESTER_PASSED: ${{ steps.run-pester.outputs.pester_passed || '0' }}
-        PESTER_FAILED: ${{ steps.run-pester.outputs.pester_failed || '0' }}
-        PESTER_SKIPPED: ${{ steps.run-pester.outputs.pester_skipped || '0' }}
-        PESTER_NOTRUN: ${{ steps.run-pester.outputs.pester_notrun || '0' }}
+        PESTER_DISCOVERED: ${{ steps.collect-cases.outputs.pester_discovered || '0' }}
+        PESTER_TOTAL: ${{ steps.collect-cases.outputs.pester_total || '0' }}
+        PESTER_PASSED: ${{ steps.collect-cases.outputs.pester_passed || '0' }}
+        PESTER_FAILED: ${{ steps.collect-cases.outputs.pester_failed || '0' }}
+        PESTER_SKIPPED: ${{ steps.collect-cases.outputs.pester_skipped || '0' }}
+        PESTER_NOTRUN: ${{ steps.collect-cases.outputs.pester_notrun || '0' }}
         STEPS_JSON: ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
         CASES_JSON: ${{ steps.collect-cases.outputs.cases_json || '{}' }}
         CASES_ORDER_JSON: ${{ steps.collect-cases.outputs.cases_order_json || '[]' }}
