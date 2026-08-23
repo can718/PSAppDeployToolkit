@@ -25,6 +25,23 @@
     <StaticAnalysisCodeType>General</StaticAnalysisCodeType>
   </PropertyGroup>
 
+  <!--
+    Restore writes a packages.lock.json beside each project, pinning the exact resolved version and content
+    hash of every dependency, transitive ones included. Several entries in Directory.Packages.props can
+    resolve to more than one version over time, so without a lock file the restored graph can shift with no
+    change to this repository. Commit the updated lock files alongside whatever changed them.
+
+    In CI, RestoreLockedMode makes restore fail with NU1004 instead of quietly rewriting the lock file, so
+    a dependency change nobody committed cannot ride along in a build.
+
+    NuGet writes lock files with CRLF on Windows. This repository mandates LF, so normalise regenerated
+    lock files before committing them.
+  -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(GITHUB_ACTIONS)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+
   <!-- Common company/product metadata -->
   <PropertyGroup>
     <Authors>Dan Cunningham</Authors>
@@ -64,19 +81,19 @@
 
   <!-- Banned API analyzer -->
   <ItemGroup>
-    <PackageReference Include="Meziantou.Analyzer" Version="3.0.159">
+    <PackageReference Include="Meziantou.Analyzer">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0">
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.StaticAnalysis" Version="10.9.0">
+    <PackageReference Include="Microsoft.Extensions.StaticAnalysis">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Roslynator.Analyzers" Version="4.16.1">
+    <PackageReference Include="Roslynator.Analyzers">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

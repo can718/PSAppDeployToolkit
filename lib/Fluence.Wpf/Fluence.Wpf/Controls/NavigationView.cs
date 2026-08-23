@@ -1380,10 +1380,11 @@ defaultValue: null,
                 }
                 return new Point(x, itemPos.Y + ((item.ActualHeight - indicator.Height) / 2.0));
             }
-            catch (Exception ex) when (ex.Message is not null)
+            catch (Exception ex)
             {
                 Debug.WriteLine($"NavigationView indicator transform failed: {ex}");
                 return new Point(0, 0);
+                throw;
             }
         }
 
@@ -1622,10 +1623,11 @@ defaultValue: null,
                         Point itemPos = transform.Transform(new Point(0, 0));
                         x = direction > 0 ? itemPos.X + previousItem.ActualWidth : itemPos.X - length;
                     }
-                    catch (Exception ex) when (ex.Message is not null)
+                    catch (Exception ex)
                     {
                         Debug.WriteLine($"NavigationView indicator transform failed: {ex}");
                         return new Point(x, fromPosition.Y);
+                        throw;
                     }
                 }
                 return new Point(x, fromPosition.Y);
@@ -1640,10 +1642,11 @@ defaultValue: null,
                     Point itemPos = transform.Transform(new Point(0, 0));
                     y = direction > 0 ? itemPos.Y + previousItem.ActualHeight : itemPos.Y - length;
                 }
-                catch (Exception ex) when (ex.Message is not null)
+                catch (Exception ex)
                 {
                     Debug.WriteLine($"NavigationView indicator transform failed: {ex}");
                     return new Point(fromPosition.X, y);
+                    throw;
                 }
             }
             return new Point(fromPosition.X, y);
@@ -1667,10 +1670,11 @@ defaultValue: null,
                         Point itemPos = transform.Transform(new Point(0, 0));
                         x = direction > 0 ? itemPos.X - length : itemPos.X + targetItem.ActualWidth;
                     }
-                    catch (Exception ex) when (ex.Message is not null)
+                    catch (Exception ex)
                     {
                         Debug.WriteLine($"NavigationView indicator transform failed: {ex}");
                         return new Point(x, toPosition.Y);
+                        throw;
                     }
                 }
 
@@ -1686,10 +1690,11 @@ defaultValue: null,
                     Point itemPos = transform.Transform(new Point(0, 0));
                     y = direction > 0 ? itemPos.Y - length : itemPos.Y + targetItem.ActualHeight;
                 }
-                catch (Exception ex) when (ex.Message is not null)
+                catch (Exception ex)
                 {
                     Debug.WriteLine($"NavigationView indicator transform failed: {ex}");
                     return new Point(toPosition.X, y);
+                    throw;
                 }
             }
             return new Point(toPosition.X, y);
@@ -1843,7 +1848,7 @@ defaultValue: null,
             try
             {
                 List<NavigationViewItem> navItems = GetTopNavigationItems();
-                foreach (NavigationViewItem navItem in navItems.Where(navItem => (bool)navItem.GetValue(IsTopOverflowCollapsedProperty)))
+                foreach (NavigationViewItem navItem in navItems.Where(static navItem => (bool)navItem.GetValue(IsTopOverflowCollapsedProperty)))
                 {
                     navItem.Visibility = Visibility.Visible;
                     navItem.ClearValue(IsTopOverflowCollapsedProperty);
@@ -1873,7 +1878,7 @@ defaultValue: null,
                 }
 
                 double totalItemWidth = 0.0;
-                foreach (NavigationViewItem navItem in navItems.Where(navItem => navItem.Visibility is Visibility.Visible))
+                foreach (NavigationViewItem navItem in navItems.Where(static navItem => navItem.Visibility is Visibility.Visible))
                 {
                     totalItemWidth += GetElementWidth(navItem);
                 }
