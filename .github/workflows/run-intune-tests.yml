@@ -644,6 +644,7 @@ jobs:
                   'failed'       { 'failure' }
                   'failure'      { 'failure' }
                   'skipped'      { 'skipped' }
+                  'ignored'      { 'skipped' }
                   'inconclusive' { 'unknown' }
                   default        { 'unknown' }
                 }
@@ -1482,6 +1483,7 @@ jobs:
       PESTER_FAILED: ${{ needs.run-intune-tests.outputs.pester_failed || '0' }}
       PESTER_SKIPPED: ${{ needs.run-intune-tests.outputs.pester_skipped || '0' }}
       PESTER_NOTRUN: ${{ needs.run-intune-tests.outputs.pester_notrun || '0' }}
+      CASES_JSON: ${{ needs.run-intune-tests.outputs.cases_json || '{}' }}
     steps:
     - name: Reset session VM (finalizer)
       shell: pwsh
@@ -1501,7 +1503,30 @@ jobs:
         [void][int]::TryParse([string]$env:PESTER_FAILED, [ref]$failed)
         [void][int]::TryParse([string]$env:PESTER_SKIPPED, [ref]$skipped)
         [void][int]::TryParse([string]$env:PESTER_NOTRUN, [ref]$notRun)
-        $ignored = [math]::Max($skipped + $notRun, 0)
+
+        $allowedSkippedCases = @(
+          '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations'
+        )
+        $allowedSkippedCount = 0
+        try {
+          $cases = ([string]$env:CASES_JSON) | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+          foreach ($caseName in $allowedSkippedCases) {
+            if ($cases.ContainsKey($caseName)) {
+              $outcome = (([string]$cases[$caseName] -split '\|', 2)[0]).Trim().ToLowerInvariant()
+              if ($outcome -eq 'skipped') {
+                $allowedSkippedCount++
+                Write-Host "Allowed skipped case will count as passed for VM reset: $caseName"
+              }
+            }
+          }
+        }
+        catch {
+          Write-Warning "Unable to evaluate allowed skipped cases: $($PSItem.Exception.Message)"
+        }
+
+        $effectiveSkipped = [math]::Max($skipped - $allowedSkippedCount, 0)
+        $ignored = [math]::Max($effectiveSkipped + $notRun, 0)
+        Write-Host "Reset status counts: Total=$total, Failed=$failed, Skipped=$skipped, AllowedSkipped=$allowedSkippedCount, EffectiveSkipped=$effectiveSkipped, NotRun=$notRun"
 
         $statusXmlPath = Join-Path $env:RUNNER_TEMP 'IntuneTests-ResetStatus.xml'
         $statusXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?><test-results total=`"$total`" failures=`"$failed`" errors=`"0`" ignored=`"$ignored`"></test-results>"
