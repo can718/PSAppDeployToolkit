@@ -302,11 +302,6 @@ jobs:
 
           $notificationSource = ([string]$env:NOTIFICATION_SOURCE).Trim()
           $sourceLabel = if ([string]::IsNullOrWhiteSpace($notificationSource)) { 'General' } else { $notificationSource }
-          $sourceIcon = switch -Regex ($sourceLabel.ToLowerInvariant()) {
-            'intune'     { '📱' }
-            'sccm tests' { '🧪' }
-            default      { '🏷️' }
-          }
 
           $branchName = ([string]$env:BRANCH).Trim()
           if ([string]::IsNullOrWhiteSpace($branchName)) {
@@ -340,15 +335,6 @@ jobs:
             $runUrl = $null
             [void]$diagnostics.Add('run_url is invalid; action button omitted.')
           }
-
-          $ciInfoRows = @(
-            @{ Item = 'Notification Source'; Value = "$sourceIcon $sourceLabel" },
-            @{ Item = 'Workflow'; Value = $workflowName },
-            @{ Item = 'Branch'; Value = $branchName },
-            @{ Item = 'Commit'; Value = $shortSha },
-            @{ Item = 'Message'; Value = $commitTitle },
-            @{ Item = 'Triggered by'; Value = $actorName }
-          )
 
           $pesterTotal = 0
           $pesterDiscovered = 0
@@ -453,16 +439,6 @@ jobs:
 
           $caseRows = $caseRows | Sort-Object -Property 'Step Name'
 
-          $stageHeaders = @('Step Name', 'Status', 'Time Consuming')
-
-          $ciStageRows = foreach ($ciRow in $ciInfoRows) {
-            @{
-              'Step Name'      = [string]$ciRow['Item']
-              'Status'         = [string]$ciRow['Value']
-              'Time Consuming' = 'N/A'
-            }
-          }
-
           $pesterStageRows = foreach ($metricRow in $pesterRows) {
             @{
               'Step Name'      = [string]$metricRow['Metric']
@@ -471,18 +447,8 @@ jobs:
             }
           }
 
-          $ciPanel = New-WorkflowStagePanel -Title 'Stage: Pipeline Info' -Rows $ciStageRows
-          $maxVisibleStepRows = 5
-          $visibleStepRows = @($stepRows | Select-Object -First $maxVisibleStepRows)
-          $hasAdditionalStepRows = $stepRows.Count -gt $maxVisibleStepRows
-          $stepsPanel = if ($visibleStepRows.Count -gt 0) {
-            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $visibleStepRows
-          }
-          else {
-            $null
-          }
-          $allStepsPanel = if ($hasAdditionalStepRows) {
-            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps (All)' -Rows $stepRows
+          $stepsPanel = if ($stepRows.Count -gt 0) {
+            New-WorkflowStagePanel -Title 'Stage: Pipeline Steps' -Rows $stepRows
           }
           else {
             $null
@@ -555,10 +521,6 @@ jobs:
               type = 'TextBlock'
               text = "Trigger For: $actorName"
               wrap = $true
-            },
-            @{
-              type = 'Container'
-              items = @($ciPanel)
             }
           )
 
@@ -571,59 +533,9 @@ jobs:
             }
 
             if ($stepsPanel) {
-              if ($allStepsPanel) {
-                $cardBody += @(
-                  @{
-                    type = 'Container'
-                    id = 'pipeline-steps-summary-panel'
-                    items = @($stepsPanel)
-                  },
-                  @{
-                    type = 'Container'
-                    id = 'pipeline-steps-all-panel'
-                    isVisible = $false
-                    items = @($allStepsPanel)
-                  },
-                  @{
-                    type = 'ActionSet'
-                    id = 'pipeline-steps-view-all-action'
-                    actions = @(
-                      @{
-                        type = 'Action.ToggleVisibility'
-                        title = 'View All Steps'
-                        targetElements = @(
-                          'pipeline-steps-summary-panel',
-                          'pipeline-steps-all-panel',
-                          'pipeline-steps-view-all-action',
-                          'pipeline-steps-view-fewer-action'
-                        )
-                      }
-                    )
-                  },
-                  @{
-                    type = 'ActionSet'
-                    id = 'pipeline-steps-view-fewer-action'
-                    isVisible = $false
-                    actions = @(
-                      @{
-                        type = 'Action.ToggleVisibility'
-                        title = 'Show Fewer Steps'
-                        targetElements = @(
-                          'pipeline-steps-summary-panel',
-                          'pipeline-steps-all-panel',
-                          'pipeline-steps-view-all-action',
-                          'pipeline-steps-view-fewer-action'
-                        )
-                      }
-                    )
-                  }
-                )
-              }
-              else {
-                $cardBody += @{
-                  type = 'Container'
-                  items = @($stepsPanel)
-                }
+              $cardBody += @{
+                type = 'Container'
+                items = @($stepsPanel)
               }
             }
           }

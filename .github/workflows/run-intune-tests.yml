@@ -49,7 +49,6 @@ jobs:
       pester_skipped:    ${{ steps.run-pester.outputs.pester_skipped || '0' }}
       pester_notrun:     ${{ steps.run-pester.outputs.pester_notrun || '0' }}
       cases_json:        ${{ steps.collect-cases.outputs.cases_json || '{}' }}
-      teams_cases_json:  ${{ steps.collect-cases.outputs.teams_cases_json || '{}' }}
       cases_order_json:  ${{ steps.collect-cases.outputs.cases_order_json || '[]' }}
       recording_urls_json: ${{ steps.upload-to-blob.outputs.public_recording_urls_json || '[]' }}
       result_summary_payload: ${{ steps.result-summary-collect.outputs.result_summary_payload || '{}' }}
@@ -689,24 +688,11 @@ jobs:
           }
         }
 
-        $teamsCaseEntries = [ordered]@{}
-        $maxTeamsCaseEntries = 8
-        $prioritizedCaseNames = @(
-          @($caseEntries.Keys | Where-Object { ([string]$caseEntries[$_]) -notmatch '^success(?:\s*\||$)' })
-          @($caseEntries.Keys | Where-Object { ([string]$caseEntries[$_]) -match '^success(?:\s*\||$)' })
-        )
-        foreach ($caseName in $prioritizedCaseNames) {
-          if ($teamsCaseEntries.Count -ge $maxTeamsCaseEntries) { break }
-          $teamsCaseEntries[$caseName] = $caseEntries[$caseName]
-        }
-
         $casesJson = if ($caseEntries.Count -gt 0) { $caseEntries | ConvertTo-Json -Compress } else { '{}' }
-        $teamsCasesJson = if ($teamsCaseEntries.Count -gt 0) { $teamsCaseEntries | ConvertTo-Json -Compress } else { '{}' }
         $casesOrderJson = @($caseEntries.Keys) | ConvertTo-Json -Compress
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_json=$casesJson`n", [System.Text.Encoding]::UTF8)
-        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "teams_cases_json=$teamsCasesJson`n", [System.Text.Encoding]::UTF8)
         [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_order_json=$casesOrderJson`n", [System.Text.Encoding]::UTF8)
-        Write-Host "Collected $($caseEntries.Count) test case result(s); selected $($teamsCaseEntries.Count) for Teams notification."
+        Write-Host "Collected $($caseEntries.Count) test case result(s)."
 
     - name: Generate case TRX and HTML report
       id: generate-case-trx
@@ -1478,7 +1464,7 @@ jobs:
       pester_failed:     ${{ needs.run-intune-tests.outputs.pester_failed || '0' }}
       pester_skipped:    ${{ needs.run-intune-tests.outputs.pester_skipped || '0' }}
       pester_notrun:     ${{ needs.run-intune-tests.outputs.pester_notrun || '0' }}
-      cases_json:        ${{ needs.run-intune-tests.outputs.teams_cases_json || '{}' }}
+      cases_json:        ${{ needs.run-intune-tests.outputs.cases_json || '{}' }}
     secrets: inherit
 
   reset-session-vm:
