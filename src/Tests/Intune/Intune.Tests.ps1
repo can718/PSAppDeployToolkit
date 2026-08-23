@@ -13,12 +13,38 @@ param()
 #   5. Per-test AfterEach - TerraForge result update
 # ---------------------------------------------------------------------------
 
+function Get-IntuneTestApps
+{
+    $apps = @(& (Join-Path $PSScriptRoot '..\_Shared\TestApps.ps1'))
+
+    $includeNames = @($env:PSADT_INTUNE_INCLUDE_APP_NAMES -split ';' | Where-Object { -not [System.String]::IsNullOrWhiteSpace($_) })
+    if ($includeNames.Count -gt 0)
+    {
+        $apps = @($apps | Where-Object { $includeNames -contains $_.Name })
+    }
+
+    $excludeNames = @($env:PSADT_INTUNE_EXCLUDE_APP_NAMES -split ';' | Where-Object { -not [System.String]::IsNullOrWhiteSpace($_) })
+    if ($excludeNames.Count -gt 0)
+    {
+        $apps = @($apps | Where-Object { $excludeNames -notcontains $_.Name })
+    }
+
+    return $apps
+}
+
 BeforeAll {
     # Resolve script root for relative paths.
     $script:_tfScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
 
     # Load shared helper functions.
     . (Join-Path $script:_tfScriptRoot 'IntuneTestHelpers.ps1')
+
+    $script:SharedEnvironmentHelpersPath = Join-Path $script:_tfScriptRoot '..\_Shared\TestAppEnvironment.Helpers.ps1'
+    if (-not (Test-Path -LiteralPath $script:SharedEnvironmentHelpersPath -PathType Leaf))
+    {
+        throw "Required shared helper file not found: $script:SharedEnvironmentHelpersPath"
+    }
+    . $script:SharedEnvironmentHelpersPath
 
     # Load TerraForge helper script at script scope so exported functions
     # remain available in later Pester blocks (BeforeEach/AfterEach).
@@ -91,8 +117,13 @@ Describe 'Intune Tests' {
         $groupResult = Initialize-IntuneTestGroup `
             -TenantId     $script:TenantID `
             -ClientId     $script:ClientID `
-            -ClientSecret $script:ClientSecret
+            -ClientSecret $script:ClientSecret `
+            -ExistingGroupId $env:PSADT_INTUNE_TEST_GROUP_ID
         $script:GroupID = $groupResult.GroupId
+        if ($script:GroupID)
+        {
+            $env:PSADT_INTUNE_TEST_GROUP_ID = $script:GroupID
+        }
 
         if ($groupResult.SkipReason)
         {
@@ -144,13 +175,23 @@ Describe 'Intune Tests' {
 
     Context 'Parallel Install - V3,V4 - Batch Upload, Single Sync, Parallel Poll install and uninstall of multiple apps' {
         # Define all apps to install in parallel.
-        # Body-level assignment executes during Pester 5 Discovery (needed for -ForEach).
-        $script:ParallelApps = & (Join-Path $PSScriptRoot '..\_Shared\TestApps.ps1')
+        # Body-level assignment executes during Pester Discovery (needed for -ForEach).
+        $parallelAppsForEach = @(Get-IntuneTestApps)
+        $env:PSADT_INTUNE_PARALLEL_APP_NAMES_FOR_PESTER = ConvertTo-Json -InputObject @($parallelAppsForEach | ForEach-Object { $_.Name }) -Compress
 
         BeforeAll {
-            # Re-assign during Run phase to guarantee availability in It blocks.
-            # Pester 5 may isolate Discovery-time $script: variables from the Run phase.
-            $script:ParallelApps = & (Join-Path $PSScriptRoot '..\_Shared\TestApps.ps1')
+            # Rehydrate during Run phase to guarantee availability in It blocks.
+            # Pester 6 isolates Discovery-time local variables from the Run phase.
+            $parallelAppNamesForRun = @($env:PSADT_INTUNE_PARALLEL_APP_NAMES_FOR_PESTER | ConvertFrom-Json)
+            # Top-level test-file functions belong to Pester's discovery scope and are not
+            # reliably available from nested run blocks in Pester 6.
+            $availableAppsForRun = @(& (Join-Path $script:_tfScriptRoot '..\_Shared\TestApps.ps1'))
+            $script:ParallelApps = @(
+                foreach ($appName in $parallelAppNamesForRun)
+                {
+                    $availableAppsForRun | Where-Object { $_.Name -eq $appName } | Select-Object -First 1
+                }
+            )
             $script:ParallelInstallResults = @{}
         }
 
@@ -172,7 +213,7 @@ Describe 'Intune Tests' {
 
                 # Wrap into .intunewin package.
                 $packageParams = @{
-                    WorkDir = $env.WorkDir
+                    WorkDir              = $env.WorkDir
                     IntuneWinAppUtilPath = $script:IntuneWinAppUtil
                 }
                 $effectiveSetupFileName = if ($app.SetupFileName)
@@ -198,8 +239,8 @@ Describe 'Intune Tests' {
                 $intuneDisplayName = '{0}-{1}' -f $package.DisplayName, $script:IntuneDisplayNameSuffix
                 Write-Information "[Intune Upload] Uploading $($app.TemplateVersion) app '$intuneDisplayName'..." -InformationAction Continue
                 $publishParams = @{
-                    FilePath = $package.IntuneWinPath
-                    DisplayName = $intuneDisplayName
+                    FilePath      = $package.IntuneWinPath
+                    DisplayName   = $intuneDisplayName
                     DetectionRule = $DetectionRule
                 }
                 $effectiveInstallCmd = if ($app.InstallCmd)
@@ -237,11 +278,11 @@ Describe 'Intune Tests' {
                     -Intent 'required' -Notification 'showAll' -Verbose
 
                 $script:UploadedApps[$app.Name] = @{
-                    Win32AppId = $win32App.id
-                    DisplayName = $intuneDisplayName
-                    RegDisplayName = if ($app.RegDisplayName) { $app.RegDisplayName } else { $app.Name }
+                    Win32AppId      = $win32App.id
+                    DisplayName     = $intuneDisplayName
+                    RegDisplayName  = if ($app.RegDisplayName) { $app.RegDisplayName } else { $app.Name }
                     RegVersionValue = if ($app.RegVersionValue) { $app.RegVersionValue } else { $app.AppVersion }
-                    RegVersionName = if ($app.RegVersionName) { $app.RegVersionName } else { 'DisplayVersion' }
+                    RegVersionName  = if ($app.RegVersionName) { $app.RegVersionName } else { 'DisplayVersion' }
                 }
                 Write-Information "[$($app.Name)] Uploaded and assigned successfully." -InformationAction Continue
             }
@@ -249,18 +290,50 @@ Describe 'Intune Tests' {
             $script:UploadedApps.Count | Should -Be $script:ParallelApps.Count
         }
 
-        It '[INTUNE:InstallSync] MDM sync, then parallel poll for all installations' {
+        It '[INTUNE:InstallSync] MDM sync, then parallel poll for expected install outcomes' {
             $script:UploadedApps | Should -Not -BeNullOrEmpty -Because 'Upload step must succeed first'
 
             Invoke-MdmSync
             Start-Sleep -Seconds 8
             Wait-IntuneManagementExtension
 
+            $expectedDeferralAppNames = @(
+                $script:ParallelApps |
+                    Where-Object { $_.TemplateVersion -eq 'V4' -and (Get-PsadtForceCountdownDeferralExpectation -App $_).Expected } |
+                    ForEach-Object { $_.Name }
+            )
+            $appsForRegistryPoll = @(
+                $script:UploadedApps.Keys |
+                    Where-Object { $expectedDeferralAppNames -notcontains $_ }
+            )
+
             $helperPath = Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1'
-            $result = Invoke-ParallelAppPollWithRetry `
-                -UploadedApps    $script:UploadedApps `
-                -Operation       'Install' `
-                -HelperScriptPath $helperPath
+            $result = @{ Succeeded = @(); Failed = @() }
+            if ($appsForRegistryPoll.Count -gt 0)
+            {
+                $result = Invoke-ParallelAppPollWithRetry `
+                    -UploadedApps    $script:UploadedApps `
+                    -Operation       'Install' `
+                    -HelperScriptPath $helperPath `
+                    -AppNames        $appsForRegistryPoll
+            }
+
+            $expectedDeferralApps = @(
+                $script:ParallelApps |
+                    Where-Object { $expectedDeferralAppNames -contains $_.Name }
+            )
+            if ($expectedDeferralApps.Count -gt 0)
+            {
+                Write-Information "[Parallel Install] Triggering expected deferral app install once: $($expectedDeferralAppNames -join ', ')" -InformationAction Continue
+                Invoke-MdmSync
+                Start-Sleep -Seconds 8
+                Wait-IntuneManagementExtension
+
+                foreach ($appConfig in $expectedDeferralApps)
+                {
+                    $null = Wait-PsadtForceCountdownDeferralLog -App $appConfig
+                }
+            }
 
             # Store results and run post-install scripts for succeeded apps.
             foreach ($appName in $result.Succeeded)
@@ -275,16 +348,44 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '[INTUNE:<Name>_Install][<TemplateVersion>] <Name> should be installed' -ForEach $script:ParallelApps {
+        It '[INTUNE:<Name>_Install][<TemplateVersion>] <Name> should reach expected install outcome' -ForEach $parallelAppsForEach {
             $failures = @()
+            $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+            $expectForceCountdownDeferral = $false
 
-            if (-not $script:ParallelInstallResults[$Name])
+            if ($appConfig -and $appConfig.TemplateVersion -eq 'V4')
+            {
+                $expectForceCountdownDeferral = (Get-PsadtForceCountdownDeferralExpectation -App $appConfig).Expected
+            }
+
+            if ($expectForceCountdownDeferral)
+            {
+                if ($script:ParallelInstallResults[$Name])
+                {
+                    $failures += '[Install Status] app installed successfully, but ForceCountdown deferral was expected'
+                }
+
+                if ($appConfig)
+                {
+                    $logValidation = Test-PsadtForceCountdownDeferralLog -App $appConfig -DeploymentType 'Install'
+                    if (-not $logValidation.Success)
+                    {
+                        $failures += "[Log Validation] $($logValidation.Message)"
+                    }
+
+                    $versionValidation = Test-PsadtAppFileVersion -App $appConfig -ExpectedState 'Deferral'
+                    if (-not $versionValidation.Success)
+                    {
+                        $failures += "[Version Validation] $($versionValidation.Message)"
+                    }
+                }
+            }
+            elseif (-not $script:ParallelInstallResults[$Name])
             {
                 $failures += '[Install Status] app was not installed successfully via Intune MDM sync'
             }
 
-            $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
-            if ($appConfig)
+            if ($appConfig -and -not $expectForceCountdownDeferral)
             {
                 $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Install'
                 if (-not $logValidation.Success)
@@ -297,8 +398,6 @@ Describe 'Intune Tests' {
         }
 
         It '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
-            $script:ParallelInstallResults.Count | Should -BeGreaterThan 0 -Because 'At least one app must have installed'
-
             # Build uninstall candidate list from installed apps, honoring per-app filters.
             $appsForUninstall = @()
             foreach ($appName in $script:ParallelInstallResults.Keys)
@@ -307,20 +406,28 @@ Describe 'Intune Tests' {
                 if ($appConfig -and $appConfig.SkipUninstall)
                 {
                     Write-Information "[Parallel Uninstall] Skipping uninstall for '$appName' due to SkipUninstall filter." -InformationAction Continue
-                    continue
                 }
-
-                $appsForUninstall += $appName
+                else
+                {
+                    $appsForUninstall += $appName
+                }
             }
 
             if (-not $appsForUninstall)
             {
-                Set-ItResult -Skipped -Because 'All installed apps are filtered out from uninstall test by SkipUninstall.'
+                Set-ItResult -Skipped -Because 'No installed apps are eligible for uninstall testing.'
+                return
             }
 
             # Reassign all apps with uninstall intent.
             foreach ($appName in $appsForUninstall)
             {
+                $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $appName } | Select-Object -First 1
+                if ($appConfig -and $appConfig.PreUninstallScript)
+                {
+                    & $appConfig.PreUninstallScript
+                }
+
                 $appInfo = $script:UploadedApps[$appName]
                 Remove-IntuneWin32AppAssignmentGroup -ID $appInfo.Win32AppId -GroupID $script:GroupID
                 Add-IntuneWin32AppAssignmentGroup -Include -ID $appInfo.Win32AppId -GroupID $script:GroupID `
@@ -346,7 +453,7 @@ Describe 'Intune Tests' {
             }
         }
 
-        It '[INTUNE:<Name>_Uninstall][<TemplateVersion>] <Name> should be uninstalled' -ForEach ($script:ParallelApps | Where-Object { -not $_.SkipUninstall }) {
+        It '[INTUNE:<Name>_Uninstall][<TemplateVersion>] <Name> should be uninstalled' -ForEach ($parallelAppsForEach | Where-Object { -not $_.SkipUninstall }) -AllowNullOrEmptyForEach {
             $failures = @()
 
             if (-not $script:ParallelUninstallResults[$Name])
@@ -379,13 +486,28 @@ Describe 'Intune Tests' {
                 }
             }
 
-            # Clean up Azure AD test group.
-            Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
-            if ($script:GroupID)
+            # Clean up Azure AD test group only after the final split Intune run.
+            $cleanupGroup = $env:PSADT_INTUNE_CLEANUP_GROUP -ne 'false'
+            if ($script:GroupID -and $cleanupGroup)
             {
-                Remove-MgGroup -GroupId $script:GroupID -ErrorAction Stop
-                Start-Sleep -Seconds 5
+                Write-Information "Cleaning up Azure AD test group..." -InformationAction Continue
+                try
+                {
+                    Invoke-MgGraphRequest -Method DELETE -Uri "https://graph.microsoft.com/v1.0/groups/$($script:GroupID)" -ErrorAction Stop
+                    Start-Sleep -Seconds 5
+                    Remove-Item Env:\PSADT_INTUNE_TEST_GROUP_ID -ErrorAction SilentlyContinue
+                }
+                catch
+                {
+                    Write-Warning "[Intune] Failed to clean up Azure AD test group '$($script:GroupID)': $($_.Exception.Message)"
+                }
             }
+            elseif ($script:GroupID)
+            {
+                Write-Information "Keeping Azure AD test group '$script:GroupID' for the next Intune test split." -InformationAction Continue
+            }
+
+            Remove-Item Env:\PSADT_INTUNE_PARALLEL_APP_NAMES_FOR_PESTER -ErrorAction SilentlyContinue
         }
     }
 }

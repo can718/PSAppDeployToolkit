@@ -68,6 +68,7 @@ function Start-AdditionalTestRecording
 
         if ($script:recordingStarted)
         {
+            Add-ADTModuleCallback -Hookpoint OnDefer -Callback (Get-Command -Name Stop-AdditionalTestRecording)
             Write-ADTLogEntry -Message "Recording started successfully. Output file: [$($script:recordingOutputFile)]." -Severity Info
         }
         else
@@ -398,6 +399,7 @@ recording begins after startup and is finalized when execution finishes.
 function Register-AdditionalTestRecordingCallbacks
 {
     Add-ADTModuleCallback -Hookpoint PostOpen -Callback (Get-Command -Name Start-AdditionalTestRecording)
+    Add-ADTModuleCallback -Hookpoint OnDefer -Callback (Get-Command -Name Stop-AdditionalTestRecording)
     Add-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-Command -Name Stop-AdditionalTestRecording)
 }
 

@@ -5,18 +5,18 @@
 )]
 $NewADTTemplateParameters = @{
     SessionProperties        = @{
-        AppVendor                   = 'Don HO don.h@free.fr'
-        AppName                     = 'Notepad++'
-        AppVersion                  = '6.6.4'
+        AppVendor                   = 'Igor Pavlov'
+        AppName                     = '7-Zip ForceClose'
+        AppVersion                  = '24.09'
         AppArch                     = 'x64'
         AppLang                     = 'EN'
         AppRevision                 = '01'
-        AppSuccessExitCodes         = @(0)
+        AppSuccessExitCodes         = @(0, 3010)
         AppRebootExitCodes          = @(1641, 3010)
-        AppProcessesToClose         = @(@{ Name = 'notepad++'; Description = 'Notepad++' })
+        AppProcessesToClose         = @(@{ Name = '7zFM'; Description = '7-Zip File Manager' })
         RequireAdmin                = $true
         AppScriptVersion            = '1.0.0'
-        AppScriptDate               = '2026-04-01'
+        AppScriptDate               = '2026-08-20'
         AppScriptAuthor             = 'PSAppDeployToolkit'
         InstallName                 = ''
         InstallTitle                = ''
@@ -24,16 +24,16 @@ $NewADTTemplateParameters = @{
         DeployAppScriptParameters   = $PSBoundParameters
         DeployAppScriptVersion      = '4.2.0'
     }
-    Destination              = 'C:\PSADT\NotepadPlusPlus'
-    Files                    = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
+    Destination              = 'C:\PSADT\SevenZipForceClose'
+    Files                    = 'C:\Tools\Intune\7z2409-x64.msi'
     PreInstallScriptBlock    = {
         Start-AdditionalTestRecording
 
         $saiwParams = @{
-            AllowDefer     = $true
-            DeferTimes     = 2
-            ForceCountdown = 8
-            CheckDiskSpace = $true
+            AllowDefer                   = $true
+            DeferTimes                   = 2
+            ForceCloseProcessesCountdown = 10
+            CheckDiskSpace               = $true
         }
         if ($adtSession.AppProcessesToClose.Count -gt 0)
         {
@@ -44,7 +44,7 @@ $NewADTTemplateParameters = @{
     }
 
     InstallScriptBlock       = {
-        Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.exe" -ArgumentList '/S'
+        Start-ADTMsiProcess -Action Install -FilePath '7z2409-x64.msi'
     }
 
     PostInstallScriptBlock   = {
@@ -56,15 +56,19 @@ $NewADTTemplateParameters = @{
     PreUninstallScriptBlock  = {
         Start-AdditionalTestRecording
 
+        $saiwParams = @{
+            ForceCloseProcessesCountdown = 10
+        }
         if ($adtSession.AppProcessesToClose.Count -gt 0)
         {
-            Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 10
+            $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
         }
+        Show-ADTInstallationWelcome @saiwParams
         Show-ADTInstallationProgress
     }
 
     UninstallScriptBlock     = {
-        Uninstall-ADTApplication -Name 'Notepad++ (64-bit x64)' -NameMatch 'Exact' -ArgumentList '/S'
+        Start-ADTMsiProcess -Action Uninstall -FilePath '7z2409-x64.msi'
     }
 
     PostUninstallScriptBlock = {
@@ -73,16 +77,11 @@ $NewADTTemplateParameters = @{
     }
 
     PreRepairScriptBlock     = {
-        if ($adtSession.AppProcessesToClose.Count -gt 0)
-        {
-            Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 10
-        }
         Show-ADTInstallationProgress
     }
 
     RepairScriptBlock        = {
-        Uninstall-ADTApplication -Name 'Notepad++ (64-bit x64)' -NameMatch 'Exact' -ArgumentList '/S'
-        Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.exe" -ArgumentList '/S'
+        Start-ADTMsiProcess -Action Repair -FilePath '7z2409-x64.msi' -RepairFromSource
     }
 
     PostRepairScriptBlock    = {

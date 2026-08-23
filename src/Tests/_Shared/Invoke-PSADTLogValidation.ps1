@@ -18,7 +18,13 @@
 
         [Parameter(Mandatory)]
         [ValidateSet('Install', 'Uninstall', 'Repair')]
-        [string]$DeploymentType
+        [string]$DeploymentType,
+
+        [ValidateRange(0, 300)]
+        [int]$FinalizationWaitSeconds = 30,
+
+        [ValidateRange(100, 5000)]
+        [int]$PollIntervalMilliseconds = 500
     )
 
     $testsRoot = Split-Path -Path $PSScriptRoot -Parent
@@ -105,25 +111,50 @@
     # Default log path: C:\Windows\Logs\Software
     $logPath = "$env:SystemRoot\Logs\Software"
     $logFilePattern = "${installName}_*_${DeploymentType}.log"
+    # Pattern: [InstallName] install completed in [X] seconds with exit code [N].
+    $exitCodePattern = [regex]::Escape($installName) + '\].*completed in \[.*\] seconds with exit code \[(\d+)\]'
+    $deadline = [DateTime]::UtcNow.AddSeconds($FinalizationWaitSeconds)
+    $logFile = $null
+    $exitCodeMatch = $null
+    do
+    {
+        $logFile = Get-ChildItem -Path $logPath -Filter $logFilePattern -File -ErrorAction SilentlyContinue |
+            Sort-Object -Property LastWriteTime -Descending |
+            Select-Object -First 1
 
-    $logFiles = Get-ChildItem -Path $logPath -Filter $logFilePattern -File -ErrorAction SilentlyContinue |
-        Sort-Object -Property LastWriteTime -Descending
+        if ($logFile)
+        {
+            # PSADT may remove the app's registry entry before post-deployment
+            # work finishes and writes the finalization line.
+            $logContent = Get-Content -LiteralPath $logFile.FullName -Raw -ErrorAction SilentlyContinue
+            if (-not [string]::IsNullOrEmpty($logContent))
+            {
+                $exitCodeMatches = [regex]::Matches($logContent, $exitCodePattern)
+                if ($exitCodeMatches.Count -gt 0)
+                {
+                    $exitCodeMatch = $exitCodeMatches[$exitCodeMatches.Count - 1]
+                    break
+                }
+            }
+        }
 
-    if (-not $logFiles)
+        if ([DateTime]::UtcNow -ge $deadline)
+        {
+            break
+        }
+        Start-Sleep -Milliseconds $PollIntervalMilliseconds
+    }
+    while ($true)
+
+    if (-not $logFile)
     {
         Write-Warning "[$($App.Name)] Log validation FAILED: No log file matching [$logFilePattern] found in [$logPath]."
         return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "Log file not found matching [$logFilePattern] in [$logPath]." }
     }
 
-    $logFile = $logFiles[0]
-    # Read the last portion of the log to find the finalization line with exit code.
-    $logContent = Get-Content -LiteralPath $logFile.FullName -Tail 50 -ErrorAction SilentlyContinue | Out-String
-
-    # Pattern: [InstallName] install completed in [X] seconds with exit code [N].
-    $exitCodePattern = [regex]::Escape($installName) + '\].*completed in \[.*\] seconds with exit code \[(\d+)\]'
-    if ($logContent -match $exitCodePattern)
+    if ($exitCodeMatch)
     {
-        $exitCode = [int]$Matches[1]
+        $exitCode = [int]$exitCodeMatch.Groups[1].Value
         $successCodes = @($sessionProps.AppSuccessExitCodes) + @($sessionProps.AppRebootExitCodes)
         if ($exitCode -in $successCodes)
         {
@@ -144,6 +175,238 @@
         if ($errorSummary) { $msg += " $errorSummary" }
         return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $logFile.FullName; Message = $msg }
     }
+}
+
+function Get-PsadtForceCountdownDeferralExpectation
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App
+    )
+
+    $result = @{
+        Expected = $false
+        DeferTimes = $null
+        ForceCountdown = $null
+        TemplateParamsPath = $null
+        Message = $null
+    }
+
+    if ($App.TemplateVersion -ne 'V4')
+    {
+        return $result
+    }
+
+    $testsRoot = Split-Path -Path $PSScriptRoot -Parent
+    $templateParamsPath = Join-Path $testsRoot "V4\$($App.AppFolderName)\New-ADTTemplate.params.ps1"
+    $result.TemplateParamsPath = $templateParamsPath
+    if (-not (Test-Path -LiteralPath $templateParamsPath -PathType Leaf))
+    {
+        $result.Message = "Template parameter file not found: $templateParamsPath"
+        return $result
+    }
+
+    Remove-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction SilentlyContinue
+    . $templateParamsPath
+
+    if (-not (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore))
+    {
+        $result.Message = "Variable `$NewADTTemplateParameters not found in [$templateParamsPath]."
+        return $result
+    }
+
+    $templateParams = (Get-Variable -Name NewADTTemplateParameters -Scope Local).Value
+    if ($null -eq $templateParams -or $templateParams -isnot [System.Collections.IDictionary] -or -not $templateParams.PreInstallScriptBlock)
+    {
+        $result.Message = "Invalid or missing PreInstallScriptBlock in [$templateParamsPath]."
+        return $result
+    }
+
+    $preInstallScriptText = $templateParams.PreInstallScriptBlock.ToString()
+    $deferTimesMatch = [System.Text.RegularExpressions.Regex]::Match($preInstallScriptText, '(?m)^\s*DeferTimes\s*=\s*(?<Value>\d+)')
+    $forceCountdownMatch = [System.Text.RegularExpressions.Regex]::Match($preInstallScriptText, '(?m)^\s*ForceCountdown\s*=\s*(?<Value>\d+)')
+    if ($deferTimesMatch.Success)
+    {
+        $result.DeferTimes = $deferTimesMatch.Groups['Value'].Value
+    }
+    if ($forceCountdownMatch.Success)
+    {
+        $result.ForceCountdown = $forceCountdownMatch.Groups['Value'].Value
+    }
+
+    $hasForceCloseProcessesCountdown = $preInstallScriptText.Contains('ForceCloseProcessesCountdown')
+    $result.Expected = ($null -ne $result.DeferTimes) -and ($null -ne $result.ForceCountdown) -and -not $hasForceCloseProcessesCountdown
+    return $result
+}
+
+function Test-PsadtForceCountdownDeferralLog
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType
+    )
+
+    $expectation = Get-PsadtForceCountdownDeferralExpectation -App $App
+    if (-not $expectation.Expected)
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = "ForceCountdown deferral is not expected for app [$($App.Name)]. $($expectation.Message)" }
+    }
+
+    $logValidation = Invoke-PsadtLogValidation -App $App -DeploymentType $DeploymentType
+    if (-not $logValidation.LogFile)
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = $logValidation.Message }
+    }
+
+    $logContent = Get-Content -LiteralPath $logValidation.LogFile -Raw -ErrorAction SilentlyContinue
+    $failures = @()
+    if ($logContent -notmatch 'Evaluating disk space requirements\.')
+    {
+        $failures += 'expected disk space requirement check line was not found'
+    }
+    if ($logContent -notmatch 'Successfully passed minimum disk space requirement check\.')
+    {
+        $failures += 'expected disk space pass line was not found'
+    }
+
+    $expectedInitialDeferralsRemaining = [int]$expectation.DeferTimes
+    $expectedUpdatedDeferralsRemaining = [Math]::Max(($expectedInitialDeferralsRemaining - 1), 0)
+    $expectedInitialDeferralsRemainingPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedInitialDeferralsRemaining.ToString())
+    $expectedUpdatedDeferralsRemainingPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedUpdatedDeferralsRemaining.ToString())
+    $expectedForceCountdownPattern = [System.Text.RegularExpressions.Regex]::Escape($expectation.ForceCountdown)
+    if (($logContent -notmatch "The user has \[$expectedInitialDeferralsRemainingPattern\] deferrals remaining\.") -and ($logContent -notmatch "Setting deferral history: \[DeferTimesRemaining = $expectedUpdatedDeferralsRemainingPattern\]\."))
+    {
+        $failures += "expected deferrals remaining [$expectedInitialDeferralsRemaining] or deferral history [$expectedUpdatedDeferralsRemaining] line was not found"
+    }
+    if ($logContent -notmatch "Close applications countdown has \[$expectedForceCountdownPattern\] seconds remaining\.")
+    {
+        $failures += "expected ForceCountdown [$($expectation.ForceCountdown)]-second countdown line was not found"
+    }
+    if ($logContent -notmatch 'Countdown timer has elapsed and deferrals remaining\. Force deferral\.')
+    {
+        $failures += 'expected force deferral line was not found'
+    }
+    if ($logContent -notmatch "$($DeploymentType.ToLowerInvariant()) was deferred .* exit code \[1602\]")
+    {
+        $failures += 'expected deferred finalization with exit code 1602 was not found'
+    }
+
+    if ($failures.Count)
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $logValidation.LogFile; Message = ($failures -join '; ') }
+    }
+
+    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCountdown deferral log validation passed for deferrals remaining [$expectedInitialDeferralsRemaining], deferral history [$expectedUpdatedDeferralsRemaining], and ForceCountdown [$($expectation.ForceCountdown)]." }
+}
+
+function Test-PsadtForceCloseCountdownLog
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType
+    )
+
+    if ($App.TemplateVersion -ne 'V4')
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = "ForceCloseProcessesCountdown validation requires a V4 app template for app [$($App.Name)]." }
+    }
+
+    $testsRoot = Split-Path -Path $PSScriptRoot -Parent
+    $templateParamsPath = Join-Path $testsRoot "V4\$($App.AppFolderName)\New-ADTTemplate.params.ps1"
+    if (-not (Test-Path -LiteralPath $templateParamsPath -PathType Leaf))
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = "Template parameter file not found: $templateParamsPath" }
+    }
+
+    Remove-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction SilentlyContinue
+    . $templateParamsPath
+
+    if (-not (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore))
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = "Variable `$NewADTTemplateParameters not found in [$templateParamsPath]." }
+    }
+
+    $templateParams = (Get-Variable -Name NewADTTemplateParameters -Scope Local).Value
+    $scriptBlockName = "Pre$($DeploymentType)ScriptBlock"
+    if ($null -eq $templateParams -or $templateParams -isnot [System.Collections.IDictionary] -or -not $templateParams[$scriptBlockName])
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = "Invalid or missing $scriptBlockName in [$templateParamsPath]." }
+    }
+
+    $scriptBlockText = $templateParams[$scriptBlockName].ToString()
+    $countdownMatch = [System.Text.RegularExpressions.Regex]::Match($scriptBlockText, '(?m)^\s*ForceCloseProcessesCountdown\s*=\s*(?<Value>\d+)')
+    if (-not $countdownMatch.Success)
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = "ForceCloseProcessesCountdown was not configured in $scriptBlockName for app [$($App.Name)]." }
+    }
+
+    $logValidation = Invoke-PsadtLogValidation -App $App -DeploymentType $DeploymentType
+    if (-not $logValidation.LogFile)
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = $logValidation.Message }
+    }
+
+    $logContent = Get-Content -LiteralPath $logValidation.LogFile -Raw -ErrorAction SilentlyContinue
+    $expectedCountdown = $countdownMatch.Groups['Value'].Value
+    $expectedCountdownPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedCountdown)
+    $failures = @()
+    if ($logContent -notmatch "Close applications countdown has \[$expectedCountdownPattern\] seconds remaining\.")
+    {
+        $failures += "expected ForceCloseProcessesCountdown [$expectedCountdown]-second countdown line was not found"
+    }
+    if ($logContent -notmatch 'Close application\(s\) countdown timer has elapsed\. Force closing application\(s\)\.')
+    {
+        $failures += 'expected force closing application(s) line was not found'
+    }
+
+    if ($failures.Count)
+    {
+        return @{ Success = $false; Skipped = $false; LogFile = $logValidation.LogFile; Message = ($failures -join '; ') }
+    }
+
+    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCloseProcessesCountdown log validation passed for countdown [$expectedCountdown]." }
+}
+
+function Test-PsadtAppFileVersion
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Deferral')]
+        [string]$ExpectedState
+    )
+
+    $filePath = $App.VersionCheckFilePath
+    $pattern = if ($ExpectedState -eq 'Deferral') { $App.ExpectedDeferralFileVersionPattern } else { $App.ExpectedInstallFileVersionPattern }
+    $description = if ($ExpectedState -eq 'Deferral') { $App.ExpectedDeferralFileVersionDescription } else { $App.ExpectedInstallFileVersionDescription }
+
+    if ([string]::IsNullOrWhiteSpace($filePath) -or [string]::IsNullOrWhiteSpace($pattern))
+    {
+        return @{ Success = $true; Skipped = $true; FilePath = $filePath; FileVersion = $null; Message = "No file version expectation configured for app [$($App.Name)] state [$ExpectedState]." }
+    }
+
+    if (-not (Test-Path -LiteralPath $filePath -PathType Leaf))
+    {
+        return @{ Success = $false; Skipped = $false; FilePath = $filePath; FileVersion = $null; Message = "Expected version check file not found: $filePath" }
+    }
+
+    $fileVersion = (Get-Item -LiteralPath $filePath).VersionInfo.FileVersion
+    if ($fileVersion -match $pattern)
+    {
+        return @{ Success = $true; Skipped = $false; FilePath = $filePath; FileVersion = $fileVersion; Message = "File version [$fileVersion] matched expected $ExpectedState version [$description]." }
+    }
+
+    return @{ Success = $false; Skipped = $false; FilePath = $filePath; FileVersion = $fileVersion; Message = "File version [$fileVersion] did not match expected $ExpectedState version [$description] using pattern [$pattern]." }
 }
 
 # ---------------------------------------------------------------------------
@@ -237,11 +500,10 @@ function Get-PsadtLogErrorSummary
     $recent = @()
     foreach ($msg in $reversed)
     {
-        if (-not $seen.ContainsKey($msg))
+        if ($recent.Count -lt 3 -and -not $seen.ContainsKey($msg))
         {
             $seen[$msg] = $true
             $recent += $msg
-            if ($recent.Count -ge 3) { break }
         }
     }
     [array]::Reverse($recent)

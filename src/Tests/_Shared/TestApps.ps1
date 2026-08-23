@@ -6,6 +6,17 @@
     Uses the Intune-style array/hashtable format and includes additional fields
     required by SCCM Additional tests.
 #>
+
+$sharedEnvironmentHelpersPath = Join-Path $PSScriptRoot 'TestAppEnvironment.Helpers.ps1'
+if (-not (Test-Path -LiteralPath $sharedEnvironmentHelpersPath -PathType Leaf))
+{
+    throw "Required shared helper file not found: $sharedEnvironmentHelpersPath"
+}
+if (-not (Get-Command -Name 'Initialize-NotepadPlusPlusLegacyTestEnvironment' -CommandType Function -ErrorAction SilentlyContinue))
+{
+    . $sharedEnvironmentHelpersPath
+}
+
 @(
     @{
         Name = 'VLC'
@@ -58,38 +69,11 @@
         InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
         UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
         RegVersionValue = '6.6.4'
+        VersionCheckFilePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
+        ExpectedDeferralFileVersionPattern = '^(6\.23|6\.2\.3)(\.|$)'
+        ExpectedDeferralFileVersionDescription = 'legacy version 6.2.3'
         PreInstallScript = {
-            # Install lower version as prerequisite for upgrade test.
-            $installerDir = 'C:\Tools\Intune\Notepad6.2.3'
-            $installerPath = Join-Path $installerDir 'npp.6.2.3.Installer.exe'
-            if (-not (Test-Path $installerPath))
-            {
-                New-Item -Path $installerDir -ItemType Directory -Force | Out-Null
-                Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-2/npp.6.2.3.Installer.exe' -OutFile $installerPath -UseBasicParsing
-            }
-            Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -NoNewWindow
-            $legacyNotepadExePath = Join-Path ${env:ProgramFiles(x86)} 'Notepad++\notepad++.exe'
-            if (Test-Path $legacyNotepadExePath)
-            {
-                Start-Process -FilePath $legacyNotepadExePath
-            }
-            else
-            {
-                Write-Warning "[Notepad++] Launch path not found: $legacyNotepadExePath"
-            }
-
-            # Download new version installer.
-            $newDir = 'C:\Tools\Intune\Notepad6.6.4'
-            $newPath = Join-Path $newDir 'npp.6.6.4.Installer.exe'
-            if (-not (Test-Path $newPath))
-            {
-                New-Item -Path $newDir -ItemType Directory -Force | Out-Null
-                Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-5/npp.6.6.4.Installer.exe' -OutFile $newPath -UseBasicParsing
-            }
-
-            # Keep a copy at the V4 template default file path.
-            $templateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
-            Copy-Item -Path $newPath -Destination $templateExpectedInstallerPath -Force
+            Initialize-NotepadPlusPlusLegacyTestEnvironment -LaunchLegacyProcess -LogPrefix 'Notepad++'
         }
         PostInstallScript = {
             $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
@@ -117,6 +101,54 @@
             New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++' `
                 -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '6.6.4'
+        }
+    }
+    @{
+        Name = '7-Zip ForceClose'
+        TemplateVersion = 'V4'
+        AppFolderName = '7-Zip ForceClose'
+        AppName = '7-Zip ForceClose (PSADT v4)'
+        AppVendor = 'Igor Pavlov'
+        AppVersion = '24.09'
+        ContentSubPath = 'SevenZipForceClose'
+        TargetInstallerDir = 'C:\Tools\Intune\SevenZipForceClose'
+        TargetInstallerName = '7z2409-x64.msi'
+        TargetInstallerUri = 'https://www.7-zip.org/a/7z2409-x64.msi'
+        InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
+        UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
+        RegDisplayName = '7-Zip'
+        RegVersionValue = '24.09'
+        DetectionRuleBuilder = {
+            param($FilesDir)
+            $msiFile = Get-ChildItem -Path $FilesDir -Filter '7z2409-x64.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $msiFile) { throw 'No MSI file found for 7-Zip detection rule' }
+            $productCode = Get-MsiProductCode -MsiPath $msiFile.FullName
+            New-IntuneWin32AppDetectionRuleMSI -ProductCode $productCode
+        }
+        PreInstallScript = {
+            Initialize-SevenZipForceCloseTestEnvironment -LaunchProcess -LogPrefix '7-Zip ForceClose'
+        }
+        PreUninstallScript = {
+            $sevenZipFileManager = Join-Path ${env:ProgramFiles} '7-Zip\7zFM.exe'
+            Start-PSADTTestAppProcess -FilePath $sevenZipFileManager -ProcessName '7zFM' -Description 'installed 7zFM' -LogPrefix '7-Zip ForceClose'
+        }
+        PostInstallScript = {
+            $sevenZipEntries = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            ) | ForEach-Object {
+                Get-ItemProperty -Path $PSItem -ErrorAction SilentlyContinue | Where-Object { $PSItem.DisplayName -like '7-Zip*' }
+            }
+            if ($sevenZipEntries)
+            {
+                $sevenZipEntries | ForEach-Object {
+                    Write-Information "[7-Zip ForceClose] Installed 7-Zip entry: $($PSItem.DisplayName) $($PSItem.DisplayVersion)" -InformationAction Continue
+                }
+            }
+            else
+            {
+                Write-Warning '[7-Zip ForceClose] 7-Zip uninstall registry entry was not found after install.'
+            }
         }
     }
     @{
