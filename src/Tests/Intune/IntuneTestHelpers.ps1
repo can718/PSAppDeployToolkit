@@ -859,6 +859,12 @@ function Wait-PsadtForceCountdownDeferralLog
             return $true
         }
 
+        if (-not $logValidation.LogFile)
+        {
+            Write-Information "[$($App.Name)] No PSADT log exists yet; triggering another MDM sync." -InformationAction Continue
+            Invoke-MdmSync
+        }
+
         Write-Information "[$($App.Name)] ForceCountdown deferral log not ready; waiting $PollIntervalSeconds s... ($($waited + $PollIntervalSeconds) / $MaxWaitSeconds s elapsed)" -InformationAction Continue
         Start-Sleep -Seconds $PollIntervalSeconds
         $waited += $PollIntervalSeconds

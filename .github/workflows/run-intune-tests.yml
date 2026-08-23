@@ -714,10 +714,10 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $logSource = 'C:\Windows\Logs\Software'
         $logDestination = '.\src\Artifacts\TestOutput\PSADTLogs'
         New-Item -ItemType Directory -Path $logDestination -Force | Out-Null
 
+        $logSource = 'C:\Windows\Logs\Software'
         if (-not (Test-Path -LiteralPath $logSource -PathType Container)) {
           Write-Warning "PSADT log directory not found: $logSource"
           exit 0
