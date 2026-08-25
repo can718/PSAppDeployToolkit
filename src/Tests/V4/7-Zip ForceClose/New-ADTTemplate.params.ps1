@@ -30,8 +30,8 @@ $NewADTTemplateParameters = @{
         Start-AdditionalTestRecording
 
         $saiwParams = @{
-            AllowDefer                   = $true
-            DeferTimes                   = 2
+            #AllowDefer                   = $true
+            #DeferTimes                   = 2
             ForceCloseProcessesCountdown = 10
             CheckDiskSpace               = $true
         }
