@@ -32,6 +32,7 @@ using System.Windows.Media;
 using System.Windows.Shell;
 using Fluence.Wpf.Controls;
 using Fluence.Wpf.Helpers;
+using Fluence.Wpf.Native;
 using Windows.Win32;
 using Windows.Win32.Graphics.Dwm;
 using Xunit;
@@ -51,15 +52,29 @@ namespace Fluence.Wpf.Tests
             bool legacyMica = false,
             bool roundedCorners = false,
             bool captionColor = false,
-            bool borderColor = false)
+            bool borderColor = false,
+            bool legacyAcrylic = false)
         {
             return new WindowCapabilities(
                 systemBackdrop,
                 legacyMica,
                 roundedCorners,
                 captionColor,
-                borderColor);
+                borderColor,
+                legacyAcrylic);
         }
+
+        /// <summary>
+        /// The capability snapshot of a Windows 10 build at or past 17063: no DWM backdrop
+        /// attribute of any kind, but the legacy <c>SetWindowCompositionAttribute</c> acrylic
+        /// accent state is available.
+        /// </summary>
+        private static WindowCapabilities Win10AcrylicCaps()
+        {
+            return Caps(legacyAcrylic: true);
+        }
+
+        private static readonly Color AcrylicTint = Color.FromArgb(0xF0, 0xF9, 0xF9, 0xF9);
 
         #region ResolveEffectiveBackdrop - capability matrix
 
@@ -205,7 +220,9 @@ namespace Fluence.Wpf.Tests
                 BackdropType.None,
                 ApplicationTheme.Light,
                 Caps(systemBackdrop: true),
-                fallback);
+                fallback,
+                isTransparencyEnabled: false,
+                legacyAcrylicTintColor: Colors.Transparent);
 
             Assert.Equal(BackdropType.None, plan.EffectiveBackdrop);
             Assert.False(plan.UseTransparentBackground,
@@ -223,7 +240,9 @@ namespace Fluence.Wpf.Tests
                 BackdropType.None,
                 ApplicationTheme.Light,
                 Caps(),
-                Color.FromRgb(0xFA, 0xFA, 0xFA));
+                Color.FromRgb(0xFA, 0xFA, 0xFA),
+                isTransparencyEnabled: false,
+                legacyAcrylicTintColor: Colors.Transparent);
 
             Assert.False(plan.SystemBackdropType is not null,
                 "Windows 10 does not expose DWMWA_SYSTEMBACKDROP_TYPE - the plan must not attempt to set it.");
@@ -240,7 +259,9 @@ namespace Fluence.Wpf.Tests
                 BackdropType.Mica,
                 ApplicationTheme.Dark,
                 Caps(legacyMica: true, roundedCorners: true),
-                Colors.White);
+                Colors.White,
+                isTransparencyEnabled: false,
+                legacyAcrylicTintColor: Colors.Transparent);
 
             Assert.Equal(BackdropType.Mica, plan.EffectiveBackdrop);
             Assert.True(plan.UseTransparentBackground,
@@ -260,7 +281,9 @@ namespace Fluence.Wpf.Tests
                 BackdropType.Mica,
                 ApplicationTheme.Light,
                 Caps(systemBackdrop: true, roundedCorners: true, captionColor: true),
-                Colors.White);
+                Colors.White,
+                isTransparencyEnabled: false,
+                legacyAcrylicTintColor: Colors.Transparent);
 
             Assert.Equal(BackdropType.Mica, plan.EffectiveBackdrop);
             Assert.True(plan.UseTransparentBackground);
@@ -280,7 +303,9 @@ namespace Fluence.Wpf.Tests
                 BackdropType.Acrylic,
                 ApplicationTheme.Light,
                 Caps(systemBackdrop: true, roundedCorners: true),
-                Colors.White);
+                Colors.White,
+                isTransparencyEnabled: false,
+                legacyAcrylicTintColor: Colors.Transparent);
 
             Assert.Equal(BackdropType.Acrylic, plan.EffectiveBackdrop);
             Assert.Equal(DWM_SYSTEMBACKDROP_TYPE.DWMSBT_TRANSIENTWINDOW, plan.SystemBackdropType);
@@ -293,13 +318,272 @@ namespace Fluence.Wpf.Tests
                 BackdropType.Tabbed,
                 ApplicationTheme.Light,
                 Caps(systemBackdrop: true, roundedCorners: true),
-                Colors.White);
+                Colors.White,
+                isTransparencyEnabled: false,
+                legacyAcrylicTintColor: Colors.Transparent);
 
             Assert.Equal(BackdropType.Tabbed, plan.EffectiveBackdrop);
             Assert.Equal(DWM_SYSTEMBACKDROP_TYPE.DWMSBT_TABBEDWINDOW, plan.SystemBackdropType);
         }
 
         #endregion BuildBackdropPlan - Acrylic + Tabbed (SystemBackdropType mapping)
+
+        #region Windows 10 legacy acrylic (SetWindowCompositionAttribute accent policy)
+
+        [Fact]
+        public void ResolveEffectiveBackdrop_Acrylic_Win10Legacy_TransparencyOn_StaysAcrylic()
+        {
+            BackdropType effective = WindowPolicy.ResolveEffectiveBackdrop(
+                BackdropType.Acrylic,
+                Win10AcrylicCaps(),
+                isTransparencyEnabled: true,
+                ApplicationTheme.Light);
+
+            Assert.Equal(BackdropType.Acrylic, effective);
+        }
+
+        [Fact]
+        public void ResolveEffectiveBackdrop_Acrylic_Win10Legacy_DefaultTransparencyArgument_ReturnsNone()
+        {
+            // The transparency argument defaults to false on purpose: a caller that does not read
+            // the OS toggle must not be handed a blur the user has switched off.
+            BackdropType effective = WindowPolicy.ResolveEffectiveBackdrop(
+                BackdropType.Acrylic,
+                Win10AcrylicCaps());
+
+            Assert.Equal(BackdropType.None, effective);
+        }
+
+        [Fact]
+        public void ResolveEffectiveBackdrop_Acrylic_Win10Legacy_HighContrast_ReturnsNone()
+        {
+            BackdropType effective = WindowPolicy.ResolveEffectiveBackdrop(
+                BackdropType.Acrylic,
+                Win10AcrylicCaps(),
+                isTransparencyEnabled: true,
+                ApplicationTheme.HighContrast);
+
+            Assert.Equal(BackdropType.None, effective);
+        }
+
+        [Fact]
+        public void ResolveEffectiveBackdrop_Acrylic_Win10PreLegacyBuild_ReturnsNone()
+        {
+            BackdropType effective = WindowPolicy.ResolveEffectiveBackdrop(
+                BackdropType.Acrylic,
+                Caps(),
+                isTransparencyEnabled: true,
+                ApplicationTheme.Light);
+
+            Assert.Equal(BackdropType.None, effective);
+        }
+
+        [Fact]
+        public void ResolveEffectiveBackdrop_Tabbed_Win10Legacy_ReturnsNone()
+        {
+            // The legacy accent policy has no tabbed equivalent, so Tabbed keeps downgrading to
+            // None on Windows 10 even where Acrylic now survives.
+            BackdropType effective = WindowPolicy.ResolveEffectiveBackdrop(
+                BackdropType.Tabbed,
+                Win10AcrylicCaps(),
+                isTransparencyEnabled: true,
+                ApplicationTheme.Light);
+
+            Assert.Equal(BackdropType.None, effective);
+        }
+
+        [Fact]
+        public void ResolveEffectiveBackdrop_Mica_Win10Legacy_ReturnsNone()
+        {
+            BackdropType effective = WindowPolicy.ResolveEffectiveBackdrop(
+                BackdropType.Mica,
+                Win10AcrylicCaps(),
+                isTransparencyEnabled: true,
+                ApplicationTheme.Light);
+
+            Assert.Equal(BackdropType.None, effective);
+        }
+
+        [Fact]
+        public void ResolveEffectiveBackdrop_Acrylic_Win11Pre22H2_TransparencyOn_StillDowngradesToMica()
+        {
+            // The Win11 arms must not be reachable by the legacy-acrylic branch: 21H2 has Mica,
+            // which is a better answer than a Windows 10 accent blur.
+            BackdropType effective = WindowPolicy.ResolveEffectiveBackdrop(
+                BackdropType.Acrylic,
+                Caps(legacyMica: true, roundedCorners: true, captionColor: true),
+                isTransparencyEnabled: true,
+                ApplicationTheme.Light);
+
+            Assert.Equal(BackdropType.Mica, effective);
+        }
+
+        [Fact]
+        public void BuildBackdropPlan_Acrylic_Win10Legacy_TransparencyOn_UsesLegacyAcrylic()
+        {
+            BackdropPlan plan = WindowPolicy.BuildBackdropPlan(
+                BackdropType.Acrylic,
+                ApplicationTheme.Light,
+                Win10AcrylicCaps(),
+                Color.FromRgb(0xFA, 0xFA, 0xFA),
+                isTransparencyEnabled: true,
+                legacyAcrylicTintColor: AcrylicTint);
+
+            Assert.Equal(BackdropType.Acrylic, plan.EffectiveBackdrop);
+            Assert.True(plan.UseLegacyAcrylic,
+                "Windows 10 17063+ with transparency on must take the legacy accent-policy path.");
+            Assert.Equal(AcrylicTint, plan.LegacyAcrylicTintColor);
+            Assert.True(plan.UseTransparentBackground,
+                "The accent policy composites behind the client area, so the client must be transparent.");
+            Assert.Equal(Colors.Transparent, plan.BackgroundColor);
+            Assert.Equal(PInvoke.DWMWA_COLOR_NONE, plan.CaptionColor);
+            Assert.False(plan.SystemBackdropType is not null,
+                "Windows 10 does not expose DWMWA_SYSTEMBACKDROP_TYPE - the plan must not attempt to set it.");
+            Assert.False(plan.UseLegacyMicaEffect,
+                "The legacy Mica attribute does not exist on Windows 10 and is mutually exclusive with acrylic.");
+        }
+
+        [Fact]
+        public void BuildBackdropPlan_Acrylic_Win10Legacy_DarkTheme_CarriesDarkTintAndImmersiveDark()
+        {
+            Color darkTint = Color.FromArgb(0xF0, 0x2C, 0x2C, 0x2C);
+            BackdropPlan plan = WindowPolicy.BuildBackdropPlan(
+                BackdropType.Acrylic,
+                ApplicationTheme.Dark,
+                Win10AcrylicCaps(),
+                Color.FromRgb(0x20, 0x20, 0x20),
+                isTransparencyEnabled: true,
+                legacyAcrylicTintColor: darkTint);
+
+            Assert.True(plan.UseLegacyAcrylic);
+            Assert.Equal(darkTint, plan.LegacyAcrylicTintColor);
+            Assert.True(plan.UseImmersiveDarkMode);
+        }
+
+        [Fact]
+        public void BuildBackdropPlan_Acrylic_Win10Legacy_TransparencyOff_FallsBackToOpaqueNone()
+        {
+            Color fallback = Color.FromRgb(0xFA, 0xFA, 0xFA);
+            BackdropPlan plan = WindowPolicy.BuildBackdropPlan(
+                BackdropType.Acrylic,
+                ApplicationTheme.Light,
+                Win10AcrylicCaps(),
+                fallback,
+                isTransparencyEnabled: false,
+                legacyAcrylicTintColor: AcrylicTint);
+
+            Assert.Equal(BackdropType.None, plan.EffectiveBackdrop);
+            Assert.False(plan.UseLegacyAcrylic,
+                "The OS transparency-effects toggle being off must suppress the accent policy entirely.");
+            Assert.False(plan.UseTransparentBackground);
+            Assert.Equal(fallback, plan.BackgroundColor);
+            Assert.Equal(Colors.Transparent, plan.LegacyAcrylicTintColor);
+        }
+
+        [Fact]
+        public void BuildBackdropPlan_Acrylic_Win10Legacy_HighContrast_FallsBackToOpaqueNone()
+        {
+            Color fallback = Color.FromRgb(0x00, 0x00, 0x00);
+            BackdropPlan plan = WindowPolicy.BuildBackdropPlan(
+                BackdropType.Acrylic,
+                ApplicationTheme.HighContrast,
+                Win10AcrylicCaps(),
+                fallback,
+                isTransparencyEnabled: true,
+                legacyAcrylicTintColor: AcrylicTint);
+
+            Assert.Equal(BackdropType.None, plan.EffectiveBackdrop);
+            Assert.False(plan.UseLegacyAcrylic,
+                "High contrast must never be blurred - the theme exists to guarantee contrast.");
+            Assert.Equal(fallback, plan.BackgroundColor);
+        }
+
+        [Fact]
+        public void BuildBackdropPlan_Acrylic_Win10PreLegacyBuild_FallsBackToOpaqueNone()
+        {
+            Color fallback = Color.FromRgb(0xFA, 0xFA, 0xFA);
+            BackdropPlan plan = WindowPolicy.BuildBackdropPlan(
+                BackdropType.Acrylic,
+                ApplicationTheme.Light,
+                Caps(),
+                fallback,
+                isTransparencyEnabled: true,
+                legacyAcrylicTintColor: AcrylicTint);
+
+            Assert.Equal(BackdropType.None, plan.EffectiveBackdrop);
+            Assert.False(plan.UseLegacyAcrylic);
+            Assert.Equal(fallback, plan.BackgroundColor);
+        }
+
+        [Fact]
+        public void BuildBackdropPlan_Tabbed_Win10Legacy_FallsBackToOpaqueNone()
+        {
+            Color fallback = Color.FromRgb(0xFA, 0xFA, 0xFA);
+            BackdropPlan plan = WindowPolicy.BuildBackdropPlan(
+                BackdropType.Tabbed,
+                ApplicationTheme.Light,
+                Win10AcrylicCaps(),
+                fallback,
+                isTransparencyEnabled: true,
+                legacyAcrylicTintColor: AcrylicTint);
+
+            Assert.Equal(BackdropType.None, plan.EffectiveBackdrop);
+            Assert.False(plan.UseLegacyAcrylic);
+            Assert.Equal(fallback, plan.BackgroundColor);
+        }
+
+        [Fact]
+        public void BuildBackdropPlan_Mica_Win10Legacy_FallsBackToOpaqueNone()
+        {
+            Color fallback = Color.FromRgb(0xFA, 0xFA, 0xFA);
+            BackdropPlan plan = WindowPolicy.BuildBackdropPlan(
+                BackdropType.Mica,
+                ApplicationTheme.Light,
+                Win10AcrylicCaps(),
+                fallback,
+                isTransparencyEnabled: true,
+                legacyAcrylicTintColor: AcrylicTint);
+
+            Assert.Equal(BackdropType.None, plan.EffectiveBackdrop);
+            Assert.False(plan.UseLegacyAcrylic);
+            Assert.False(plan.UseLegacyMicaEffect);
+            Assert.Equal(fallback, plan.BackgroundColor);
+        }
+
+        [Fact]
+        public void BuildBackdropPlan_Acrylic_Win22H2_DoesNotUseLegacyAcrylic()
+        {
+            // The Windows 11 path must stay byte-identical whatever the transparency toggle says:
+            // DWM honours that setting itself.
+            BackdropPlan plan = WindowPolicy.BuildBackdropPlan(
+                BackdropType.Acrylic,
+                ApplicationTheme.Light,
+                Caps(systemBackdrop: true, roundedCorners: true, captionColor: true, borderColor: true),
+                Colors.White,
+                isTransparencyEnabled: true,
+                legacyAcrylicTintColor: AcrylicTint);
+
+            Assert.Equal(BackdropType.Acrylic, plan.EffectiveBackdrop);
+            Assert.Equal(DWM_SYSTEMBACKDROP_TYPE.DWMSBT_TRANSIENTWINDOW, plan.SystemBackdropType);
+            Assert.False(plan.UseLegacyAcrylic,
+                "Windows 11 has DWM acrylic - the legacy accent policy must never be used there.");
+            Assert.Equal(Colors.Transparent, plan.LegacyAcrylicTintColor);
+        }
+
+        [Fact]
+        public void WindowCapabilities_LegacyAcrylicFlag_IsPlumbedThroughTheConstructor()
+        {
+            WindowCapabilities without = Caps();
+            WindowCapabilities with = Caps(legacyAcrylic: true);
+
+            Assert.False(without.SupportsLegacyAcrylic,
+                "The legacy-acrylic capability must default to off so existing snapshots are unchanged.");
+            Assert.True(with.SupportsLegacyAcrylic);
+            Assert.False(with.SupportsSystemBackdropType);
+            Assert.False(with.SupportsMicaEffect);
+        }
+
+        #endregion Windows 10 legacy acrylic (SetWindowCompositionAttribute accent policy)
 
         #region BuildBackdropPlan - Immersive dark flag
 
@@ -310,7 +594,9 @@ namespace Fluence.Wpf.Tests
                 BackdropType.None,
                 ApplicationTheme.Dark,
                 Caps(systemBackdrop: true),
-                Color.FromRgb(0x20, 0x20, 0x20));
+                Color.FromRgb(0x20, 0x20, 0x20),
+                isTransparencyEnabled: false,
+                legacyAcrylicTintColor: Colors.Transparent);
 
             Assert.True(plan.UseImmersiveDarkMode,
                 "Dark theme must set DWMWA_USE_IMMERSIVE_DARK_MODE so the native caption renders dark.");
@@ -323,7 +609,9 @@ namespace Fluence.Wpf.Tests
                 BackdropType.None,
                 ApplicationTheme.Light,
                 Caps(systemBackdrop: true),
-                Color.FromRgb(0xFA, 0xFA, 0xFA));
+                Color.FromRgb(0xFA, 0xFA, 0xFA),
+                isTransparencyEnabled: false,
+                legacyAcrylicTintColor: Colors.Transparent);
 
             Assert.False(plan.UseImmersiveDarkMode);
         }
@@ -450,10 +738,18 @@ namespace Fluence.Wpf.Tests
 
         #endregion GetResizeBorderThickness - maximised / non-resize matrix
 
-        #region BuildFramePlan - accent border selection
+        #region BuildFramePlan - DWM border ownership and brush selection
+
+        // DWM owns the border wherever it can draw one. A brush painted inside the client area
+        // composites over the window's own surface, never over the desktop, so an inner border
+        // shows as a pale line between the system border and the content and no stroke token can
+        // make it dark enough in Light theme. On an OS with DWMWA_BORDER_COLOR the plan therefore
+        // writes the accent COLORREF when the window is active with accent borders and
+        // DWMWA_COLOR_DEFAULT otherwise, and takes the template border to 0. Windows 10 has no such
+        // attribute, so there the 2 dp template border is the outline.
 
         [Fact]
-        public void BuildFramePlan_Normal_ActiveWithAccentBorder_UsesAccentKey()
+        public void BuildFramePlan_Normal_ActiveWithAccentBorder_UsesAccentKeyAndAccentDwmBorder()
         {
             FramePlan plan = WindowPolicy.BuildFramePlan(
                 WindowState.Normal,
@@ -462,22 +758,59 @@ namespace Fluence.Wpf.Tests
                 capabilities: Caps(borderColor: true),
                 accentColor: Color.FromRgb(0x00, 0x78, 0xD4));
 
-            Assert.Equal(new Thickness(2), plan.TemplateBorderThickness);
+            Assert.Equal(new Thickness(0), plan.TemplateBorderThickness);
             Assert.Equal("SystemAccentColorBrush", plan.TemplateBorderBrushResourceKey, StringComparer.Ordinal);
-            Assert.NotEqual(PInvoke.DWMWA_COLOR_DEFAULT, plan.DwmBorderColor);
+            Assert.Equal(NativeMethods.ColorToColorRef(Color.FromRgb(0x00, 0x78, 0xD4)), plan.DwmBorderColor);
         }
 
         [Fact]
-        public void BuildFramePlan_Normal_Inactive_UsesCardStrokeKey()
+        public void BuildFramePlan_Normal_Inactive_UsesCardStrokeKeyAndDwmDefault()
         {
             FramePlan plan = WindowPolicy.BuildFramePlan(
                 WindowState.Normal,
                 isActive: false,
                 isAccentBorderEnabled: true,
                 capabilities: Caps(borderColor: true),
-                accentColor: Colors.Red);
+                accentColor: Color.FromRgb(0x00, 0x78, 0xD4));
 
             Assert.Equal("CardStrokeColorDefaultSolidBrush", plan.TemplateBorderBrushResourceKey, StringComparer.Ordinal);
+            Assert.Equal(new Thickness(0), plan.TemplateBorderThickness);
+            Assert.Equal(PInvoke.DWMWA_COLOR_DEFAULT, plan.DwmBorderColor);
+        }
+
+        [Fact]
+        public void BuildFramePlan_AccentBorderDisabled_LeavesDwmBorderToWindows()
+        {
+            FramePlan plan = WindowPolicy.BuildFramePlan(
+                WindowState.Normal,
+                isActive: true,
+                isAccentBorderEnabled: false,
+                capabilities: Caps(borderColor: true),
+                accentColor: Color.FromRgb(0x00, 0x78, 0xD4));
+
+            Assert.Equal("CardStrokeColorDefaultSolidBrush", plan.TemplateBorderBrushResourceKey, StringComparer.Ordinal);
+            Assert.Equal(PInvoke.DWMWA_COLOR_DEFAULT, plan.DwmBorderColor);
+        }
+
+        [Fact]
+        public void BuildFramePlan_NeverSuppressesTheDwmBorder()
+        {
+            // Regression guard: DWMWA_COLOR_NONE hides the one border that composites against the
+            // desktop, which is what produced the Light-theme halo around an inactive window.
+            foreach (bool active in new[] { true, false })
+            {
+                foreach (bool accent in new[] { true, false })
+                {
+                    FramePlan plan = WindowPolicy.BuildFramePlan(
+                        WindowState.Normal,
+                        active,
+                        accent,
+                        Caps(borderColor: true),
+                        Color.FromRgb(0x00, 0x78, 0xD4));
+
+                    Assert.NotEqual(PInvoke.DWMWA_COLOR_NONE, plan.DwmBorderColor);
+                }
+            }
         }
 
         [Fact]
@@ -488,9 +821,45 @@ namespace Fluence.Wpf.Tests
                 isActive: true,
                 isAccentBorderEnabled: true,
                 capabilities: Caps(borderColor: true),
-                accentColor: Colors.Red);
+                accentColor: Color.FromRgb(0x00, 0x78, 0xD4));
 
             Assert.Equal(new Thickness(0), plan.TemplateBorderThickness);
+        }
+
+        [Fact]
+        public void BuildFramePlan_BorderColorCapableOs_DrawsNoTemplateBorder()
+        {
+            // Regression guard for the Light-theme halo: an inner border painted over the window's
+            // own surface shows as a pale line inside the system border, whatever token it uses.
+            foreach (bool active in new[] { true, false })
+            {
+                foreach (bool accent in new[] { true, false })
+                {
+                    FramePlan plan = WindowPolicy.BuildFramePlan(
+                        WindowState.Normal,
+                        active,
+                        accent,
+                        Caps(borderColor: true),
+                        Color.FromRgb(0x00, 0x78, 0xD4));
+
+                    Assert.Equal(new Thickness(0), plan.TemplateBorderThickness);
+                }
+            }
+        }
+
+        [Fact]
+        public void BuildFramePlan_NoBorderColorCapability_KeepsTemplateBorder()
+        {
+            // Windows 10 cannot colour its DWM border, so the template border is the outline there.
+            FramePlan plan = WindowPolicy.BuildFramePlan(
+                WindowState.Normal,
+                isActive: false,
+                isAccentBorderEnabled: true,
+                capabilities: Caps(),
+                accentColor: Color.FromRgb(0x00, 0x78, 0xD4));
+
+            Assert.Equal(new Thickness(2), plan.TemplateBorderThickness);
+            Assert.Equal("CardStrokeColorDefaultSolidBrush", plan.TemplateBorderBrushResourceKey, StringComparer.Ordinal);
         }
 
         [Fact]
@@ -501,12 +870,12 @@ namespace Fluence.Wpf.Tests
                 isActive: true,
                 isAccentBorderEnabled: true,
                 capabilities: Caps(),
-                accentColor: Colors.Red);
+                accentColor: Color.FromRgb(0x00, 0x78, 0xD4));
 
             Assert.Equal(PInvoke.DWMWA_COLOR_DEFAULT, plan.DwmBorderColor);
         }
 
-        #endregion BuildFramePlan - accent border selection
+        #endregion BuildFramePlan - DWM border ownership and brush selection
 
         #region WindowCapabilities.Current - sanity
 
