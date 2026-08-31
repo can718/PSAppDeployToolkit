@@ -29,7 +29,7 @@ if (-not (Test-Path -LiteralPath $sharedEnvironmentHelpersPath -PathType Leaf))
 }
 . $sharedEnvironmentHelpersPath
 
-function script:Invoke-WinSCPPollDeploymentStatus
+function script:Invoke-PollDeploymentStatus
 {
     <#
         Polls SMS_DeploymentSummary until at least one device reports success
@@ -1460,7 +1460,7 @@ function script:Assert-PSADTDeploymentSummarySuccess
         [int]$PollInterval = 180
     )
 
-    $summary = Invoke-WinSCPPollDeploymentStatus `
+    $summary = Invoke-PollDeploymentStatus `
         -AppName        $AppName `
         -SiteCode       $SiteCode `
         -Label          $Label `
