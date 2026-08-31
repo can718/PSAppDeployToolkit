@@ -303,6 +303,44 @@ function Test-PsadtForceCountdownDeferralLog
     return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCountdown deferral log validation passed for deferrals remaining [$expectedInitialDeferralsRemaining], deferral history [$expectedUpdatedDeferralsRemaining], and ForceCountdown [$($expectation.ForceCountdown)]." }
 }
 
+function New-PsadtLogExpectation
+{
+    param (
+        [Parameter(Mandatory)]
+        [string]$Description,
+
+        [Parameter(Mandatory)]
+        [string]$Pattern
+    )
+
+    return @{
+        Description = $Description
+        Pattern     = $Pattern
+    }
+}
+
+function Test-PsadtLogExpectations
+{
+    param (
+        [Parameter(Mandatory)]
+        [string]$LogContent,
+
+        [Parameter(Mandatory)]
+        [hashtable[]]$Expectations
+    )
+
+    $failures = @()
+    foreach ($expectation in $Expectations)
+    {
+        if ($LogContent -notmatch $expectation.Pattern)
+        {
+            $failures += "expected log line was not found: $($expectation.Description)"
+        }
+    }
+
+    return $failures
+}
+
 function Test-PsadtForceCloseCountdownLog
 {
     param (
@@ -311,7 +349,9 @@ function Test-PsadtForceCloseCountdownLog
 
         [Parameter(Mandatory)]
         [ValidateSet('Install', 'Uninstall', 'Repair')]
-        [string]$DeploymentType
+        [string]$DeploymentType,
+
+        [string]$LogFilePath
     )
 
     if ($App.TemplateVersion -ne 'V4')
@@ -343,53 +383,65 @@ function Test-PsadtForceCloseCountdownLog
 
     $scriptBlockText = $templateParams[$scriptBlockName].ToString()
     $countdownMatch = [System.Text.RegularExpressions.Regex]::Match($scriptBlockText, '(?m)^\s*ForceCloseProcessesCountdown\s*=\s*(?<Value>\d+)')
-    if (-not $countdownMatch.Success)
-    {
-        return @{ Success = $false; Skipped = $false; LogFile = $null; Message = "ForceCloseProcessesCountdown was not configured in $scriptBlockName for app [$($App.Name)]." }
-    }
 
-    $logValidation = Invoke-PsadtLogValidation -App $App -DeploymentType $DeploymentType
+    if (-not [System.String]::IsNullOrWhiteSpace($LogFilePath))
+    {
+        if (-not (Test-Path -LiteralPath $LogFilePath -PathType Leaf))
+        {
+            return @{ Success = $false; Skipped = $false; LogFile = $LogFilePath; Message = "Log file not found: $LogFilePath" }
+        }
+        $logValidation = @{ LogFile = $LogFilePath }
+    }
+    else
+    {
+        $logValidation = Invoke-PsadtLogValidation -App $App -DeploymentType $DeploymentType
+    }
     if (-not $logValidation.LogFile)
     {
         return @{ Success = $false; Skipped = $false; LogFile = $null; Message = $logValidation.Message }
     }
 
     $logContent = Get-Content -LiteralPath $logValidation.LogFile -Raw -ErrorAction SilentlyContinue
-    $expectedCountdown = $countdownMatch.Groups['Value'].Value
-    $expectedCountdownPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedCountdown)
     $processesToClose = @($templateParams.SessionProperties.AppProcessesToClose) | Where-Object { $_ -and -not [System.String]::IsNullOrWhiteSpace([string]$_.Name) }
-    $failures = @()
+    $expectations = [System.Collections.Generic.List[hashtable]]::new()
+    if ($scriptBlockText -match '(?m)^\s*CheckDiskSpace\s*=\s*\$true')
+    {
+        $expectations.Add((New-PsadtLogExpectation -Description 'disk space requirements are evaluated' -Pattern 'Evaluating disk space requirements\.'))
+        $expectations.Add((New-PsadtLogExpectation -Description 'minimum disk space requirement check passes' -Pattern 'Successfully passed minimum disk space requirement check\.'))
+    }
+
     foreach ($process in $processesToClose)
     {
         $processNamePattern = [System.Text.RegularExpressions.Regex]::Escape([string]$process.Name)
-        if ($logContent -notmatch "Checking for running processes: \[.*'$processNamePattern'.*\]")
+        $expectations.Add((New-PsadtLogExpectation -Description "running process check includes [$($process.Name)]" -Pattern "Checking for running processes: \[.*'$processNamePattern'.*\]"))
+        $expectations.Add((New-PsadtLogExpectation -Description "running process found includes [$($process.Name)]" -Pattern "The following processes are running: \[.*'$processNamePattern'.*\]\."))
+
+        if (-not [System.String]::IsNullOrWhiteSpace([string]$process.Description))
         {
-            $failures += "expected running process check line for [$($process.Name)] was not found"
-        }
-        if ($logContent -notmatch "The following processes are running: \[.*'$processNamePattern'.*\]\.")
-        {
-            $failures += "expected running process found line for [$($process.Name)] was not found"
+            $processDescriptionPattern = [System.Text.RegularExpressions.Regex]::Escape([string]$process.Description)
+            $expectations.Add((New-PsadtLogExpectation -Description "close prompt includes [$($process.Description)]" -Pattern "Prompting the user to close application\(s\) \[.*'$processDescriptionPattern'.*\]\.\.\."))
         }
     }
-    if ($logContent -notmatch "Close applications countdown has \[$expectedCountdownPattern\] seconds remaining\.")
+    if ($countdownMatch.Success)
     {
-        $failures += "expected ForceCloseProcessesCountdown [$expectedCountdown]-second countdown line was not found"
+        $expectedCountdown = $countdownMatch.Groups['Value'].Value
+        $expectedCountdownPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedCountdown)
+        $expectations.Add((New-PsadtLogExpectation -Description "ForceCloseProcessesCountdown [$expectedCountdown] seconds" -Pattern "Close applications countdown has \[$expectedCountdownPattern\] seconds remaining\."))
+        $expectations.Add((New-PsadtLogExpectation -Description 'countdown elapsed and force closing application(s)' -Pattern 'Close application\(s\) countdown timer has elapsed\. Force closing application\(s\)\.'))
     }
-    if ($logContent -notmatch 'Close application\(s\) countdown timer has elapsed\. Force closing application\(s\)\.')
+    if ($processesToClose.Count -gt 0)
     {
-        $failures += 'expected force closing application(s) line was not found'
+        $expectations.Add((New-PsadtLogExpectation -Description 'all running applications have closed' -Pattern 'All running application\(s\) have now closed\.'))
     }
-    if ($processesToClose.Count -gt 0 -and $logContent -notmatch 'All running application\(s\) have now closed\.')
-    {
-        $failures += 'expected all running applications closed line was not found'
-    }
+
+    $failures = Test-PsadtLogExpectations -LogContent $logContent -Expectations $expectations.ToArray()
 
     if ($failures.Count)
     {
         return @{ Success = $false; Skipped = $false; LogFile = $logValidation.LogFile; Message = ($failures -join '; ') }
     }
 
-    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCloseProcessesCountdown log validation passed for countdown [$expectedCountdown] and running process closure evidence." }
+    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCloseProcessesCountdown log validation passed for $($expectations.Count) expected log entries." }
 }
 
 function Test-PsadtAppFileVersion
