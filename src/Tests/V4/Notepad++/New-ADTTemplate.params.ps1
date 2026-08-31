@@ -3,6 +3,8 @@
     'NewADTTemplateParameters',
     Justification = 'This hashtable is consumed by external test harness code after the script is loaded.'
 )]
+param()
+
 $sharedEnvironmentHelpersPath = Join-Path $PSScriptRoot '..\..\_Shared\TestAppEnvironment.Helpers.ps1'
 if (-not (Get-Command -Name 'Get-NotepadPlusPlusTestEnvironmentDefaults' -CommandType Function -ErrorAction SilentlyContinue))
 {

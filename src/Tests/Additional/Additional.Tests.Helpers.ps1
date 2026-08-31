@@ -807,7 +807,7 @@ function script:Initialize-NotepadPlusPlusSccmEnvironment
         -TargetInstallerDir $TargetInstallerDir `
         -TargetInstallerName $TargetInstallerName `
         -TargetInstallerUri $TargetInstallerUri `
-        -TemplateExpectedInstallerPath $null `
+        -TemplateExpectedInstallerPath $notepadPlusPlusTestConfig.IntuneTemplateExpectedInstallerPath `
         -LegacyVersionPattern $LegacyVersionPattern `
         -LogPrefix $LogPrefix `
         -LaunchLegacyProcess:$LaunchLegacyProcess
