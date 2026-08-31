@@ -25,7 +25,11 @@ function Save-PSADTTestAppInstaller
     if (-not (Test-Path -LiteralPath $destinationPath -PathType Leaf))
     {
         Write-Information "::info::[$LogPrefix] Downloading installer '$FileName' from '$Uri'..." -InformationAction Continue
-        Invoke-WebRequest -Uri $Uri -OutFile $destinationPath -UseBasicParsing
+        Invoke-WebRequest -Uri $Uri -OutFile $destinationPath -UseBasicParsing -ErrorAction Stop
+        if (-not (Test-Path -LiteralPath $destinationPath -PathType Leaf))
+        {
+            throw "[$LogPrefix] Installer download completed but file was not found at '$destinationPath'."
+        }
     }
     else
     {
@@ -114,6 +118,8 @@ function Get-NotepadPlusPlusTestEnvironmentDefaults
     $targetVersion = '8.9.8'
     $legacyInstallerName = "npp.$legacyVersion.Installer.exe"
     $targetInstallerName = "npp.$targetVersion.Installer.exe"
+    $intuneLegacyInstallerDir = "C:\Tools\Intune\Notepad$legacyVersion"
+    $intuneTargetInstallerDir = "C:\Tools\Intune\Notepad$targetVersion"
 
     return @{
         LegacyVersion                       = $legacyVersion
@@ -122,9 +128,9 @@ function Get-NotepadPlusPlusTestEnvironmentDefaults
         TargetInstallerName                 = $targetInstallerName
         LegacyInstallerUri                  = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v$legacyVersion/$legacyInstallerName"
         TargetInstallerUri                  = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v$targetVersion/$targetInstallerName"
-        IntuneLegacyInstallerDir            = "C:\Tools\Intune\Notepad$legacyVersion"
-        IntuneTargetInstallerDir            = "C:\Tools\Intune\Notepad$targetVersion"
-        IntuneTemplateExpectedInstallerPath = "C:\Tools\Intune\$targetInstallerName"
+        IntuneLegacyInstallerDir            = $intuneLegacyInstallerDir
+        IntuneTargetInstallerDir            = $intuneTargetInstallerDir
+        IntuneTemplateExpectedInstallerPath = Join-Path $intuneTargetInstallerDir $targetInstallerName
         SccmLegacyInstallerDir              = "C:\Tools\SCCM\NotepadPlusPlus\$legacyVersion"
         SccmTargetInstallerDir              = "C:\Tools\SCCM\NotepadPlusPlus\$targetVersion"
         LegacyVersionPattern                = "^$([System.Text.RegularExpressions.Regex]::Escape($legacyVersion))(\.|$)"
@@ -155,8 +161,25 @@ function Initialize-NotepadPlusPlusTemplateInstaller
 
     if (-not [System.String]::IsNullOrWhiteSpace($TemplateExpectedInstallerPath))
     {
-        New-Item -Path (Split-Path -Path $TemplateExpectedInstallerPath -Parent) -ItemType Directory -Force | Out-Null
-        Copy-Item -LiteralPath $targetInstallerPath -Destination $TemplateExpectedInstallerPath -Force
+        if (-not (Test-Path -LiteralPath $targetInstallerPath -PathType Leaf))
+        {
+            throw "[$LogPrefix] Target installer source was not found after download: '$targetInstallerPath'."
+        }
+
+        if ([System.String]::Equals([System.IO.Path]::GetFullPath($targetInstallerPath), [System.IO.Path]::GetFullPath($TemplateExpectedInstallerPath), [System.StringComparison]::OrdinalIgnoreCase))
+        {
+            Write-Information "::info::[$LogPrefix] Template installer is available at '$TemplateExpectedInstallerPath'." -InformationAction Continue
+            return $targetInstallerPath
+        }
+
+        New-Item -Path (Split-Path -Path $TemplateExpectedInstallerPath -Parent) -ItemType Directory -Force -ErrorAction Stop | Out-Null
+        Copy-Item -LiteralPath $targetInstallerPath -Destination $TemplateExpectedInstallerPath -Force -ErrorAction Stop
+        if (-not (Test-Path -LiteralPath $TemplateExpectedInstallerPath -PathType Leaf))
+        {
+            throw "[$LogPrefix] Target installer copy completed but template path was not found: '$TemplateExpectedInstallerPath'."
+        }
+
+        Write-Information "::info::[$LogPrefix] Copied installer '$targetInstallerPath' to template path '$TemplateExpectedInstallerPath'." -InformationAction Continue
     }
 
     return $targetInstallerPath
