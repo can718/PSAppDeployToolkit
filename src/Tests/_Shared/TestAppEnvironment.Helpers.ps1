@@ -131,6 +131,37 @@ function Get-NotepadPlusPlusTestEnvironmentDefaults
     }
 }
 
+function Initialize-NotepadPlusPlusTemplateInstaller
+{
+    param (
+        [string]$TargetInstallerDir,
+        [string]$TargetInstallerName,
+        [string]$TargetInstallerUri,
+        [string]$TemplateExpectedInstallerPath,
+        [string]$LogPrefix = 'Notepad++'
+    )
+
+    $notepadPlusPlusTestConfig = Get-NotepadPlusPlusTestEnvironmentDefaults
+    if ([System.String]::IsNullOrWhiteSpace($TargetInstallerDir)) { $TargetInstallerDir = $notepadPlusPlusTestConfig.IntuneTargetInstallerDir }
+    if ([System.String]::IsNullOrWhiteSpace($TargetInstallerName)) { $TargetInstallerName = $notepadPlusPlusTestConfig.TargetInstallerName }
+    if ([System.String]::IsNullOrWhiteSpace($TargetInstallerUri)) { $TargetInstallerUri = $notepadPlusPlusTestConfig.TargetInstallerUri }
+    if ($null -eq $TemplateExpectedInstallerPath) { $TemplateExpectedInstallerPath = $notepadPlusPlusTestConfig.IntuneTemplateExpectedInstallerPath }
+
+    $targetInstallerPath = Save-PSADTTestAppInstaller `
+        -DestinationDirectory $TargetInstallerDir `
+        -FileName $TargetInstallerName `
+        -Uri $TargetInstallerUri `
+        -LogPrefix $LogPrefix
+
+    if (-not [System.String]::IsNullOrWhiteSpace($TemplateExpectedInstallerPath))
+    {
+        New-Item -Path (Split-Path -Path $TemplateExpectedInstallerPath -Parent) -ItemType Directory -Force | Out-Null
+        Copy-Item -LiteralPath $targetInstallerPath -Destination $TemplateExpectedInstallerPath -Force
+    }
+
+    return $targetInstallerPath
+}
+
 function Initialize-NotepadPlusPlusLegacyTestEnvironment
 {
     param (
@@ -184,17 +215,12 @@ function Initialize-NotepadPlusPlusLegacyTestEnvironment
         Start-PSADTTestAppProcess -FilePath $legacyExePath -ProcessName 'notepad++' -Description 'legacy Notepad++' -LogPrefix $LogPrefix
     }
 
-    $targetInstallerPath = Save-PSADTTestAppInstaller `
-        -DestinationDirectory $TargetInstallerDir `
-        -FileName $TargetInstallerName `
-        -Uri $TargetInstallerUri `
+    $targetInstallerPath = Initialize-NotepadPlusPlusTemplateInstaller `
+        -TargetInstallerDir $TargetInstallerDir `
+        -TargetInstallerName $TargetInstallerName `
+        -TargetInstallerUri $TargetInstallerUri `
+        -TemplateExpectedInstallerPath $TemplateExpectedInstallerPath `
         -LogPrefix $LogPrefix
-
-    if (-not [System.String]::IsNullOrWhiteSpace($TemplateExpectedInstallerPath))
-    {
-        New-Item -Path (Split-Path -Path $TemplateExpectedInstallerPath -Parent) -ItemType Directory -Force | Out-Null
-        Copy-Item -LiteralPath $targetInstallerPath -Destination $TemplateExpectedInstallerPath -Force
-    }
 
     return @{
         LegacyInstallerPath = $legacyInstallerPath

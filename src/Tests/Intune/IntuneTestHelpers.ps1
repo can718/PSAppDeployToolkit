@@ -214,6 +214,11 @@ function New-IntuneTestWorkDir
     }
     else
     {
+        if ($App.TemplatePreparationScript)
+        {
+            & $App.TemplatePreparationScript
+        }
+
         $templateParamsPath = Join-Path $PSScriptRoot "..\V4\$($App.AppFolderName)\New-ADTTemplate.params.ps1"
         return New-IntuneTestWorkDirV4 `
             -AppFolderName      $App.AppFolderName `

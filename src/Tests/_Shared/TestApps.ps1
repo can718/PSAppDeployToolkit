@@ -73,6 +73,9 @@ $notepadPlusPlusTestConfig = Get-NotepadPlusPlusTestEnvironmentDefaults
         RegVersionValue = $notepadPlusPlusTestConfig.TargetVersion
         VersionCheckFilePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
         ExpectedInstallFailureWhenProcessOpen = $true
+        TemplatePreparationScript = {
+            Initialize-NotepadPlusPlusTemplateInstaller -LogPrefix 'Notepad++'
+        }
         PreInstallScript = {
             Initialize-NotepadPlusPlusLegacyTestEnvironment -LaunchLegacyProcess -LogPrefix 'Notepad++'
         }
