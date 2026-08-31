@@ -111,8 +111,8 @@
     # Default log path: C:\Windows\Logs\Software
     $logPath = "$env:SystemRoot\Logs\Software"
     $logFilePattern = "${installName}_*_${DeploymentType}.log"
-    # Pattern: [InstallName] install completed in [X] seconds with exit code [N].
-    $exitCodePattern = [regex]::Escape($installName) + '\].*completed in \[.*\] seconds with exit code \[(\d+)\]'
+    # Pattern: [InstallName] install completed/failed/deferred in [X] seconds with exit code [N].
+    $exitCodePattern = [regex]::Escape($installName) + '\].*(?:completed|failed|deferred) in \[.*\] seconds with exit code \[(\d+)\]'
     $deadline = [DateTime]::UtcNow.AddSeconds($FinalizationWaitSeconds)
     $logFile = $null
     $exitCodeMatch = $null
@@ -357,7 +357,20 @@ function Test-PsadtForceCloseCountdownLog
     $logContent = Get-Content -LiteralPath $logValidation.LogFile -Raw -ErrorAction SilentlyContinue
     $expectedCountdown = $countdownMatch.Groups['Value'].Value
     $expectedCountdownPattern = [System.Text.RegularExpressions.Regex]::Escape($expectedCountdown)
+    $processesToClose = @($templateParams.SessionProperties.AppProcessesToClose) | Where-Object { $_ -and -not [System.String]::IsNullOrWhiteSpace([string]$_.Name) }
     $failures = @()
+    foreach ($process in $processesToClose)
+    {
+        $processNamePattern = [System.Text.RegularExpressions.Regex]::Escape([string]$process.Name)
+        if ($logContent -notmatch "Checking for running processes: \[.*'$processNamePattern'.*\]")
+        {
+            $failures += "expected running process check line for [$($process.Name)] was not found"
+        }
+        if ($logContent -notmatch "The following processes are running: \[.*'$processNamePattern'.*\]\.")
+        {
+            $failures += "expected running process found line for [$($process.Name)] was not found"
+        }
+    }
     if ($logContent -notmatch "Close applications countdown has \[$expectedCountdownPattern\] seconds remaining\.")
     {
         $failures += "expected ForceCloseProcessesCountdown [$expectedCountdown]-second countdown line was not found"
@@ -366,13 +379,17 @@ function Test-PsadtForceCloseCountdownLog
     {
         $failures += 'expected force closing application(s) line was not found'
     }
+    if ($processesToClose.Count -gt 0 -and $logContent -notmatch 'All running application\(s\) have now closed\.')
+    {
+        $failures += 'expected all running applications closed line was not found'
+    }
 
     if ($failures.Count)
     {
         return @{ Success = $false; Skipped = $false; LogFile = $logValidation.LogFile; Message = ($failures -join '; ') }
     }
 
-    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCloseProcessesCountdown log validation passed for countdown [$expectedCountdown]." }
+    return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCloseProcessesCountdown log validation passed for countdown [$expectedCountdown] and running process closure evidence." }
 }
 
 function Test-PsadtAppFileVersion

@@ -3,11 +3,18 @@
     'NewADTTemplateParameters',
     Justification = 'This hashtable is consumed by external test harness code after the script is loaded.'
 )]
+$sharedEnvironmentHelpersPath = Join-Path $PSScriptRoot '..\..\_Shared\TestAppEnvironment.Helpers.ps1'
+if (-not (Get-Command -Name 'Get-NotepadPlusPlusTestEnvironmentDefaults' -CommandType Function -ErrorAction SilentlyContinue))
+{
+    . $sharedEnvironmentHelpersPath
+}
+$notepadPlusPlusTestConfig = Get-NotepadPlusPlusTestEnvironmentDefaults
+
 $NewADTTemplateParameters = @{
     SessionProperties        = @{
         AppVendor                   = 'Don HO don.h@free.fr'
         AppName                     = 'Notepad++'
-        AppVersion                  = '6.6.4'
+        AppVersion                  = $notepadPlusPlusTestConfig.TargetVersion
         AppArch                     = 'x64'
         AppLang                     = 'EN'
         AppRevision                 = '01'
@@ -25,7 +32,7 @@ $NewADTTemplateParameters = @{
         DeployAppScriptVersion      = '4.2.0'
     }
     Destination              = 'C:\PSADT\NotepadPlusPlus'
-    Files                    = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
+    Files                    = $notepadPlusPlusTestConfig.IntuneTemplateExpectedInstallerPath
     PreInstallScriptBlock    = {
         Start-AdditionalTestRecording
 

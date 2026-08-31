@@ -302,9 +302,14 @@ Describe 'Intune Tests' {
                     Where-Object { $_.TemplateVersion -eq 'V4' -and (Get-PsadtForceCountdownDeferralExpectation -App $_).Expected } |
                     ForEach-Object { $_.Name }
             )
+            $expectedInstallFailureAppNames = @(
+                $script:ParallelApps |
+                    Where-Object { $_.ExpectedInstallFailureWhenProcessOpen } |
+                    ForEach-Object { $_.Name }
+            )
             $appsForRegistryPoll = @(
                 $script:UploadedApps.Keys |
-                    Where-Object { $expectedDeferralAppNames -notcontains $_ }
+                    Where-Object { $expectedDeferralAppNames -notcontains $_ -and $expectedInstallFailureAppNames -notcontains $_ }
             )
 
             $helperPath = Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1'
@@ -352,10 +357,15 @@ Describe 'Intune Tests' {
             $failures = @()
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
             $expectForceCountdownDeferral = $false
+            $expectInstallFailureWhenProcessOpen = $false
 
             if ($appConfig -and $appConfig.TemplateVersion -eq 'V4')
             {
                 $expectForceCountdownDeferral = (Get-PsadtForceCountdownDeferralExpectation -App $appConfig).Expected
+            }
+            if ($appConfig)
+            {
+                $expectInstallFailureWhenProcessOpen = [bool]$appConfig.ExpectedInstallFailureWhenProcessOpen
             }
 
             if ($expectForceCountdownDeferral)
@@ -380,12 +390,32 @@ Describe 'Intune Tests' {
                     }
                 }
             }
+            elseif ($expectInstallFailureWhenProcessOpen)
+            {
+                if ($script:ParallelInstallResults[$Name])
+                {
+                    $failures += '[Install Status] app installed successfully, but failure was expected while the app process was open'
+                }
+
+                if ($appConfig)
+                {
+                    $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Install'
+                    if ($logValidation.Success)
+                    {
+                        $failures += '[Log Validation] install log reported a success/reboot exit code, but failure was expected while the app process was open'
+                    }
+                    if ($null -eq $logValidation.ExitCode)
+                    {
+                        $failures += "[Log Validation] failed install log did not include a finalization exit code: $($logValidation.Message)"
+                    }
+                }
+            }
             elseif (-not $script:ParallelInstallResults[$Name])
             {
                 $failures += '[Install Status] app was not installed successfully via Intune MDM sync'
             }
 
-            if ($appConfig -and -not $expectForceCountdownDeferral)
+            if ($appConfig -and -not $expectForceCountdownDeferral -and -not $expectInstallFailureWhenProcessOpen)
             {
                 $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Install'
                 if (-not $logValidation.Success)

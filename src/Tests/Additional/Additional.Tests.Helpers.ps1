@@ -41,7 +41,9 @@ function script:Invoke-PollDeploymentStatus
         [string]$SiteCode,
         [string]$Label = 'Deployment',
         [int]$MaxWaitSeconds = 1800,
-        [int]$PollInterval = 300
+        [int]$PollInterval = 300,
+        [ValidateSet('Success', 'Error')]
+        [string]$ExpectedStatus = 'Success'
     )
 
     $elapsed = 0
@@ -141,7 +143,7 @@ function script:Invoke-PollDeploymentStatus
         if ($summary)
         {
             Write-Information "[$AppName] $Label status (elapsed ${elapsed}s): Success=$($summary.NumberSuccess) InProgress=$($summary.NumberInProgress) Error=$($summary.NumberErrors) Targeted=$($summary.NumberTargeted)" -InformationAction Continue
-            if ($summary.NumberSuccess -gt 0)
+            if (($ExpectedStatus -eq 'Success' -and $summary.NumberSuccess -gt 0) -or ($ExpectedStatus -eq 'Error' -and $summary.NumberErrors -gt 0))
             {
                 break
             }
@@ -778,16 +780,25 @@ function script:Initialize-NotepadPlusPlusSccmEnvironment
         target installer for package creation.
     #>
     param (
-        [string]$LegacyInstallerDir = 'C:\Tools\SCCM\NotepadPlusPlus\6.2.3',
-        [string]$LegacyInstallerName = 'npp.6.2.3.Installer.exe',
-        [string]$LegacyInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-2/npp.6.2.3.Installer.exe',
-        [string]$TargetInstallerDir = 'C:\Tools\SCCM\NotepadPlusPlus\6.6.4',
-        [string]$TargetInstallerName = 'npp.6.6.4.Installer.exe',
-        [string]$TargetInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-5/npp.6.6.4.Installer.exe',
-        [string]$LegacyVersionPattern = '^6\.(23|2\.3)(\.|$)',
+        [string]$LegacyInstallerDir,
+        [string]$LegacyInstallerName,
+        [string]$LegacyInstallerUri,
+        [string]$TargetInstallerDir,
+        [string]$TargetInstallerName,
+        [string]$TargetInstallerUri,
+        [string]$LegacyVersionPattern,
         [string]$LogPrefix = 'Notepad++',
         [switch]$LaunchLegacyProcess
     )
+
+    $notepadPlusPlusTestConfig = Get-NotepadPlusPlusTestEnvironmentDefaults
+    if ([System.String]::IsNullOrWhiteSpace($LegacyInstallerDir)) { $LegacyInstallerDir = $notepadPlusPlusTestConfig.SccmLegacyInstallerDir }
+    if ([System.String]::IsNullOrWhiteSpace($LegacyInstallerName)) { $LegacyInstallerName = $notepadPlusPlusTestConfig.LegacyInstallerName }
+    if ([System.String]::IsNullOrWhiteSpace($LegacyInstallerUri)) { $LegacyInstallerUri = $notepadPlusPlusTestConfig.LegacyInstallerUri }
+    if ([System.String]::IsNullOrWhiteSpace($TargetInstallerDir)) { $TargetInstallerDir = $notepadPlusPlusTestConfig.SccmTargetInstallerDir }
+    if ([System.String]::IsNullOrWhiteSpace($TargetInstallerName)) { $TargetInstallerName = $notepadPlusPlusTestConfig.TargetInstallerName }
+    if ([System.String]::IsNullOrWhiteSpace($TargetInstallerUri)) { $TargetInstallerUri = $notepadPlusPlusTestConfig.TargetInstallerUri }
+    if ([System.String]::IsNullOrWhiteSpace($LegacyVersionPattern)) { $LegacyVersionPattern = $notepadPlusPlusTestConfig.LegacyVersionPattern }
 
     return Initialize-NotepadPlusPlusLegacyTestEnvironment `
         -LegacyInstallerDir $LegacyInstallerDir `
@@ -1465,8 +1476,33 @@ function script:Assert-PSADTDeploymentSummarySuccess
         -SiteCode       $SiteCode `
         -Label          $Label `
         -MaxWaitSeconds $MaxWaitSeconds `
-        -PollInterval   $PollInterval
+        -PollInterval   $PollInterval `
+        -ExpectedStatus Error
     $summary | Should -Not -BeNullOrEmpty -Because "$Label status must exist"
     $summary.NumberSuccess | Should -BeGreaterThan 0 -Because "At least one device must have successfully completed $Label (waited up to ${MaxWaitSeconds}s)"
+    return $summary
+}
+
+function script:Assert-PSADTDeploymentSummaryFailure
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$AppName,
+        [Parameter(Mandatory = $true)]
+        [string]$SiteCode,
+        [Parameter(Mandatory = $true)]
+        [string]$Label,
+        [int]$MaxWaitSeconds = 1800,
+        [int]$PollInterval = 180
+    )
+
+    $summary = Invoke-PollDeploymentStatus `
+        -AppName        $AppName `
+        -SiteCode       $SiteCode `
+        -Label          $Label `
+        -MaxWaitSeconds $MaxWaitSeconds `
+        -PollInterval   $PollInterval
+    $summary | Should -Not -BeNullOrEmpty -Because "$Label status must exist"
+    $summary.NumberErrors | Should -BeGreaterThan 0 -Because "At least one device must have failed $Label (waited up to ${MaxWaitSeconds}s)"
     return $summary
 }

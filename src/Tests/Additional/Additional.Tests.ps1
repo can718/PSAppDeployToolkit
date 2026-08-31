@@ -775,7 +775,6 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             $script:notepadDescriptionTemplate = $notepadParameters.DescriptionTemplate
             $script:notepadInstallCmd = $notepadParameters.InstallCmd
             $script:notepadUninstallCmd = $notepadParameters.UninstallCmd
-            $script:notepadVersionValidationApp = $notepadParameters
             $script:notepadLogValidationApp = New-PSADTLogValidationAppConfig -TemplateVersion 'V4' -AppFolderName 'Notepad++' -Name 'Notepad++'
         }
 
@@ -800,7 +799,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Notepad++_Install_FirstDeferral] [v4] Notepad++ first install attempt should defer when app is open' {
+        It '[MCM:Notepad++_Install_AppOpenFailure] [v4] Notepad++ install should fail when app is open' {
             Write-Information '::info::[Notepad++] Step 0: Verifying template validation gate...'
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -896,23 +895,23 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                 $notepadInstallDeploymentCreated = $true
 
                 # ----------------------------------------------------------------
-                # Step 7 - Wait for the first PSADT deferral log, not final SCCM success
+                # Step 7 - Poll install deployment failure and validate the failed install log
                 # ----------------------------------------------------------------
                 try
                 {
-                    Write-Information '[Notepad++] Step 7: Waiting for first install deferral log...' -InformationAction Continue
-                    $deferLogValidation = Wait-PSADTForceCountdownDeferralLog -App $script:notepadLogValidationApp -DeploymentType 'Install'
-                    $deferLogValidation.Success | Should -BeTrue -Because "[Notepad++] PSADT ForceCountdown deferral log validation: $($deferLogValidation.Message)"
+                    Write-Information '[Notepad++] Step 7: Polling install deployment failure...' -InformationAction Continue
+                    [void](Assert-PSADTDeploymentSummaryFailure -AppName $script:notepadAppName -SiteCode $script:siteCode -Label 'Install deployment')
 
-                    $versionValidation = Test-PsadtAppFileVersion -App $script:notepadVersionValidationApp -ExpectedState 'Deferral'
-                    $versionValidation.Success | Should -BeTrue -Because "[Notepad++] expected failed/deferred install to retain old Notepad++ version: $($versionValidation.Message)"
+                    $installLogValidation = Invoke-PsadtLogValidation -App $script:notepadLogValidationApp -DeploymentType 'Install'
+                    $installLogValidation.Success | Should -BeFalse -Because "[Notepad++] install should fail while notepad++ is open: $($installLogValidation.Message)"
+                    $installLogValidation.ExitCode | Should -Not -BeNullOrEmpty -Because '[Notepad++] failed install log should include a finalization exit code.'
                 }
                 finally
                 {
                     if ($notepadInstallDeploymentCreated)
                     {
                         Remove-CMApplicationDeployment -Name $script:notepadAppName -CollectionName $script:targetCollection -Force -ErrorAction SilentlyContinue
-                        Write-Information '::info::[Notepad++] Removed install deployment after first deferral validation to avoid SCCM retry upgrading the app.' -InformationAction Continue
+                        Write-Information '::info::[Notepad++] Removed install deployment after install validation.' -InformationAction Continue
                     }
                 }
             }
@@ -1027,6 +1026,8 @@ Describe '7-Zip ForceClose SCCM Deployment' -Tag '7-Zip' {
                 $deploymentSummary = Assert-PSADTDeploymentSummarySuccess -AppName $script:sevenZipAppName -SiteCode $script:siteCode -Label 'Deployment'
                 Write-Information $deploymentSummary -InformationAction Continue
                 Assert-PSADTDeploymentLogValidation -App $script:sevenZipLogValidationApp -DeploymentType 'Install' -LogPrefix '7-Zip ForceClose'
+                $forceCloseLogValidation = Test-PsadtForceCloseCountdownLog -App $script:sevenZipLogValidationApp -DeploymentType 'Install'
+                $forceCloseLogValidation.Success | Should -BeTrue -Because "[7-Zip ForceClose] PSADT ForceCloseProcessesCountdown validation: $($forceCloseLogValidation.Message)"
                 $script:sevenZipInstallDeploySucceeded = $true
             }
         }

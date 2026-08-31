@@ -108,20 +108,53 @@ function Invoke-PSADTTestMsiProcessWithRetry
     return $false
 }
 
+function Get-NotepadPlusPlusTestEnvironmentDefaults
+{
+    $legacyVersion = '8.9.7'
+    $targetVersion = '8.9.8'
+    $legacyInstallerName = "npp.$legacyVersion.Installer.exe"
+    $targetInstallerName = "npp.$targetVersion.Installer.exe"
+
+    return @{
+        LegacyVersion                       = $legacyVersion
+        TargetVersion                       = $targetVersion
+        LegacyInstallerName                 = $legacyInstallerName
+        TargetInstallerName                 = $targetInstallerName
+        LegacyInstallerUri                  = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v$legacyVersion/$legacyInstallerName"
+        TargetInstallerUri                  = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v$targetVersion/$targetInstallerName"
+        IntuneLegacyInstallerDir            = "C:\Tools\Intune\Notepad$legacyVersion"
+        IntuneTargetInstallerDir            = "C:\Tools\Intune\Notepad$targetVersion"
+        IntuneTemplateExpectedInstallerPath = "C:\Tools\Intune\$targetInstallerName"
+        SccmLegacyInstallerDir              = "C:\Tools\SCCM\NotepadPlusPlus\$legacyVersion"
+        SccmTargetInstallerDir              = "C:\Tools\SCCM\NotepadPlusPlus\$targetVersion"
+        LegacyVersionPattern                = "^$([System.Text.RegularExpressions.Regex]::Escape($legacyVersion))(\.|$)"
+    }
+}
+
 function Initialize-NotepadPlusPlusLegacyTestEnvironment
 {
     param (
-        [string]$LegacyInstallerDir = 'C:\Tools\Intune\Notepad6.2.3',
-        [string]$LegacyInstallerName = 'npp.6.2.3.Installer.exe',
-        [string]$LegacyInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-2/npp.6.2.3.Installer.exe',
-        [string]$TargetInstallerDir = 'C:\Tools\Intune\Notepad6.6.4',
-        [string]$TargetInstallerName = 'npp.6.6.4.Installer.exe',
-        [string]$TargetInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-5/npp.6.6.4.Installer.exe',
-        [string]$TemplateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.6.4.Installer.exe',
-        [string]$LegacyVersionPattern = '^6\.(23|2\.3)(\.|$)',
+        [string]$LegacyInstallerDir,
+        [string]$LegacyInstallerName,
+        [string]$LegacyInstallerUri,
+        [string]$TargetInstallerDir,
+        [string]$TargetInstallerName,
+        [string]$TargetInstallerUri,
+        [string]$TemplateExpectedInstallerPath,
+        [string]$LegacyVersionPattern,
         [string]$LogPrefix = 'Notepad++',
         [switch]$LaunchLegacyProcess
     )
+
+    $notepadPlusPlusTestConfig = Get-NotepadPlusPlusTestEnvironmentDefaults
+    if ([System.String]::IsNullOrWhiteSpace($LegacyInstallerDir)) { $LegacyInstallerDir = $notepadPlusPlusTestConfig.IntuneLegacyInstallerDir }
+    if ([System.String]::IsNullOrWhiteSpace($LegacyInstallerName)) { $LegacyInstallerName = $notepadPlusPlusTestConfig.LegacyInstallerName }
+    if ([System.String]::IsNullOrWhiteSpace($LegacyInstallerUri)) { $LegacyInstallerUri = $notepadPlusPlusTestConfig.LegacyInstallerUri }
+    if ([System.String]::IsNullOrWhiteSpace($TargetInstallerDir)) { $TargetInstallerDir = $notepadPlusPlusTestConfig.IntuneTargetInstallerDir }
+    if ([System.String]::IsNullOrWhiteSpace($TargetInstallerName)) { $TargetInstallerName = $notepadPlusPlusTestConfig.TargetInstallerName }
+    if ([System.String]::IsNullOrWhiteSpace($TargetInstallerUri)) { $TargetInstallerUri = $notepadPlusPlusTestConfig.TargetInstallerUri }
+    if ($null -eq $TemplateExpectedInstallerPath) { $TemplateExpectedInstallerPath = $notepadPlusPlusTestConfig.IntuneTemplateExpectedInstallerPath }
+    if ([System.String]::IsNullOrWhiteSpace($LegacyVersionPattern)) { $LegacyVersionPattern = $notepadPlusPlusTestConfig.LegacyVersionPattern }
 
     $legacyInstallerPath = Save-PSADTTestAppInstaller `
         -DestinationDirectory $LegacyInstallerDir `

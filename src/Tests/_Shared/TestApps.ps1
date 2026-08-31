@@ -12,10 +12,12 @@ if (-not (Test-Path -LiteralPath $sharedEnvironmentHelpersPath -PathType Leaf))
 {
     throw "Required shared helper file not found: $sharedEnvironmentHelpersPath"
 }
-if (-not (Get-Command -Name 'Initialize-NotepadPlusPlusLegacyTestEnvironment' -CommandType Function -ErrorAction SilentlyContinue))
+if (-not (Get-Command -Name 'Initialize-NotepadPlusPlusLegacyTestEnvironment' -CommandType Function -ErrorAction SilentlyContinue) -or -not (Get-Command -Name 'Get-NotepadPlusPlusTestEnvironmentDefaults' -CommandType Function -ErrorAction SilentlyContinue))
 {
     . $sharedEnvironmentHelpersPath
 }
+
+$notepadPlusPlusTestConfig = Get-NotepadPlusPlusTestEnvironmentDefaults
 
 @(
     @{
@@ -64,26 +66,26 @@ if (-not (Get-Command -Name 'Initialize-NotepadPlusPlusLegacyTestEnvironment' -C
         AppFolderName = 'Notepad++'
         AppName = 'Notepad++ (PSADT v4 Notepad++)'
         AppVendor = 'Don HO don.h@free.fr'
-        AppVersion = '6.6.4'
+        AppVersion = $notepadPlusPlusTestConfig.TargetVersion
         ContentSubPath = 'NotepadPlusPlus'
         InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
         UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
-        RegVersionValue = '6.6.4'
+        RegVersionValue = $notepadPlusPlusTestConfig.TargetVersion
         VersionCheckFilePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
-        ExpectedDeferralFileVersionPattern = '^(6\.23|6\.2\.3)(\.|$)'
-        ExpectedDeferralFileVersionDescription = 'legacy version 6.2.3'
+        ExpectedInstallFailureWhenProcessOpen = $true
         PreInstallScript = {
             Initialize-NotepadPlusPlusLegacyTestEnvironment -LaunchLegacyProcess -LogPrefix 'Notepad++'
         }
         PostInstallScript = {
+            $notepadPlusPlusTestConfig = Get-NotepadPlusPlusTestEnvironmentDefaults
             $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
             if (Test-Path $notepadExePath)
             {
                 $notepadFileVersion = (Get-Item -Path $notepadExePath).VersionInfo.FileVersion
                 Write-Information "[Notepad++] FileVersion: $notepadFileVersion" -InformationAction Continue
-                if ($notepadFileVersion -match '^6\.23(\.|$)' -or $notepadFileVersion -match '^6\.2\.3(\.|$)')
+                if ($notepadFileVersion -match $notepadPlusPlusTestConfig.LegacyVersionPattern)
                 {
-                    Write-Information '[Notepad++] The currently retained version is the legacy version (6.23).' -InformationAction Continue
+                    Write-Information "[Notepad++] The currently retained version is the legacy version ($($notepadPlusPlusTestConfig.LegacyVersion))." -InformationAction Continue
                 }
                 else
                 {
@@ -98,9 +100,10 @@ if (-not (Get-Command -Name 'Initialize-NotepadPlusPlusLegacyTestEnvironment' -C
         DetectionRuleBuilder = {
             param($FilesDir)
             $null = $FilesDir
+            $notepadPlusPlusTestConfig = Get-NotepadPlusPlusTestEnvironmentDefaults
             New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++' `
-                -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '6.6.4'
+                -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue $notepadPlusPlusTestConfig.TargetVersion
         }
     }
     @{
