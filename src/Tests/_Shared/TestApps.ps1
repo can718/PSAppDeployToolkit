@@ -64,14 +64,14 @@ if (-not (Get-Command -Name 'Initialize-NotepadPlusPlusLegacyTestEnvironment' -C
         AppFolderName = 'Notepad++'
         AppName = 'Notepad++ (PSADT v4 Notepad++)'
         AppVendor = 'Don HO don.h@free.fr'
-        AppVersion = '6.6.4'
+        AppVersion = '8.9.8'
         ContentSubPath = 'NotepadPlusPlus'
         InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install'
         UninstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall'
-        RegVersionValue = '6.6.4'
+        RegVersionValue = '8.9.8'
         VersionCheckFilePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
-        ExpectedDeferralFileVersionPattern = '^(6\.23|6\.2\.3)(\.|$)'
-        ExpectedDeferralFileVersionDescription = 'legacy version 6.2.3'
+        ExpectedDeferralFileVersionPattern = '^8\.9\.7(\.|$)'
+        ExpectedDeferralFileVersionDescription = 'legacy version 8.9.7'
         PreInstallScript = {
             Initialize-NotepadPlusPlusLegacyTestEnvironment -LaunchLegacyProcess -LogPrefix 'Notepad++'
         }
@@ -81,9 +81,9 @@ if (-not (Get-Command -Name 'Initialize-NotepadPlusPlusLegacyTestEnvironment' -C
             {
                 $notepadFileVersion = (Get-Item -Path $notepadExePath).VersionInfo.FileVersion
                 Write-Information "[Notepad++] FileVersion: $notepadFileVersion" -InformationAction Continue
-                if ($notepadFileVersion -match '^6\.23(\.|$)' -or $notepadFileVersion -match '^6\.2\.3(\.|$)')
+                if ($notepadFileVersion -match '^8\.9\.7(\.|$)')
                 {
-                    Write-Information '[Notepad++] The currently retained version is the legacy version (6.23).' -InformationAction Continue
+                    Write-Information '[Notepad++] The currently retained version is the legacy version (8.9.7).' -InformationAction Continue
                 }
                 else
                 {
@@ -100,7 +100,7 @@ if (-not (Get-Command -Name 'Initialize-NotepadPlusPlusLegacyTestEnvironment' -C
             $null = $FilesDir
             New-IntuneWin32AppDetectionRuleRegistry -StringComparison `
                 -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++' `
-                -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '6.6.4'
+                -ValueName 'DisplayVersion' -StringComparisonOperator 'equal' -StringComparisonValue '8.9.8'
         }
     }
     @{

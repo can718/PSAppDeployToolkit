@@ -7,7 +7,7 @@ $NewADTTemplateParameters = @{
     SessionProperties        = @{
         AppVendor                   = 'Don HO don.h@free.fr'
         AppName                     = 'Notepad++'
-        AppVersion                  = '6.6.4'
+        AppVersion                  = '8.9.8'
         AppArch                     = 'x64'
         AppLang                     = 'EN'
         AppRevision                 = '01'
@@ -25,7 +25,7 @@ $NewADTTemplateParameters = @{
         DeployAppScriptVersion      = '4.2.0'
     }
     Destination              = 'C:\PSADT\NotepadPlusPlus'
-    Files                    = 'C:\Tools\Intune\npp.6.6.4.Installer.exe'
+    Files                    = 'C:\Tools\Intune\npp.8.9.8.Installer.exe'
     PreInstallScriptBlock    = {
         Start-AdditionalTestRecording
 

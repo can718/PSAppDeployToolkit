@@ -111,14 +111,14 @@ function Invoke-PSADTTestMsiProcessWithRetry
 function Initialize-NotepadPlusPlusLegacyTestEnvironment
 {
     param (
-        [string]$LegacyInstallerDir = 'C:\Tools\Intune\Notepad6.2.3',
-        [string]$LegacyInstallerName = 'npp.6.2.3.Installer.exe',
-        [string]$LegacyInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-2/npp.6.2.3.Installer.exe',
-        [string]$TargetInstallerDir = 'C:\Tools\Intune\Notepad6.6.4',
-        [string]$TargetInstallerName = 'npp.6.6.4.Installer.exe',
-        [string]$TargetInstallerUri = 'https://github.com/notepad-plus-plus/old-releases/releases/download/v6x-5/npp.6.6.4.Installer.exe',
-        [string]$TemplateExpectedInstallerPath = 'C:\Tools\Intune\npp.6.6.4.Installer.exe',
-        [string]$LegacyVersionPattern = '^6\.(23|2\.3)(\.|$)',
+        [string]$LegacyInstallerDir = 'C:\Tools\Intune\Notepad8.9.7',
+        [string]$LegacyInstallerName = 'npp.8.9.7.Installer.exe',
+        [string]$LegacyInstallerUri = 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.7/npp.8.9.7.Installer.exe',
+        [string]$TargetInstallerDir = 'C:\Tools\Intune\Notepad8.9.8',
+        [string]$TargetInstallerName = 'npp.8.9.8.Installer.exe',
+        [string]$TargetInstallerUri = 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.8/npp.8.9.8.Installer.exe',
+        [string]$TemplateExpectedInstallerPath = 'C:\Tools\Intune\npp.8.9.8.Installer.exe',
+        [string]$LegacyVersionPattern = '^8\.9\.7(\.|$)',
         [string]$LogPrefix = 'Notepad++',
         [switch]$LaunchLegacyProcess
     )
