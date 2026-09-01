@@ -4,6 +4,14 @@ $script:recordingOutputFile = $null
 $script:helperLoaded = $false
 $script:terraForgeHelperModule = $null
 
+function script:Register-AdditionalTestRecordingStopCallbacks
+{
+    $stopCallback = Get-Command -Name Stop-AdditionalTestRecording
+    Add-ADTModuleCallback -Hookpoint OnDefer -Callback $stopCallback
+    Add-ADTModuleCallback -Hookpoint PreClose -Callback $stopCallback
+    Add-ADTModuleCallback -Hookpoint OnFinish -Callback $stopCallback
+}
+
 <#
 .SYNOPSIS
 Starts additional test recording when the TerraForge helper is available.
@@ -68,7 +76,7 @@ function Start-AdditionalTestRecording
 
         if ($script:recordingStarted)
         {
-            Add-ADTModuleCallback -Hookpoint OnDefer -Callback (Get-Command -Name Stop-AdditionalTestRecording)
+            Register-AdditionalTestRecordingStopCallbacks
             Write-ADTLogEntry -Message "Recording started successfully. Output file: [$($script:recordingOutputFile)]." -Severity Info
         }
         else
@@ -399,8 +407,7 @@ recording begins after startup and is finalized when execution finishes.
 function Register-AdditionalTestRecordingCallbacks
 {
     Add-ADTModuleCallback -Hookpoint PostOpen -Callback (Get-Command -Name Start-AdditionalTestRecording)
-    Add-ADTModuleCallback -Hookpoint OnDefer -Callback (Get-Command -Name Stop-AdditionalTestRecording)
-    Add-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-Command -Name Stop-AdditionalTestRecording)
+    Register-AdditionalTestRecordingStopCallbacks
 }
 
 <#

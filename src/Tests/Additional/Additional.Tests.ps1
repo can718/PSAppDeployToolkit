@@ -800,7 +800,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
             Invoke-TFUpdateTestCase -TestResult $currentTest -TestKey $script:CurrentTestKey
         }
 
-        It '[MCM:Notepad++_Install_FirstDeferral] [v4] Notepad++ first install attempt should defer when app is open' {
+        It '[MCM:Notepad++_Install_FailureWhenOpen] [v4] Notepad++ install should fail when app is open' {
             Write-Information '::info::[Notepad++] Step 0: Verifying template validation gate...'
             if (-not (Test-PSADTTemplateValidationGate))
             {
@@ -905,7 +905,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                     $failureLogValidation.Success | Should -BeTrue -Because "[Notepad++] PSADT install failure log validation: $($failureLogValidation.Message)"
 
                     $versionValidation = Test-PsadtAppFileVersion -App $script:notepadVersionValidationApp -ExpectedState 'Deferral'
-                    $versionValidation.Success | Should -BeTrue -Because "[Notepad++] expected failed/deferred install to retain old Notepad++ version: $($versionValidation.Message)"
+                    $versionValidation.Success | Should -BeTrue -Because "[Notepad++] expected failed install to retain old Notepad++ version: $($versionValidation.Message)"
                 }
                 finally
                 {
