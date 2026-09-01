@@ -13,7 +13,6 @@ $NewADTTemplateParameters = @{
         AppRevision                 = '01'
         AppSuccessExitCodes         = @(0)
         AppRebootExitCodes          = @(1641, 3010)
-        AppProcessesToClose         = @(@{ Name = 'notepad++'; Description = 'Notepad++' })
         RequireAdmin                = $true
         AppScriptVersion            = '1.0.0'
         AppScriptDate               = '2026-04-01'
@@ -30,10 +29,8 @@ $NewADTTemplateParameters = @{
         Start-AdditionalTestRecording
 
         $saiwParams = @{
-            AllowDefer     = $true
-            DeferTimes     = 2
-            ForceCountdown = 8
             CheckDiskSpace = $true
+            Silent         = $true
         }
         if ($adtSession.AppProcessesToClose.Count -gt 0)
         {

@@ -719,7 +719,7 @@ jobs:
           }
         } -ThrottleLimit 8
 
-        # 3) Run Notepad++ last by itself because only the first defer result is expected.
+        # 3) Run Notepad++ last by itself because the expected install failure should be validated in isolation.
         $notepadConfig = New-PesterConfiguration
         $notepadConfig.Run.Path = $additionalTestsPath
         $notepadConfig.Filter.Tag = @('Notepad++')

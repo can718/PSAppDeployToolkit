@@ -352,6 +352,7 @@ Describe 'Intune Tests' {
             $failures = @()
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
             $expectForceCountdownDeferral = $false
+            $expectInstallFailure = $Name -eq 'Notepad++'
 
             if ($appConfig -and $appConfig.TemplateVersion -eq 'V4')
             {
@@ -380,12 +381,34 @@ Describe 'Intune Tests' {
                     }
                 }
             }
+            elseif ($expectInstallFailure)
+            {
+                if ($script:ParallelInstallResults[$Name])
+                {
+                    $failures += '[Install Status] app installed successfully, but install failure was expected'
+                }
+
+                if ($appConfig)
+                {
+                    $logValidation = Test-PsadtInstallFailureLog -App $appConfig -DeploymentType 'Install'
+                    if (-not $logValidation.Success)
+                    {
+                        $failures += "[Log Validation] $($logValidation.Message)"
+                    }
+
+                    $versionValidation = Test-PsadtAppFileVersion -App $appConfig -ExpectedState 'Deferral'
+                    if (-not $versionValidation.Success)
+                    {
+                        $failures += "[Version Validation] $($versionValidation.Message)"
+                    }
+                }
+            }
             elseif (-not $script:ParallelInstallResults[$Name])
             {
                 $failures += '[Install Status] app was not installed successfully via Intune MDM sync'
             }
 
-            if ($appConfig -and -not $expectForceCountdownDeferral)
+            if ($appConfig -and -not $expectForceCountdownDeferral -and -not $expectInstallFailure)
             {
                 $logValidation = Invoke-PsadtLogValidation -App $appConfig -DeploymentType 'Install'
                 if (-not $logValidation.Success)

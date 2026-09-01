@@ -896,13 +896,13 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                 $notepadInstallDeploymentCreated = $true
 
                 # ----------------------------------------------------------------
-                # Step 7 - Wait for the first PSADT deferral log, not final SCCM success
+                # Step 7 - Wait for the expected PSADT install failure log, not final SCCM success
                 # ----------------------------------------------------------------
                 try
                 {
-                    Write-Information '[Notepad++] Step 7: Waiting for first install deferral log...' -InformationAction Continue
-                    $deferLogValidation = Wait-PSADTForceCountdownDeferralLog -App $script:notepadLogValidationApp -DeploymentType 'Install'
-                    $deferLogValidation.Success | Should -BeTrue -Because "[Notepad++] PSADT ForceCountdown deferral log validation: $($deferLogValidation.Message)"
+                    Write-Information '[Notepad++] Step 7: Waiting for expected install failure log...' -InformationAction Continue
+                    $failureLogValidation = Wait-PSADTInstallFailureLog -App $script:notepadLogValidationApp -DeploymentType 'Install'
+                    $failureLogValidation.Success | Should -BeTrue -Because "[Notepad++] PSADT install failure log validation: $($failureLogValidation.Message)"
 
                     $versionValidation = Test-PsadtAppFileVersion -App $script:notepadVersionValidationApp -ExpectedState 'Deferral'
                     $versionValidation.Success | Should -BeTrue -Because "[Notepad++] expected failed/deferred install to retain old Notepad++ version: $($versionValidation.Message)"
@@ -912,7 +912,7 @@ Describe 'Notepad++ SCCM Deployment' -Tag 'Notepad++' {
                     if ($notepadInstallDeploymentCreated)
                     {
                         Remove-CMApplicationDeployment -Name $script:notepadAppName -CollectionName $script:targetCollection -Force -ErrorAction SilentlyContinue
-                        Write-Information '::info::[Notepad++] Removed install deployment after first deferral validation to avoid SCCM retry upgrading the app.' -InformationAction Continue
+                        Write-Information '::info::[Notepad++] Removed install deployment after expected install failure validation to avoid SCCM retry upgrading the app.' -InformationAction Continue
                     }
                 }
             }

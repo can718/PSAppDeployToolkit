@@ -216,6 +216,52 @@ function script:Wait-PSADTForceCountdownDeferralLog
     return $validation
 }
 
+function script:Wait-PSADTInstallFailureLog
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [hashtable]$App,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType,
+        [int]$ExpectedExitCode = 5,
+        [int]$MaxWaitSeconds = 600,
+        [int]$PollInterval = 30
+    )
+
+    $elapsed = 0
+    $validation = $null
+    do
+    {
+        $validation = Test-PsadtInstallFailureLog -App $App -DeploymentType $DeploymentType -ExpectedExitCode $ExpectedExitCode -FinalizationWaitSeconds 0
+        if ($validation.Success)
+        {
+            Write-Information "[$($App.Name)] Expected $DeploymentType failure log found after ${elapsed}s: $($validation.LogFile)" -InformationAction Continue
+            return $validation
+        }
+
+        if ($elapsed -lt $MaxWaitSeconds)
+        {
+            Write-Information "[$($App.Name)] Expected $DeploymentType failure log not found yet after ${elapsed}s: $($validation.Message)" -InformationAction Continue
+            Invoke-WinSCPSccmClientEvaluation | Out-Null
+            Start-Sleep -Seconds $PollInterval
+            $elapsed += $PollInterval
+        }
+        else
+        {
+            break
+        }
+    }
+    while ($elapsed -le $MaxWaitSeconds)
+
+    if (-not $validation)
+    {
+        $validation = @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = 'Install failure log validation did not run.' }
+    }
+    $validation.Message = "Timed out waiting up to ${MaxWaitSeconds}s for expected $DeploymentType failure log. Last result: $($validation.Message)"
+    return $validation
+}
+
 function script:Test-PSADTTemplateValidationGate
 {
     <#

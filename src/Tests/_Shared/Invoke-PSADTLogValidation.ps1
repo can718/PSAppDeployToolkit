@@ -1,4 +1,162 @@
-﻿function Invoke-PsadtLogValidation
+﻿function Get-PsadtSessionProperties
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App
+    )
+
+    $testsRoot = Split-Path -Path $PSScriptRoot -Parent
+    $sessionProps = $null
+    if ($App.TemplateVersion -eq 'V4')
+    {
+        $templateParamsPath = Join-Path $testsRoot "V4\$($App.AppFolderName)\New-ADTTemplate.params.ps1"
+        if (-not (Test-Path -LiteralPath $templateParamsPath -PathType Leaf))
+        {
+            return @{ Success = $false; SessionProperties = $null; Message = "Template parameter file not found: $templateParamsPath" }
+        }
+
+        Remove-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction SilentlyContinue
+        . $templateParamsPath
+
+        if (-not (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore))
+        {
+            return @{ Success = $false; SessionProperties = $null; Message = "Variable `$NewADTTemplateParameters not found in [$templateParamsPath]." }
+        }
+
+        $templateParams = (Get-Variable -Name NewADTTemplateParameters -Scope Local).Value
+        if ($null -eq $templateParams -or $templateParams -isnot [System.Collections.IDictionary])
+        {
+            return @{ Success = $false; SessionProperties = $null; Message = "Invalid `$NewADTTemplateParameters in [$templateParamsPath]." }
+        }
+
+        $sessionProps = $templateParams['SessionProperties']
+    }
+    elseif ($App.TemplateVersion -eq 'V3')
+    {
+        $v3ScriptPath = Join-Path $testsRoot "V3\$($App.AppFolderName)\Deploy-Application.ps1"
+        if (-not (Test-Path -LiteralPath $v3ScriptPath -PathType Leaf))
+        {
+            return @{ Success = $false; SessionProperties = $null; Message = "V3 script not found: $v3ScriptPath" }
+        }
+
+        $scriptContent = Get-Content -LiteralPath $v3ScriptPath -Raw
+        $sessionProps = @{
+            AppSuccessExitCodes = @(0)
+            AppRebootExitCodes  = @(1641, 3010)
+        }
+        $varMap = @{
+            'appVendor'   = 'AppVendor'
+            'appName'     = 'AppName'
+            'appVersion'  = 'AppVersion'
+            'appArch'     = 'AppArch'
+            'appLang'     = 'AppLang'
+            'appRevision' = 'AppRevision'
+        }
+        foreach ($varName in $varMap.Keys)
+        {
+            if ($scriptContent -match "(?m)^\s*\[String\]\`$$varName\s*=\s*'([^']*)'")
+            {
+                $sessionProps[$varMap[$varName]] = $Matches[1]
+            }
+        }
+
+        $missing = @('AppVendor', 'AppName', 'AppVersion', 'AppArch', 'AppLang', 'AppRevision') | Where-Object { -not $sessionProps.ContainsKey($_) }
+        if ($missing)
+        {
+            return @{ Success = $false; SessionProperties = $null; Message = "Could not parse V3 variables from [$v3ScriptPath]: missing $($missing -join ', ')." }
+        }
+    }
+
+    if ($null -eq $sessionProps -or $sessionProps -isnot [System.Collections.IDictionary])
+    {
+        return @{ Success = $false; SessionProperties = $null; Message = "SessionProperties not found or invalid for app [$($App.Name)]." }
+    }
+
+    return @{ Success = $true; SessionProperties = $sessionProps; Message = $null }
+}
+
+function Get-PsadtInstallName
+{
+    param (
+        [Parameter(Mandatory)]
+        [System.Collections.IDictionary]$SessionProperties
+    )
+
+    $appVendor = ($SessionProperties.AppVendor) -replace '\s', ''
+    $appName = ($SessionProperties.AppName) -replace '\s', ''
+    $appVersion = $SessionProperties.AppVersion
+    $appArch = $SessionProperties.AppArch
+    $appLang = $SessionProperties.AppLang
+    $appRevision = $SessionProperties.AppRevision
+
+    $installName = "${appVendor}_${appName}_${appVersion}_${appArch}_${appLang}_${appRevision}" -replace '__+', '_'
+    return $installName.Trim('_')
+}
+
+function Find-PsadtLogFileContent
+{
+    param (
+        [Parameter(Mandatory)]
+        [string]$InstallName,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType,
+
+        [string]$LogFilePath,
+
+        [ValidateRange(0, 300)]
+        [int]$FinalizationWaitSeconds = 30,
+
+        [ValidateRange(100, 5000)]
+        [int]$PollIntervalMilliseconds = 500,
+
+        [scriptblock]$ContentReady = { param ($Content) -not [string]::IsNullOrEmpty($Content) }
+    )
+
+    $logPath = "$env:SystemRoot\Logs\Software"
+    $logFilePattern = "${InstallName}_*_${DeploymentType}.log"
+    $deadline = [DateTime]::UtcNow.AddSeconds($FinalizationWaitSeconds)
+    $logFile = $null
+    $logContent = $null
+    do
+    {
+        if (-not [string]::IsNullOrWhiteSpace($LogFilePath))
+        {
+            if (-not (Test-Path -LiteralPath $LogFilePath -PathType Leaf))
+            {
+                return @{ LogFile = $null; LogContent = $null; LogPath = $logPath; LogFilePattern = $logFilePattern; Message = "Log file not found: $LogFilePath" }
+            }
+            $logFile = Get-Item -LiteralPath $LogFilePath
+        }
+        else
+        {
+            $logFile = Get-ChildItem -Path $logPath -Filter $logFilePattern -File -ErrorAction SilentlyContinue |
+                Sort-Object -Property LastWriteTime -Descending |
+                Select-Object -First 1
+        }
+
+        if ($logFile)
+        {
+            $logContent = Get-Content -LiteralPath $logFile.FullName -Raw -ErrorAction SilentlyContinue
+            if (& $ContentReady $logContent)
+            {
+                break
+            }
+        }
+
+        if ((-not [string]::IsNullOrWhiteSpace($LogFilePath)) -or [DateTime]::UtcNow -ge $deadline)
+        {
+            break
+        }
+        Start-Sleep -Milliseconds $PollIntervalMilliseconds
+    }
+    while ($true)
+
+    return @{ LogFile = $logFile; LogContent = $logContent; LogPath = $logPath; LogFilePattern = $logFilePattern; Message = $null }
+}
+
+function Invoke-PsadtLogValidation
 {
     <#
     .SYNOPSIS
@@ -27,130 +185,36 @@
         [int]$PollIntervalMilliseconds = 500
     )
 
-    $testsRoot = Split-Path -Path $PSScriptRoot -Parent
-
-    # Resolve SessionProperties based on template version.
-    $sessionProps = $null
-    if ($App.TemplateVersion -eq 'V4')
+    $sessionPropsResult = Get-PsadtSessionProperties -App $App
+    if (-not $sessionPropsResult.Success)
     {
-        $templateParamsPath = Join-Path $testsRoot "V4\$($App.AppFolderName)\New-ADTTemplate.params.ps1"
-        if (-not (Test-Path -LiteralPath $templateParamsPath -PathType Leaf))
-        {
-            return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "Template parameter file not found: $templateParamsPath" }
-        }
-
-        . $templateParamsPath
-
-        if (-not (Get-Variable -Name NewADTTemplateParameters -Scope Local -ErrorAction Ignore))
-        {
-            return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "Variable `$NewADTTemplateParameters not found in [$templateParamsPath]." }
-        }
-
-        $templateParams = (Get-Variable -Name NewADTTemplateParameters -Scope Local).Value
-        if ($null -eq $templateParams -or $templateParams -isnot [System.Collections.IDictionary])
-        {
-            return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "Invalid `$NewADTTemplateParameters in [$templateParamsPath]." }
-        }
-
-        $sessionProps = $templateParams['SessionProperties']
-    }
-    elseif ($App.TemplateVersion -eq 'V3')
-    {
-        # Parse session properties directly from the V3 Deploy-Application.ps1.
-        $v3ScriptPath = Join-Path $testsRoot "V3\$($App.AppFolderName)\Deploy-Application.ps1"
-        if (-not (Test-Path -LiteralPath $v3ScriptPath -PathType Leaf))
-        {
-            return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "V3 script not found: $v3ScriptPath" }
-        }
-
-        $scriptContent = Get-Content -LiteralPath $v3ScriptPath -Raw
-        $sessionProps = @{
-            AppSuccessExitCodes = @(0)
-            AppRebootExitCodes  = @(1641, 3010)
-        }
-        $varMap = @{
-            'appVendor'   = 'AppVendor'
-            'appName'     = 'AppName'
-            'appVersion'  = 'AppVersion'
-            'appArch'     = 'AppArch'
-            'appLang'     = 'AppLang'
-            'appRevision' = 'AppRevision'
-        }
-        foreach ($varName in $varMap.Keys)
-        {
-            if ($scriptContent -match "(?m)^\s*\[String\]\`$$varName\s*=\s*'([^']*)'")
-            {
-                $sessionProps[$varMap[$varName]] = $Matches[1]
-            }
-        }
-
-        # Verify we got all required fields.
-        $missing = @('AppVendor', 'AppName', 'AppVersion', 'AppArch', 'AppLang', 'AppRevision') | Where-Object { -not $sessionProps.ContainsKey($_) }
-        if ($missing)
-        {
-            return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "Could not parse V3 variables from [$v3ScriptPath]: missing $($missing -join ', ')." }
-        }
+        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = $sessionPropsResult.Message }
     }
 
-    if ($null -eq $sessionProps -or $sessionProps -isnot [System.Collections.IDictionary])
-    {
-        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "SessionProperties not found or invalid for app [$($App.Name)]." }
-    }
+    $sessionProps = $sessionPropsResult.SessionProperties
+    $installName = Get-PsadtInstallName -SessionProperties $sessionProps
 
-    # Construct InstallName the same way PSADT does (spaces removed, double underscores collapsed, trimmed).
-    $appVendor = ($sessionProps.AppVendor) -replace '\s', ''
-    $appName = ($sessionProps.AppName) -replace '\s', ''
-    $appVersion = $sessionProps.AppVersion
-    $appArch = $sessionProps.AppArch
-    $appLang = $sessionProps.AppLang
-    $appRevision = $sessionProps.AppRevision
-
-    $installName = "${appVendor}_${appName}_${appVersion}_${appArch}_${appLang}_${appRevision}" -replace '__+', '_'
-    $installName = $installName.Trim('_')
-
-    # Default log path: C:\Windows\Logs\Software
-    $logPath = "$env:SystemRoot\Logs\Software"
-    $logFilePattern = "${installName}_*_${DeploymentType}.log"
     # Pattern: [InstallName] install completed in [X] seconds with exit code [N].
     $exitCodePattern = [regex]::Escape($installName) + '\].*completed in \[.*\] seconds with exit code \[(\d+)\]'
-    $deadline = [DateTime]::UtcNow.AddSeconds($FinalizationWaitSeconds)
-    $logFile = $null
-    $exitCodeMatch = $null
-    do
-    {
-        $logFile = Get-ChildItem -Path $logPath -Filter $logFilePattern -File -ErrorAction SilentlyContinue |
-            Sort-Object -Property LastWriteTime -Descending |
-            Select-Object -First 1
-
-        if ($logFile)
+    $logResult = Find-PsadtLogFileContent -InstallName $installName -DeploymentType $DeploymentType -FinalizationWaitSeconds $FinalizationWaitSeconds -PollIntervalMilliseconds $PollIntervalMilliseconds -ContentReady {
+        param ($Content)
+        if ([string]::IsNullOrEmpty($Content))
         {
-            # PSADT may remove the app's registry entry before post-deployment
-            # work finishes and writes the finalization line.
-            $logContent = Get-Content -LiteralPath $logFile.FullName -Raw -ErrorAction SilentlyContinue
-            if (-not [string]::IsNullOrEmpty($logContent))
-            {
-                $exitCodeMatches = [regex]::Matches($logContent, $exitCodePattern)
-                if ($exitCodeMatches.Count -gt 0)
-                {
-                    $exitCodeMatch = $exitCodeMatches[$exitCodeMatches.Count - 1]
-                    break
-                }
-            }
+            return $false
         }
-
-        if ([DateTime]::UtcNow -ge $deadline)
-        {
-            break
-        }
-        Start-Sleep -Milliseconds $PollIntervalMilliseconds
+        return [regex]::Matches($Content, $exitCodePattern).Count -gt 0
     }
-    while ($true)
+
+    $logFile = $logResult.LogFile
 
     if (-not $logFile)
     {
-        Write-Warning "[$($App.Name)] Log validation FAILED: No log file matching [$logFilePattern] found in [$logPath]."
-        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "Log file not found matching [$logFilePattern] in [$logPath]." }
+        Write-Warning "[$($App.Name)] Log validation FAILED: No log file matching [$($logResult.LogFilePattern)] found in [$($logResult.LogPath)]."
+        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "Log file not found matching [$($logResult.LogFilePattern)] in [$($logResult.LogPath)]." }
     }
+
+    $exitCodeMatches = [regex]::Matches($logResult.LogContent, $exitCodePattern)
+    $exitCodeMatch = if ($exitCodeMatches.Count -gt 0) { $exitCodeMatches[$exitCodeMatches.Count - 1] } else { $null }
 
     if ($exitCodeMatch)
     {
@@ -375,6 +439,79 @@ function Test-PsadtForceCloseCountdownLog
     return @{ Success = $true; Skipped = $false; LogFile = $logValidation.LogFile; Message = "ForceCloseProcessesCountdown log validation passed for countdown [$expectedCountdown]." }
 }
 
+function Test-PsadtInstallFailureLog
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$App,
+
+        [ValidateSet('Install', 'Uninstall', 'Repair')]
+        [string]$DeploymentType = 'Install',
+
+        [ValidateRange(0, 999999)]
+        [int]$ExpectedExitCode = 5,
+
+        [string]$LogFilePath,
+
+        [ValidateRange(0, 300)]
+        [int]$FinalizationWaitSeconds = 180,
+
+        [ValidateRange(100, 5000)]
+        [int]$PollIntervalMilliseconds = 500
+    )
+
+    $sessionPropsResult = Get-PsadtSessionProperties -App $App
+    if (-not $sessionPropsResult.Success)
+    {
+        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = $sessionPropsResult.Message }
+    }
+
+    $installName = Get-PsadtInstallName -SessionProperties $sessionPropsResult.SessionProperties
+
+    $expectedExitCodePattern = [System.Text.RegularExpressions.Regex]::Escape($ExpectedExitCode.ToString())
+    $failedFinalizationPattern = [System.Text.RegularExpressions.Regex]::Escape($installName) + '\] ' + [System.Text.RegularExpressions.Regex]::Escape($DeploymentType.ToLowerInvariant()) + " failed in \[.*\] seconds with exit code \[$expectedExitCodePattern\]\."
+    $processFailurePattern = "Execution failed with exit code \[$expectedExitCodePattern\]\."
+    $diskSpacePassPattern = '\[Pre-Install\] :: Successfully passed minimum disk space requirement check\.'
+
+    $logResult = Find-PsadtLogFileContent -InstallName $installName -DeploymentType $DeploymentType -LogFilePath $LogFilePath -FinalizationWaitSeconds $FinalizationWaitSeconds -PollIntervalMilliseconds $PollIntervalMilliseconds -ContentReady {
+        param ($Content)
+        if ([string]::IsNullOrEmpty($Content))
+        {
+            return $false
+        }
+        return (($Content -match $diskSpacePassPattern) -and (($Content -match $failedFinalizationPattern) -or ($Content -match $processFailurePattern)))
+    }
+
+    $logFile = $logResult.LogFile
+    $logContent = $logResult.LogContent
+
+    if (-not $logFile)
+    {
+        if (-not [string]::IsNullOrWhiteSpace($LogFilePath))
+        {
+            return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $LogFilePath; Message = $logResult.Message }
+        }
+        return @{ Success = $false; Skipped = $false; ExitCode = $null; LogFile = $null; Message = "Log file not found matching [$($logResult.LogFilePattern)] in [$($logResult.LogPath)]." }
+    }
+
+    $failures = @()
+    if ([string]::IsNullOrEmpty($logContent) -or $logContent -notmatch $diskSpacePassPattern)
+    {
+        $failures += 'expected disk space pass line was not found'
+    }
+    if ([string]::IsNullOrEmpty($logContent) -or (($logContent -notmatch $failedFinalizationPattern) -and ($logContent -notmatch $processFailurePattern)))
+    {
+        $failures += "expected failed finalization or process failure line with exit code [$ExpectedExitCode] was not found"
+    }
+
+    if ($failures.Count)
+    {
+        return @{ Success = $false; Skipped = $false; ExitCode = $ExpectedExitCode; LogFile = $logFile.FullName; Message = ($failures -join '; ') }
+    }
+
+    return @{ Success = $true; Skipped = $false; ExitCode = $ExpectedExitCode; LogFile = $logFile.FullName; Message = "$DeploymentType failure log validation passed for exit code [$ExpectedExitCode]." }
+}
+
 function Test-PsadtAppFileVersion
 {
     param (
@@ -392,21 +529,29 @@ function Test-PsadtAppFileVersion
 
     if ([string]::IsNullOrWhiteSpace($filePath) -or [string]::IsNullOrWhiteSpace($pattern))
     {
-        return @{ Success = $true; Skipped = $true; FilePath = $filePath; FileVersion = $null; Message = "No file version expectation configured for app [$($App.Name)] state [$ExpectedState]." }
+        $message = "No file version expectation configured for app [$($App.Name)] state [$ExpectedState]."
+        Write-Information "::info::[$($App.Name)] File version validation skipped: $message" -InformationAction Continue
+        return @{ Success = $true; Skipped = $true; FilePath = $filePath; FileVersion = $null; Message = $message }
     }
 
     if (-not (Test-Path -LiteralPath $filePath -PathType Leaf))
     {
-        return @{ Success = $false; Skipped = $false; FilePath = $filePath; FileVersion = $null; Message = "Expected version check file not found: $filePath" }
+        $message = "Expected version check file not found: $filePath"
+        Write-Warning "[$($App.Name)] File version validation failed: $message"
+        return @{ Success = $false; Skipped = $false; FilePath = $filePath; FileVersion = $null; Message = $message }
     }
 
     $fileVersion = (Get-Item -LiteralPath $filePath).VersionInfo.FileVersion
     if ($fileVersion -match $pattern)
     {
-        return @{ Success = $true; Skipped = $false; FilePath = $filePath; FileVersion = $fileVersion; Message = "File version [$fileVersion] matched expected $ExpectedState version [$description]." }
+        $message = "File version [$fileVersion] matched expected $ExpectedState version [$description]."
+        Write-Information "::info::[$($App.Name)] File version validation passed: $message Path=[$filePath] Pattern=[$pattern]" -InformationAction Continue
+        return @{ Success = $true; Skipped = $false; FilePath = $filePath; FileVersion = $fileVersion; Message = $message }
     }
 
-    return @{ Success = $false; Skipped = $false; FilePath = $filePath; FileVersion = $fileVersion; Message = "File version [$fileVersion] did not match expected $ExpectedState version [$description] using pattern [$pattern]." }
+    $message = "File version [$fileVersion] did not match expected $ExpectedState version [$description] using pattern [$pattern]."
+    Write-Warning "[$($App.Name)] File version validation failed: $message Path=[$filePath]"
+    return @{ Success = $false; Skipped = $false; FilePath = $filePath; FileVersion = $fileVersion; Message = $message }
 }
 
 # ---------------------------------------------------------------------------
