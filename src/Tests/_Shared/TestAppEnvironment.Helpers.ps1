@@ -130,6 +130,8 @@ function Initialize-NotepadPlusPlusLegacyTestEnvironment
         -LogPrefix $LogPrefix
 
     $legacyExePath = Join-Path ${env:ProgramFiles(x86)} 'Notepad++\notepad++.exe'
+    Get-Process -Name 'notepad++' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
     $installedLegacyVersion = $null
     if (Test-Path -LiteralPath $legacyExePath -PathType Leaf)
     {
@@ -142,8 +144,26 @@ function Initialize-NotepadPlusPlusLegacyTestEnvironment
     }
     else
     {
+        $uninstallerPath = Join-Path (Split-Path -Path $legacyExePath -Parent) 'uninstall.exe'
+        if (Test-Path -LiteralPath $uninstallerPath -PathType Leaf)
+        {
+            Write-Information "::info::[$LogPrefix] Removing existing Notepad++ version before installing legacy prerequisite." -InformationAction Continue
+            Start-Process -FilePath $uninstallerPath -ArgumentList '/S' -Wait -NoNewWindow
+        }
+
         Write-Information "::info::[$LogPrefix] Installing legacy Notepad++ prerequisite from '$legacyInstallerPath'." -InformationAction Continue
         Start-Process -FilePath $legacyInstallerPath -ArgumentList '/S' -Wait -NoNewWindow
+
+        if (-not (Test-Path -LiteralPath $legacyExePath -PathType Leaf))
+        {
+            throw "[$LogPrefix] Legacy Notepad++ install did not create expected path: $legacyExePath"
+        }
+
+        $installedLegacyVersion = (Get-Item -LiteralPath $legacyExePath).VersionInfo.FileVersion
+        if ($installedLegacyVersion -notmatch $LegacyVersionPattern)
+        {
+            throw "[$LogPrefix] Expected legacy Notepad++ version matching [$LegacyVersionPattern], but found [$installedLegacyVersion]."
+        }
     }
 
     if ($LaunchLegacyProcess)
