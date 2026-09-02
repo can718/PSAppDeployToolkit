@@ -40,7 +40,7 @@ $NewADTTemplateParameters = @{
         Show-ADTInstallationProgress
     }
 
-    InstallScriptBlock       = { 
+    InstallScriptBlock       = {
         Start-ADTProcess -FilePath "npp.$($adtSession.AppVersion).Installer.exe" -ArgumentList '/S'
     }
 

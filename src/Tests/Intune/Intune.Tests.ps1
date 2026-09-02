@@ -203,6 +203,7 @@ Describe 'Intune Tests' {
                 }
             )
             $script:ParallelInstallResults = @{}
+            $script:SkippedParallelInstallOutcomeReasons = @{}
         }
 
         It '[INTUNE:BatchUpload] Batch upload all apps and assign to group' {
@@ -312,7 +313,17 @@ Describe 'Intune Tests' {
                 {
                     $interactiveSessionId = 0
                 }
-                Start-IntuneSystemProcess -FilePath $notepadExePath -ProcessName 'notepad++' -InteractiveSessionId $interactiveSessionId -LogPrefix 'Notepad++' -StopExistingProcess
+                $notepadLaunchSucceeded = Start-IntuneSystemProcess `
+                    -FilePath $notepadExePath `
+                    -ProcessName 'notepad++' `
+                    -InteractiveSessionId $interactiveSessionId `
+                    -LogPrefix 'Notepad++' `
+                    -StopExistingProcess `
+                    -PassThru
+                if (-not $notepadLaunchSucceeded)
+                {
+                    $script:SkippedParallelInstallOutcomeReasons['Notepad++'] = "Notepad++ deferral precondition was not established because PsExec could not start '$notepadExePath' as SYSTEM."
+                }
             }
 
             Invoke-MdmSync
@@ -322,6 +333,7 @@ Describe 'Intune Tests' {
             $expectedDeferralAppNames = @(
                 $script:ParallelApps |
                     Where-Object { $_.TemplateVersion -eq 'V4' -and (Get-PsadtForceCountdownDeferralExpectation -App $_).Expected } |
+                    Where-Object { -not $script:SkippedParallelInstallOutcomeReasons.ContainsKey($_.Name) } |
                     ForEach-Object { $_.Name }
             )
             $appsForRegistryPoll = @(
@@ -375,6 +387,12 @@ Describe 'Intune Tests' {
             $appConfig = $script:ParallelApps | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
             $expectForceCountdownDeferral = $false
             $expectInstallFailure = $Name -eq 'Notepad++'
+
+            if ($script:SkippedParallelInstallOutcomeReasons.ContainsKey($Name))
+            {
+                Set-ItResult -Skipped -Because $script:SkippedParallelInstallOutcomeReasons[$Name]
+                return
+            }
 
             if ($appConfig -and $appConfig.TemplateVersion -eq 'V4')
             {

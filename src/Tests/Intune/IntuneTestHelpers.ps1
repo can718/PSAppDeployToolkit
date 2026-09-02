@@ -1312,7 +1312,9 @@ function Start-IntuneSystemProcess
 
         [int]$ProcessStartWaitSeconds = 3,
 
-        [switch]$StopExistingProcess
+        [switch]$StopExistingProcess,
+
+        [switch]$PassThru
     )
 
     if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf))
@@ -1359,7 +1361,19 @@ function Start-IntuneSystemProcess
     $process = Start-Process -FilePath $PsExecPath -ArgumentList $psExecArguments -Wait -NoNewWindow -PassThru
     if ($process.ExitCode -ne 0)
     {
-        throw "[$LogPrefix] PsExec failed to start '$FilePath' as SYSTEM. ExitCode=[$($process.ExitCode)]."
+        if (-not [System.String]::IsNullOrWhiteSpace($ProcessName))
+        {
+            Write-Information "[$LogPrefix] PsExec returned exit code [$($process.ExitCode)] after detached launch. Verifying '$ProcessName' process state before treating it as a failure." -InformationAction Continue
+        }
+        elseif ($PassThru)
+        {
+            Write-Warning "[$LogPrefix] PsExec failed to start '$FilePath' as SYSTEM. ExitCode=[$($process.ExitCode)]."
+            return $false
+        }
+        else
+        {
+            throw "[$LogPrefix] PsExec failed to start '$FilePath' as SYSTEM. ExitCode=[$($process.ExitCode)]."
+        }
     }
 
     if (-not [System.String]::IsNullOrWhiteSpace($ProcessName))
@@ -1374,6 +1388,17 @@ function Start-IntuneSystemProcess
         if ($startedProcesses.Count -eq 0)
         {
             $sessionScope = if ($InteractiveSessionId -ge 0) { " in session [$InteractiveSessionId]" } else { '' }
+            if ($PassThru)
+            {
+                Write-Warning "[$LogPrefix] Process '$ProcessName' was not running$sessionScope after SYSTEM launch of '$FilePath'."
+                return $false
+            }
+
+            if ($process.ExitCode -ne 0)
+            {
+                throw "[$LogPrefix] PsExec failed to start '$FilePath' as SYSTEM. ExitCode=[$($process.ExitCode)]. Process '$ProcessName' was not running$sessionScope."
+            }
+
             throw "[$LogPrefix] Process '$ProcessName' was not running$sessionScope after SYSTEM launch of '$FilePath'."
         }
 
@@ -1381,6 +1406,11 @@ function Start-IntuneSystemProcess
         {
             Write-Information "[$LogPrefix] SYSTEM-launched process detected: Name=[$($startedProcess.ProcessName)], PID=[$($startedProcess.Id)], SessionId=[$($startedProcess.SessionId)], Path=[$($startedProcess.Path)]." -InformationAction Continue
         }
+    }
+
+    if ($PassThru)
+    {
+        return $true
     }
 }
 
