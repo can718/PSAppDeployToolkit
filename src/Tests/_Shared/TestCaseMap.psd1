@@ -1,4 +1,4 @@
-@{
+﻿@{
     INTUNE = @{
         'WinSCP_Install' = '51805'
         'WinSCP_Uninstall' = '51806'
