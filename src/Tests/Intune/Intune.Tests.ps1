@@ -39,6 +39,14 @@ BeforeAll {
     # Load shared helper functions.
     . (Join-Path $script:_tfScriptRoot 'IntuneTestHelpers.ps1')
 
+    $script:TestCaseMapHelpersPath = Join-Path $script:_tfScriptRoot '..\_Shared\TestCaseMap.Helpers.ps1'
+    if (-not (Test-Path -LiteralPath $script:TestCaseMapHelpersPath -PathType Leaf))
+    {
+        throw "Required test case map helper file not found: $script:TestCaseMapHelpersPath"
+    }
+    . $script:TestCaseMapHelpersPath
+    $script:TFTestCaseIdMap = Import-PSADTTestCaseIdMap -ScriptRoot $script:_tfScriptRoot
+
     $script:SharedEnvironmentHelpersPath = Join-Path $script:_tfScriptRoot '..\_Shared\TestAppEnvironment.Helpers.ps1'
     if (-not (Test-Path -LiteralPath $script:SharedEnvironmentHelpersPath -PathType Leaf))
     {
@@ -143,10 +151,12 @@ Describe 'Intune Tests' {
         $testInfo = $____Pester.CurrentTest
         $script:CurrentTestClass = 'Intune Tests / Win32 App Wrap and Upload'
         $script:CurrentTestMethod = $testInfo.Name
+        $script:CurrentTestCaseId = Resolve-PSADTTestCaseId -TestCaseIdMap $script:TFTestCaseIdMap -TestMethod $script:CurrentTestMethod
         $script:TFCurrentResultId = Invoke-TFReportTestCase `
             -TFState   $script:TFState `
             -TestClass $script:CurrentTestClass `
-            -TestMethod $script:CurrentTestMethod
+            -TestMethod $script:CurrentTestMethod `
+            -TestCaseId $script:CurrentTestCaseId
 
         # Ensure Intune Graph session is active.
         if ($(Test-AccessToken) -eq $false)

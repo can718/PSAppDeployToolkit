@@ -97,7 +97,8 @@ function Invoke-TFReportTestCase
         [Parameter(Mandatory)]
         [hashtable]$TFState,
         [string]$TestClass,
-        [string]$TestMethod
+        [string]$TestMethod,
+        [string]$TestCaseId = '0'
     )
 
     if (-not $TFState.Enabled) { return $null }
@@ -117,7 +118,8 @@ function Invoke-TFReportTestCase
             -TestClass   $TestClass `
             -SessionId   $env:TEST_SESSION_ID `
             -ProductName $TestMethod `
-            -MachineId   $env:COMPUTERNAME
+            -MachineId   $env:COMPUTERNAME `
+            -TestCaseId  $TestCaseId
         Write-Information "[TerraForge] Created result entry Id=$($result.Id) for: $TestClass / $TestMethod" -InformationAction Continue
         return $result.Id
     }

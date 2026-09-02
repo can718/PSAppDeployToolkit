@@ -13,6 +13,14 @@ BeforeAll {
         catch { Write-Warning "[TerraForge] Failed to load helper script: $($_.Exception.Message)" }
     }
     Write-Information "[Pester] Version: $((Get-Module Pester).Version)" -InformationAction Continue
+    $script:TestCaseMapHelpersPath = Join-Path $script:_tfScriptRoot '..\_Shared\TestCaseMap.Helpers.ps1'
+    if (-not (Test-Path -LiteralPath $script:TestCaseMapHelpersPath -PathType Leaf))
+    {
+        throw "Required test case map helper file not found: $script:TestCaseMapHelpersPath"
+    }
+    . $script:TestCaseMapHelpersPath
+    $script:TFTestCaseIdMap = Import-PSADTTestCaseIdMap -ScriptRoot $script:_tfScriptRoot
+
     $script:TFReportingEnabled = $false
     $script:TFAccessToken = $null
     $script:TFTestRunId = $env:TEST_RUN_ID
@@ -53,7 +61,8 @@ BeforeAll {
         param (
             [string]$TestClass,
             [string]$TestMethod,
-            [string]$TestKey
+            [string]$TestKey,
+            [string]$TestCaseId
         )
         $script:TFCurrentResultId = $null
         if (-not $script:TFReportingEnabled)
@@ -65,6 +74,11 @@ BeforeAll {
         {
             Write-Warning "[TerraForge] Skipping result entry creation: could not resolve test name."
             return
+        }
+
+        if ([string]::IsNullOrWhiteSpace($TestCaseId))
+        {
+            $TestCaseId = Resolve-PSADTTestCaseId -TestCaseIdMap $script:TFTestCaseIdMap -TestMethod $TestMethod
         }
 
         if (-not $script:TFResultByKey)
@@ -85,7 +99,8 @@ BeforeAll {
                 -TestClass $TestClass `
                 -SessionId $env:TEST_SESSION_ID `
                 -ProductName $TestMethod `
-                -MachineId $env:COMPUTERNAME
+                -MachineId $env:COMPUTERNAME `
+                -TestCaseId $TestCaseId
             if (-not [string]::IsNullOrWhiteSpace($TestKey))
             {
                 $script:TFResultByKey[$TestKey] = $result.Id
