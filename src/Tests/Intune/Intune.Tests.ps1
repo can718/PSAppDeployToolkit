@@ -293,6 +293,18 @@ Describe 'Intune Tests' {
         It '[INTUNE:InstallSync] MDM sync, then parallel poll for expected install outcomes' {
             $script:UploadedApps | Should -Not -BeNullOrEmpty -Because 'Upload step must succeed first'
 
+            $notepadApp = $script:ParallelApps | Where-Object { $_.Name -eq 'Notepad++' } | Select-Object -First 1
+            if ($notepadApp)
+            {
+                $notepadExePath = 'C:\Program Files (x86)\Notepad++\notepad++.exe'
+                $interactiveSessionId = Get-IntuneActiveInteractiveSessionId -LogPrefix 'Notepad++'
+                if ($null -eq $interactiveSessionId)
+                {
+                    $interactiveSessionId = 0
+                }
+                Start-IntuneSystemProcess -FilePath $notepadExePath -ProcessName 'notepad++' -InteractiveSessionId $interactiveSessionId -LogPrefix 'Notepad++' -StopExistingProcess
+            }
+
             Invoke-MdmSync
             Start-Sleep -Seconds 8
             Wait-IntuneManagementExtension

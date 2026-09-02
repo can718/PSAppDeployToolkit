@@ -1218,4 +1218,168 @@ function Get-IntuneWinAppUtilPath
     return $null
 }
 
+function Get-IntunePsExecPath
+{
+    <#
+    .SYNOPSIS
+        Returns the path to PsExec.exe, downloading PSTools when it is not cached locally.
+    #>
+    param (
+        [string]$ToolsDirectory = 'C:\Tools\Intune\PSTools',
+
+        [string]$DownloadUri = 'https://download.sysinternals.com/files/PSTools.zip',
+
+        [string]$LogPrefix = 'Intune'
+    )
+
+    $psExecPath = Join-Path $ToolsDirectory 'PsExec.exe'
+    if (Test-Path -LiteralPath $psExecPath -PathType Leaf)
+    {
+        Write-Information "[$LogPrefix] Reusing PsExec from '$psExecPath'." -InformationAction Continue
+        return $psExecPath
+    }
+
+    New-Item -Path $ToolsDirectory -ItemType Directory -Force | Out-Null
+    $downloadPath = Join-Path $ToolsDirectory 'PSTools.zip'
+
+    Write-Information "[$LogPrefix] PsExec not found at '$psExecPath'. Downloading PSTools from '$DownloadUri'." -InformationAction Continue
+    Invoke-WebRequest -Uri $DownloadUri -OutFile $downloadPath -UseBasicParsing
+    Expand-Archive -LiteralPath $downloadPath -DestinationPath $ToolsDirectory -Force
+
+    if (-not (Test-Path -LiteralPath $psExecPath -PathType Leaf))
+    {
+        throw "[$LogPrefix] PsExec.exe was not found after extracting '$downloadPath' to '$ToolsDirectory'."
+    }
+
+    return $psExecPath
+}
+
+function Get-IntuneActiveInteractiveSessionId
+{
+    <#
+    .SYNOPSIS
+        Returns the active interactive Windows session ID, or $null when none is found.
+    #>
+    param (
+        [string]$LogPrefix = 'Intune'
+    )
+
+    try
+    {
+        $queryUserOutput = & "$env:SystemRoot\System32\quser.exe" 2>$null
+        foreach ($line in @($queryUserOutput | Select-Object -Skip 1))
+        {
+            $match = [System.Text.RegularExpressions.Regex]::Match([string]$line, '^\s*>?\s*(?<UserName>\S+)\s+(?:(?<SessionName>\S+)\s+)?(?<SessionId>\d+)\s+(?<State>Active)\b')
+            if ($match.Success)
+            {
+                $sessionId = [int]$match.Groups['SessionId'].Value
+                $sessionName = $match.Groups['SessionName'].Value
+                Write-Information "[$LogPrefix] Active interactive session detected: User=[$($match.Groups['UserName'].Value)], SessionName=[$sessionName], SessionId=[$sessionId]." -InformationAction Continue
+                return $sessionId
+            }
+        }
+    }
+    catch
+    {
+        Write-Information "[$LogPrefix] Unable to query active interactive session via quser.exe: $($_.Exception.Message)" -InformationAction Continue
+    }
+
+    Write-Information "[$LogPrefix] No active interactive session detected." -InformationAction Continue
+    return $null
+}
+
+function Start-IntuneSystemProcess
+{
+    <#
+    .SYNOPSIS
+        Starts a process as NT AUTHORITY\SYSTEM using PsExec for Intune tests.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+
+        [string]$ArgumentList,
+
+        [string]$ProcessName,
+
+        [int]$InteractiveSessionId = 0,
+
+        [string]$PsExecPath,
+
+        [string]$LogPrefix = 'Intune',
+
+        [int]$ProcessStartWaitSeconds = 3,
+
+        [switch]$StopExistingProcess
+    )
+
+    if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf))
+    {
+        throw "[$LogPrefix] SYSTEM launch path not found: $FilePath"
+    }
+
+    if ([System.String]::IsNullOrWhiteSpace($PsExecPath))
+    {
+        $PsExecPath = Get-IntunePsExecPath -LogPrefix $LogPrefix
+    }
+    elseif (-not (Test-Path -LiteralPath $PsExecPath -PathType Leaf))
+    {
+        throw "[$LogPrefix] PsExec path not found: $PsExecPath"
+    }
+
+    if ($StopExistingProcess -and -not [System.String]::IsNullOrWhiteSpace($ProcessName))
+    {
+        $existingProcesses = @(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)
+        if ($existingProcesses.Count -gt 0)
+        {
+            Write-Information "[$LogPrefix] Stopping $($existingProcesses.Count) existing '$ProcessName' process(es) before SYSTEM launch." -InformationAction Continue
+            $existingProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    $psExecArguments = [System.Collections.Generic.List[string]]::new()
+    $psExecArguments.Add('-accepteula')
+    $psExecArguments.Add('-nobanner')
+    $psExecArguments.Add('-s')
+    $psExecArguments.Add('-d')
+    if ($InteractiveSessionId -ge 0)
+    {
+        $psExecArguments.Add('-i')
+        $psExecArguments.Add($InteractiveSessionId.ToString())
+    }
+    $psExecArguments.Add(('"{0}"' -f $FilePath))
+    if (-not [System.String]::IsNullOrWhiteSpace($ArgumentList))
+    {
+        $psExecArguments.Add($ArgumentList)
+    }
+
+    Write-Information "[$LogPrefix] Starting '$FilePath' as SYSTEM using PsExec '$PsExecPath'." -InformationAction Continue
+    $process = Start-Process -FilePath $PsExecPath -ArgumentList $psExecArguments -Wait -NoNewWindow -PassThru
+    if ($process.ExitCode -ne 0)
+    {
+        throw "[$LogPrefix] PsExec failed to start '$FilePath' as SYSTEM. ExitCode=[$($process.ExitCode)]."
+    }
+
+    if (-not [System.String]::IsNullOrWhiteSpace($ProcessName))
+    {
+        Start-Sleep -Seconds $ProcessStartWaitSeconds
+        $startedProcesses = @(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)
+        if ($InteractiveSessionId -ge 0)
+        {
+            $startedProcesses = @($startedProcesses | Where-Object { $_.SessionId -eq $InteractiveSessionId })
+        }
+
+        if ($startedProcesses.Count -eq 0)
+        {
+            $sessionScope = if ($InteractiveSessionId -ge 0) { " in session [$InteractiveSessionId]" } else { '' }
+            throw "[$LogPrefix] Process '$ProcessName' was not running$sessionScope after SYSTEM launch of '$FilePath'."
+        }
+
+        foreach ($startedProcess in $startedProcesses)
+        {
+            Write-Information "[$LogPrefix] SYSTEM-launched process detected: Name=[$($startedProcess.ProcessName)], PID=[$($startedProcess.Id)], SessionId=[$($startedProcess.SessionId)], Path=[$($startedProcess.Path)]." -InformationAction Continue
+        }
+    }
+}
+
 #pragma warning restore PSPlaceOpenBrace
