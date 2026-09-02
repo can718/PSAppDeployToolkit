@@ -85,6 +85,27 @@ function Initialize-TerraForgeReporting
     return $result
 }
 
+function Resolve-IntunePesterTestMethod
+{
+    param (
+        [string]$TestMethod,
+        [hashtable]$TestData
+    )
+
+    if ([string]::IsNullOrWhiteSpace($TestMethod) -or -not $TestData)
+    {
+        return $TestMethod
+    }
+
+    $resolvedTestMethod = $TestMethod
+    foreach ($entry in $TestData.GetEnumerator())
+    {
+        $resolvedTestMethod = $resolvedTestMethod -replace [System.Text.RegularExpressions.Regex]::Escape("<$($entry.Key)>") , [string]$entry.Value
+    }
+
+    return $resolvedTestMethod
+}
+
 function Invoke-TFReportTestCase
 {
     <#
@@ -98,7 +119,8 @@ function Invoke-TFReportTestCase
         [hashtable]$TFState,
         [string]$TestClass,
         [string]$TestMethod,
-        [string]$TestCaseId = '0'
+        [hashtable]$TestData,
+        [string]$TestCaseId
     )
 
     if (-not $TFState.Enabled) { return $null }
@@ -107,6 +129,20 @@ function Invoke-TFReportTestCase
     {
         Write-Warning "[TerraForge] Skipping result entry creation: could not resolve test name."
         return $null
+    }
+
+    $TestMethod = Resolve-IntunePesterTestMethod -TestMethod $TestMethod -TestData $TestData
+
+    if ([string]::IsNullOrWhiteSpace($TestCaseId))
+    {
+        $TestCaseId = if (Get-Command 'Resolve-PSADTTestCaseId' -ErrorAction SilentlyContinue)
+        {
+            Resolve-PSADTTestCaseId -TestCaseIdMap $script:TFTestCaseIdMap -TestMethod $TestMethod
+        }
+        else
+        {
+            '0'
+        }
     }
 
     try

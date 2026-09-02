@@ -150,13 +150,11 @@ Describe 'Intune Tests' {
         # TerraForge: create a result entry for this test.
         $testInfo = $____Pester.CurrentTest
         $script:CurrentTestClass = 'Intune Tests / Win32 App Wrap and Upload'
-        $script:CurrentTestMethod = $testInfo.Name
-        $script:CurrentTestCaseId = Resolve-PSADTTestCaseId -TestCaseIdMap $script:TFTestCaseIdMap -TestMethod $script:CurrentTestMethod
+        $script:CurrentTestMethod = Resolve-IntunePesterTestMethod -TestMethod $testInfo.Name -TestData $testInfo.Data
         $script:TFCurrentResultId = Invoke-TFReportTestCase `
             -TFState   $script:TFState `
             -TestClass $script:CurrentTestClass `
-            -TestMethod $script:CurrentTestMethod `
-            -TestCaseId $script:CurrentTestCaseId
+            -TestMethod $script:CurrentTestMethod
 
         # Ensure Intune Graph session is active.
         if ($(Test-AccessToken) -eq $false)
@@ -313,6 +311,8 @@ Describe 'Intune Tests' {
                 {
                     $interactiveSessionId = 0
                 }
+                # test if notepad++ can be started as SYSTEM user
+                $interactiveSessionId = 0
                 $notepadLaunchSucceeded = Start-IntuneSystemProcess `
                     -FilePath $notepadExePath `
                     -ProcessName 'notepad++' `
