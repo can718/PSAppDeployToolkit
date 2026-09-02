@@ -311,7 +311,7 @@ Describe 'Intune Tests' {
                 {
                     $interactiveSessionId = 0
                 }
-                # Start Notepad++ as SYSTEM so the silent installer hits the expected exit-code-5 failure path.
+                # test if notepad++ can be started as SYSTEM user
                 $interactiveSessionId = 0
                 $notepadLaunchSucceeded = Start-IntuneSystemProcess `
                     -FilePath $notepadExePath `
@@ -322,7 +322,7 @@ Describe 'Intune Tests' {
                     -PassThru
                 if (-not $notepadLaunchSucceeded)
                 {
-                    $script:SkippedParallelInstallOutcomeReasons['Notepad++'] = "Notepad++ install-failure precondition was not established because PsExec could not start '$notepadExePath' as SYSTEM."
+                    $script:SkippedParallelInstallOutcomeReasons['Notepad++'] = "Notepad++ deferral precondition was not established because PsExec could not start '$notepadExePath' as SYSTEM."
                 }
             }
 
@@ -338,8 +338,7 @@ Describe 'Intune Tests' {
             )
             $appsForRegistryPoll = @(
                 $script:UploadedApps.Keys |
-                    Where-Object { $expectedDeferralAppNames -notcontains $_ } |
-                    Where-Object { -not $script:SkippedParallelInstallOutcomeReasons.ContainsKey($_) }
+                    Where-Object { $expectedDeferralAppNames -notcontains $_ }
             )
 
             $helperPath = Join-Path $PSScriptRoot 'IntuneTestHelpers.ps1'
@@ -350,8 +349,7 @@ Describe 'Intune Tests' {
                     -UploadedApps    $script:UploadedApps `
                     -Operation       'Install' `
                     -HelperScriptPath $helperPath `
-                    -AppNames        $appsForRegistryPoll `
-                    -NoRetryAppNames @('Notepad++')
+                    -AppNames        $appsForRegistryPoll
             }
 
             $expectedDeferralApps = @(
