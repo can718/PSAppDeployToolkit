@@ -61,7 +61,7 @@ jobs:
       run: |
         Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
         Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
-        Install-Module -Name Pester -RequiredVersion 6.0.1 -Force -SkipPublisherCheck -Scope CurrentUser
+        Install-Module -Name Pester -RequiredVersion 6.1.0 -Force -SkipPublisherCheck -Scope CurrentUser
         Install-Module -Name platyPS -RequiredVersion 0.14.2 -Force -Scope CurrentUser
         Install-Module -Name Alt3.Docusaurus.Powershell -RequiredVersion 1.0.37 -Force -Scope CurrentUser
 
