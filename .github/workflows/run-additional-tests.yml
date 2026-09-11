@@ -15,6 +15,7 @@ jobs:
       runner-label: ${{ steps.launch-agent.outputs.runner-label }}
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      TerraforgeApiAccessKey: ${{ secrets.TerraforgeApiAccessKey }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
       TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_MCM_CONFIG_NAME || 'Lite (CM2509 Github)-Agent' }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
@@ -57,6 +58,7 @@ jobs:
       fail-fast: false
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      TerraforgeApiAccessKey: ${{ secrets.TerraforgeApiAccessKey }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
@@ -194,6 +196,7 @@ jobs:
           TERRAFORGE_API_BASE_URL   = $env:TERRAFORGE_API_BASE_URL
           TEST_RUN_ID               = $env:TEST_RUN_ID
           INFRA_MI_CLIENT_ID        = $env:INFRA_MI_CLIENT_ID
+          TerraforgeApiAccessKey    = $env:TerraforgeApiAccessKey
           INFRA_KEYVAULT            = $env:INFRA_KEYVAULT
           TERRAFORGE_API_KEY_SECRET = $env:TERRAFORGE_API_KEY_SECRET
         }
@@ -1025,7 +1028,7 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        foreach ($name in 'TERRAFORGE_API_BASE_URL', 'TEST_RUN_ID', 'INFRA_MI_CLIENT_ID', 'INFRA_KEYVAULT', 'TERRAFORGE_API_KEY_SECRET') {
+        foreach ($name in 'TERRAFORGE_API_BASE_URL', 'TEST_RUN_ID', 'INFRA_MI_CLIENT_ID', 'TerraforgeApiAccessKey', 'INFRA_KEYVAULT', 'TERRAFORGE_API_KEY_SECRET') {
           [System.Environment]::SetEnvironmentVariable($name, $null, 'Machine')
           Remove-Item -Path "Env:\$name" -ErrorAction SilentlyContinue
           Write-Host "Cleared machine environment variable: $name"

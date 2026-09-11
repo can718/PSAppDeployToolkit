@@ -34,9 +34,7 @@ BeforeAll {
             try
             {
                 $script:TFAccessToken = Get-TerraForgeAuthToken `
-                    -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
-                    -KeyVaultName $env:INFRA_KEYVAULT `
-                    -ApiKeySecretName $env:TERRAFORGE_API_KEY_SECRET `
+                    -TerraforgeApiAccessKey $env:TerraforgeApiAccessKey `
                     -ApiBaseUrl $script:TFApiBaseUrl
                 $script:TFReportingEnabled = $true
                 Write-Information "[TerraForge] Reporting enabled for TestRunId: $script:TFTestRunId" -InformationAction Continue

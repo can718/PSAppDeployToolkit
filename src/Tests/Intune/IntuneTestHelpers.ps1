@@ -64,9 +64,7 @@ function Initialize-TerraForgeReporting
             try
             {
                 $result.AccessToken = Get-TerraForgeAuthToken `
-                    -ManagedIdentityClientId $env:INFRA_MI_CLIENT_ID `
-                    -KeyVaultName            $env:INFRA_KEYVAULT `
-                    -ApiKeySecretName        $env:TERRAFORGE_API_KEY_SECRET `
+                    -TerraforgeApiAccessKey  $env:TerraforgeApiAccessKey `
                     -ApiBaseUrl              $result.ApiBaseUrl
                 $result.Enabled = $true
                 Write-Information "[TerraForge] Reporting enabled for TestRunId: $($result.TestRunId)" -InformationAction Continue

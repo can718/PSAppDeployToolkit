@@ -1,6 +1,6 @@
 
 
-function Get-TerraForgeAuthToken
+function Get-TerraForgeAuthTokenFromManagedIdentity
 {
     [CmdletBinding()]
     [OutputType([string])]
@@ -27,6 +27,32 @@ function Get-TerraForgeAuthToken
 
     # Step 3 - Exchange for bearer token
     return Get-TerraForgeAccessToken -ApiBaseUrl $ApiBaseUrl -ApiAccessKey $apiKey
+}
+
+function Get-TerraForgeAuthToken
+{
+    [CmdletBinding()]
+    [OutputType([string])]
+    param
+    (
+        [Parameter()]
+        [string]$TerraforgeApiAccessKey = $env:TerraforgeApiAccessKey,
+
+        [Parameter(Mandatory)]
+        [string]$ApiBaseUrl
+    )
+
+
+    # check if access key is provided
+    if (-not $TerraforgeApiAccessKey) {
+        throw "TerraForge API access key is not provided."
+    }
+    # check if ApiBaseUrl is provided
+    if (-not $ApiBaseUrl) {
+        throw "API base URL is not provided."
+    }
+
+    return Get-TerraForgeAccessToken -ApiBaseUrl $ApiBaseUrl -ApiAccessKey $TerraforgeApiAccessKey
 }
 
 function Connect-AzureWithManagedIdentity
@@ -199,6 +225,9 @@ function StopRecord
         [string]$AccessToken,
 
         [Parameter()]
+        [string]$TerraforgeApiAccessKey = $env:TerraforgeApiAccessKey,
+
+        [Parameter()]
         [string]$TestRunId = $env:TEST_RUN_ID,
 
         [Parameter()]
@@ -231,6 +260,7 @@ function StopRecord
     {
         if (-not $ApiBaseUrl) { $ApiBaseUrl = [System.Environment]::GetEnvironmentVariable('TERRAFORGE_API_BASE_URL', 'Machine') }
         if (-not $TestRunId) { $TestRunId = [System.Environment]::GetEnvironmentVariable('TEST_RUN_ID', 'Machine') }
+        if (-not $TerraforgeApiAccessKey) { $TerraforgeApiAccessKey = [System.Environment]::GetEnvironmentVariable('TerraforgeApiAccessKey', 'Machine') }
         if (-not $ManagedIdentityClientId) { $ManagedIdentityClientId = [System.Environment]::GetEnvironmentVariable('INFRA_MI_CLIENT_ID', 'Machine') }
         if (-not $KeyVaultName) { $KeyVaultName = [System.Environment]::GetEnvironmentVariable('INFRA_KEYVAULT', 'Machine') }
         if (-not $ApiKeySecretName) { $ApiKeySecretName = [System.Environment]::GetEnvironmentVariable('TERRAFORGE_API_KEY_SECRET', 'Machine') }
@@ -238,9 +268,7 @@ function StopRecord
         $missingUploadSettings = @(
             if (-not $ApiBaseUrl) { 'TERRAFORGE_API_BASE_URL' }
             if (-not $TestRunId) { 'TEST_RUN_ID' }
-            if (-not $AccessToken -and -not $ManagedIdentityClientId) { 'INFRA_MI_CLIENT_ID' }
-            if (-not $AccessToken -and -not $KeyVaultName) { 'INFRA_KEYVAULT' }
-            if (-not $AccessToken -and -not $ApiKeySecretName) { 'TERRAFORGE_API_KEY_SECRET' }
+            if (-not $AccessToken -and -not $TerraforgeApiAccessKey) { 'TerraforgeApiAccessKey' }
         )
         if ($missingUploadSettings.Count -gt 0)
         {
@@ -249,10 +277,8 @@ function StopRecord
         if (-not $AccessToken)
         {
             $AccessToken = Get-TerraForgeAuthToken `
-                -ApiBaseUrl              $ApiBaseUrl `
-                -ManagedIdentityClientId $ManagedIdentityClientId `
-                -KeyVaultName            $KeyVaultName `
-                -ApiKeySecretName        $ApiKeySecretName
+                -TerraforgeApiAccessKey $TerraforgeApiAccessKey `
+                -ApiBaseUrl             $ApiBaseUrl
         }
 
         if ($Files -and $Files.Count -gt 0)
@@ -1748,6 +1774,9 @@ function Invoke-TFLaunchAgent
         [int]$RetryDelaySeconds = 5,
 
         [Parameter()]
+        [string]$TerraforgeApiAccessKey = $env:TerraforgeApiAccessKey,
+
+        [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
 
         [Parameter()]
@@ -1767,10 +1796,8 @@ function Invoke-TFLaunchAgent
         {
             # Re-authenticate on every attempt -- the access token may expire during long waits
             $accessToken = Get-TerraForgeAuthToken `
-                -ApiBaseUrl              $ApiBaseUrl `
-                -ManagedIdentityClientId $ManagedIdentityClientId `
-                -KeyVaultName            $KeyVaultName `
-                -ApiKeySecretName        $ApiKeySecretName
+                -TerraforgeApiAccessKey $TerraforgeApiAccessKey `
+                -ApiBaseUrl             $ApiBaseUrl
 
             $agent = Invoke-TerraForgeLaunchAgent `
                 -ApiBaseUrl  $ApiBaseUrl `
@@ -1823,6 +1850,9 @@ function Invoke-TFStartTestRun
         [string]$Product = 'PSADT',
 
         [Parameter()]
+        [string]$TerraforgeApiAccessKey = $env:TerraforgeApiAccessKey,
+
+        [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
 
         [Parameter()]
@@ -1833,10 +1863,8 @@ function Invoke-TFStartTestRun
     )
 
     $accessToken = Get-TerraForgeAuthToken `
-        -ApiBaseUrl              $ApiBaseUrl `
-        -ManagedIdentityClientId $ManagedIdentityClientId `
-        -KeyVaultName            $KeyVaultName `
-        -ApiKeySecretName        $ApiKeySecretName
+        -TerraforgeApiAccessKey $TerraforgeApiAccessKey `
+        -ApiBaseUrl             $ApiBaseUrl
 
     $runTitle = if ($Title) { $Title } else { "$Product Tests - Build $AdoBuildId" }
 
@@ -1868,6 +1896,9 @@ function Invoke-TFCompleteTestRun
         [string]$TestRunId = $env:TEST_RUN_ID,
 
         [Parameter()]
+        [string]$TerraforgeApiAccessKey = $env:TerraforgeApiAccessKey,
+
+        [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
 
         [Parameter()]
@@ -1878,10 +1909,8 @@ function Invoke-TFCompleteTestRun
     )
 
     $accessToken = Get-TerraForgeAuthToken `
-        -ApiBaseUrl              $ApiBaseUrl `
-        -ManagedIdentityClientId $ManagedIdentityClientId `
-        -KeyVaultName            $KeyVaultName `
-        -ApiKeySecretName        $ApiKeySecretName
+        -TerraforgeApiAccessKey $TerraforgeApiAccessKey `
+        -ApiBaseUrl             $ApiBaseUrl
 
     Write-Host "==> Completing test run $TestRunId ..."
     Set-TestRun `
@@ -1910,6 +1939,9 @@ function Invoke-TFUploadTestResults
         [string[]]$TestResultXmlPath = @("$env:GITHUB_WORKSPACE\src\Artifacts\TestOutput\AdditionalTests.xml"),
 
         [Parameter()]
+        [string]$TerraforgeApiAccessKey = $env:TerraforgeApiAccessKey,
+
+        [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
 
         [Parameter()]
@@ -1920,10 +1952,8 @@ function Invoke-TFUploadTestResults
     )
 
     $accessToken = Get-TerraForgeAuthToken `
-        -ApiBaseUrl              $ApiBaseUrl `
-        -ManagedIdentityClientId $ManagedIdentityClientId `
-        -KeyVaultName            $KeyVaultName `
-        -ApiKeySecretName        $ApiKeySecretName
+        -TerraforgeApiAccessKey $TerraforgeApiAccessKey `
+        -ApiBaseUrl             $ApiBaseUrl
 
     Write-Host "==> Uploading test results to Azure Blob Storage ..."
     if ([string]::IsNullOrWhiteSpace($BlobPathBase))
@@ -1966,6 +1996,9 @@ function Invoke-TFDownloadTestAssets
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
 
         [Parameter()]
+        [string]$TerraforgeApiAccessKey = $env:TerraforgeApiAccessKey,
+
+        [Parameter()]
         [string]$KeyVaultApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET,
 
         [Parameter()]
@@ -1984,10 +2017,8 @@ function Invoke-TFDownloadTestAssets
     # Step 2 - Obtain TerraForge access token
     Write-Host "==> Obtaining TerraForge access token ..."
     $accessToken = Get-TerraForgeAuthToken `
-        -ApiBaseUrl              $ApiBaseUrl `
-        -ManagedIdentityClientId $ManagedIdentityClientId `
-        -KeyVaultName            $KeyVaultName `
-        -ApiKeySecretName        $KeyVaultApiKeySecretName
+        -TerraforgeApiAccessKey $TerraforgeApiAccessKey `
+        -ApiBaseUrl             $ApiBaseUrl
 
     # Step 3 - Download blob folder to local destination
     Write-Host "==> Downloading blob folder '$BlobFolderPath' to '$LocalDestinationDir' ..."
@@ -2078,6 +2109,9 @@ function Invoke-TFResetSessionVM
         [string]$MachineId = (Get-MachineID),
 
         [Parameter()]
+        [string]$TerraforgeApiAccessKey = $env:TerraforgeApiAccessKey,
+
+        [Parameter()]
         [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
 
         [Parameter()]
@@ -2088,10 +2122,8 @@ function Invoke-TFResetSessionVM
     )
 
     $accessToken = Get-TerraForgeAuthToken `
-        -ApiBaseUrl              $ApiBaseUrl `
-        -ManagedIdentityClientId $ManagedIdentityClientId `
-        -KeyVaultName            $KeyVaultName `
-        -ApiKeySecretName        $ApiKeySecretName
+        -TerraforgeApiAccessKey $TerraforgeApiAccessKey `
+        -ApiBaseUrl             $ApiBaseUrl
 
     $vmStatus = 4   # default: Failed
 

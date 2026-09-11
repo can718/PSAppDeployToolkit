@@ -15,6 +15,7 @@ jobs:
       runner-label: ${{ steps.launch-agent.outputs.runner-label }}
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      TerraforgeApiAccessKey: ${{ secrets.TerraforgeApiAccessKey }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
       TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_INTUNE_CONFIG_NAME || 'Intune (Github) Lab-Agent' }}
       #Intune (Github)-Agent
@@ -59,6 +60,7 @@ jobs:
       fail-fast: false
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      TerraforgeApiAccessKey: ${{ secrets.TerraforgeApiAccessKey }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
@@ -196,7 +198,7 @@ jobs:
         }
         . $tfHelper
 
-        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
+        $accessToken = Get-TerraForgeAuthToken -TerraforgeApiAccessKey $env:TerraforgeApiAccessKey -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
 
         Invoke-TFDownloadTestAssets -LocalDestinationDir "C:\Tools\PSADT\AutoEnroll"
 
@@ -1505,6 +1507,7 @@ jobs:
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      TerraforgeApiAccessKey: ${{ secrets.TerraforgeApiAccessKey }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
