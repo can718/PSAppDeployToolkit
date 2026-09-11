@@ -443,13 +443,13 @@ jobs:
         Write-Host "NuGet sources:"
         dotnet nuget list source
 
-    - name: Build (minimal - Prerequisites, Clean, Dependencies, DotNet, Build)
+    - name: Build (minimal - Clean, DotNet, Build)
       id: build
       shell: pwsh
       run: |
         $buildStart = Get-Date
-        & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) {
-            Invoke-ADTModuleBuild -Steps 'Prerequisites', 'Clean', 'Dependencies', 'DotNet', 'Build'
+        & (Import-Module -Name .\modules\PSAppDeployToolkit.Build -PassThru) {
+            Invoke-ADTModuleBuild -Steps 'Clean', 'DotNet', 'Build'
         }
         $buildEnd = Get-Date
         $duration = $buildEnd - $buildStart
@@ -463,7 +463,7 @@ jobs:
       shell: pwsh
       run: |
         $exportsStart = Get-Date
-        & (Import-Module -Name .\src\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
+        & (Import-Module -Name .\modules\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
         $exportsEnd = Get-Date
         $duration = $exportsEnd - $exportsStart
         $mins = [int]($duration.TotalSeconds / 60)
