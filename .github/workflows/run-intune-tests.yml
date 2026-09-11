@@ -68,9 +68,71 @@ jobs:
       TEST_CLIENTSECRET: ${{ secrets.TEST_CLIENTSECRET }}
       TERRAFORGE_HELPER_PATH: 'C:\PSADTScripts\TerraForge-AgentHelper.ps1'
     steps:
+    - name: Ensure Git is available
+      shell: pwsh
+      run: |
+        $gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
+        if (-not $gitCommand) {
+          $gitInstallPath = Get-ItemPropertyValue `
+            -Path 'HKLM:\SOFTWARE\GitForWindows' `
+            -Name InstallPath `
+            -ErrorAction SilentlyContinue
+          $gitDirectories = @(
+            if ($gitInstallPath) { Join-Path $gitInstallPath 'cmd' }
+            "$env:ProgramFiles\Git\cmd"
+            "${env:ProgramFiles(x86)}\Git\cmd"
+          ) | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'git.exe') }
+
+          $gitDirectory = $gitDirectories | Select-Object -First 1
+          if (-not $gitDirectory) {
+            if ($env:RUNNER_ARCH -ne 'X64') {
+              throw "Automatic MinGit installation is not supported for runner architecture [$env:RUNNER_ARCH]."
+            }
+
+            $gitVersion = '2.51.0.windows.1'
+            $gitArchiveName = 'MinGit-2.51.0-64-bit.zip'
+            $gitArchiveHash = 'c2c955a21fa99889d83f485f24fa5d9a38fffc2d509d4022385510e11c26b250'
+            $toolCache = if ($env:RUNNER_TOOL_CACHE) { $env:RUNNER_TOOL_CACHE } else { $env:RUNNER_TEMP }
+            $gitRoot = Join-Path $toolCache "MinGit\$gitVersion\x64"
+            $gitDirectory = Join-Path $gitRoot 'cmd'
+            $gitExecutable = Join-Path $gitDirectory 'git.exe'
+
+            if (-not (Test-Path -LiteralPath $gitExecutable)) {
+              $gitArchive = Join-Path $env:RUNNER_TEMP $gitArchiveName
+              $gitDownloadUrl = "https://github.com/git-for-windows/git/releases/download/v$gitVersion/$gitArchiveName"
+              Write-Host "Git was not found. Downloading MinGit $gitVersion..."
+              Invoke-WebRequest -Uri $gitDownloadUrl -OutFile $gitArchive
+
+              $actualHash = (Get-FileHash -LiteralPath $gitArchive -Algorithm SHA256).Hash
+              if ($actualHash -ne $gitArchiveHash) {
+                Remove-Item -LiteralPath $gitArchive -Force -ErrorAction SilentlyContinue
+                throw "MinGit archive checksum mismatch. Expected [$gitArchiveHash], received [$actualHash]."
+              }
+
+              Remove-Item -LiteralPath $gitRoot -Recurse -Force -ErrorAction SilentlyContinue
+              New-Item -ItemType Directory -Path $gitRoot -Force | Out-Null
+              Expand-Archive -LiteralPath $gitArchive -DestinationPath $gitRoot -Force
+              Remove-Item -LiteralPath $gitArchive -Force -ErrorAction SilentlyContinue
+            }
+
+            if (-not (Test-Path -LiteralPath $gitExecutable)) {
+              throw "MinGit executable was not found after extraction: $gitExecutable"
+            }
+          }
+
+          $env:PATH = "$gitDirectory;$env:PATH"
+          $gitDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        }
+
+        git --version
+
     - name: Check out repository
       id: checkout-repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+      env:
+        GIT_CONFIG_COUNT: 1
+        GIT_CONFIG_KEY_0: core.autocrlf
+        GIT_CONFIG_VALUE_0: 'true'
 
     - name: Set Test Run Start
       id: set-test-run-start
