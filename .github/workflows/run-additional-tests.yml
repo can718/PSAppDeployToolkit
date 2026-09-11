@@ -346,11 +346,13 @@ jobs:
       shell: pwsh
       run: $PSVersionTable
 
-    - name: Install .NET 10 SDK (required for net10.0 build target)
+    - name: Install .NET 8 and 10 SDKs
       id: setup-dotnet
       uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # https://github.com/actions/setup-dotnet/releases/tag/v4.3.1
       with:
-        dotnet-version: '10.0.400'
+        dotnet-version: |
+          8.0.x
+          10.0.400
 
     - name: Ensure .NET Framework 4.7.2 targeting pack
       id: setup-netfx472
@@ -633,8 +635,8 @@ jobs:
       shell: pwsh
       run: |
         $templateStart = Get-Date
-        $v3Src = '.\src\Artifacts\Template_v3'
-        $v4Src = '.\src\Artifacts\Template_v4'
+        $v3Src = '.\artifacts\Template_v3'
+        $v4Src = '.\artifacts\Template_v4'
 
         Write-Host "V3 source: $(Resolve-Path $v3Src -ErrorAction SilentlyContinue)"
         Write-Host "V4 source: $(Resolve-Path $v4Src -ErrorAction SilentlyContinue)"
@@ -1144,7 +1146,7 @@ jobs:
           'Install 7-Zip'               = 'Install 7-Zip*'
           'Display the path'            = 'Display the path'
           'Version Display'             = 'Version Display'
-          'Install .NET 10 SDK'         = 'Install .NET 10 SDK*'
+          'Install .NET 8 and 10 SDKs'  = 'Install .NET 8 and 10 SDKs'
           'Cache NuGet packages'        = 'Cache NuGet packages'
           'Cache PowerShell modules'    = 'Cache PowerShell modules'
           'Install PowerShell modules'  = 'Install PowerShell modules'
@@ -1186,7 +1188,7 @@ jobs:
           'Install 7-Zip'               = @{ outcome = '${{ steps.install-7zip.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Install 7-Zip')) }
           'Display the path'            = @{ outcome = '${{ steps.display-path.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Display the path')) }
           'Version Display'             = @{ outcome = '${{ steps.version-display.outcome }}';     duration = (Resolve-Duration (Get-ApiDuration 'Version Display')) }
-          'Install .NET 10 SDK'         = @{ outcome = '${{ steps.setup-dotnet.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Install .NET 10 SDK')) }
+          'Install .NET 8 and 10 SDKs'  = @{ outcome = '${{ steps.setup-dotnet.outcome }}';        duration = (Resolve-Duration (Get-ApiDuration 'Install .NET 8 and 10 SDKs')) }
           'Cache NuGet packages'        = @{ outcome = '${{ steps.cache-nuget.outcome }}';         duration = (Resolve-Duration (Get-ApiDuration 'Cache NuGet packages')) }
           'Cache PowerShell modules'    = @{ outcome = '${{ steps.psmodule-cache.outcome }}';      duration = (Resolve-Duration (Get-ApiDuration 'Cache PowerShell modules')) }
           'Install PowerShell modules'  = @{ outcome = '${{ steps.install-psmodules.outcome }}';   duration = (Resolve-Duration (Get-ApiDuration 'Install PowerShell modules')) }
