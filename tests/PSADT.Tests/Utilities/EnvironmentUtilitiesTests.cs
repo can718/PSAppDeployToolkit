@@ -1,0 +1,722 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using Microsoft.Win32;
+using PSADT.Utilities;
+using Xunit;
+
+namespace PSADT.Tests.Utilities
+{
+    /// <summary>
+    /// Tests the environment variable helpers.
+    /// </summary>
+    /// <remarks>
+    /// The process scope is what is written to almost throughout. A process-scoped variable lives and dies
+    /// with the test host, so setting one changes nothing that outlasts the run, and the machine scope is
+    /// never written to at all.
+    /// <para>
+    /// The exception is the pair of tests covering which scope an append or a remove reads from, at the
+    /// end of this file. That distinction cannot be observed within the process scope, where reading the
+    /// process is right by definition, so those two write a uniquely named variable to the user scope and
+    /// take it away again in a finally. They need no elevation, and a name no machine would carry means a
+    /// run that died between the two would leave nothing that could be mistaken for real configuration.
+    /// </para>
+    /// <para>
+    /// The validation the user and machine scopes perform is still covered, because every one of those
+    /// checks runs before anything is written. Each of those tests confirms afterwards that nothing was
+    /// left behind, so a reordering that let a write slip through would be caught rather than silently
+    /// altering the machine.
+    /// </para>
+    /// <para>
+    /// This repository bans the framework's environment accessors in favour of the wrapper, and this class
+    /// suppresses that ban wholesale. It has to: what is under test is the wrapper itself, so arranging,
+    /// asserting and cleaning up through it would let a fault shared between reading and writing hide
+    /// itself, and a test would pass against the very defect it exists to catch. Where the framework is
+    /// used to confirm a variable's absence the name is one generated for the test, so the two runtimes
+    /// disagreeing about how they compare names cannot affect the answer.
+    /// </para>
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "Every arrangement, assertion and cleanup here has to reach the environment without going through the wrapper under test, so that a fault shared between the two cannot hide itself.")]
+    public sealed class EnvironmentUtilitiesTests
+    {
+        /// <summary>
+        /// Verifies that a variable set in this process is readable again, and agrees with what the
+        /// framework reports for the same process.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RoundTripsThroughTheProcessScope()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, "a value");
+
+                // Assert
+                Assert.Equal("a value", EnvironmentUtilities.GetEnvironmentVariable(name));
+                Assert.Equal("a value", Environment.GetEnvironmentVariables()[name]);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that a variable that was never set reads back as absent rather than as empty.
+        /// </summary>
+        [Fact]
+        public void GetEnvironmentVariable_ReturnsNullForAVariableThatIsNotSet()
+        {
+            Assert.Null(EnvironmentUtilities.GetEnvironmentVariable(NewVariableName()));
+        }
+
+        /// <summary>
+        /// Verifies that a variable holding nothing but whitespace reads back as absent, so a caller
+        /// cannot mistake a blank value for a real one.
+        /// </summary>
+        /// <remarks>
+        /// The wrapper exists for this. The framework reports a whitespace-valued variable as a string of
+        /// spaces, which reads as set; the wrapper reports it as absent, which is what a caller deciding
+        /// whether a variable is configured actually wants to know.
+        /// <para>
+        /// The bulk read is asserted alongside the single one, since a caller may reach a variable either
+        /// way and the two answering differently about the same variable would be worse than either
+        /// answer on its own.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void GetEnvironmentVariable_TreatsABlankValueAsAbsent()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                // Act: set through the framework, since the wrapper refuses to write a blank value
+                Environment.SetEnvironmentVariable(name, "   ");
+
+                // Assert: the framework sees it, the wrapper reports it as unset
+                Assert.Equal("   ", Environment.GetEnvironmentVariables()[name]);
+                Assert.Null(EnvironmentUtilities.GetEnvironmentVariable(name));
+                Assert.Null(EnvironmentUtilities.GetEnvironmentVariables()[name]);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that removing a variable leaves it unset.
+        /// </summary>
+        [Fact]
+        public void RemoveEnvironmentVariable_UnsetsTheVariable()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                EnvironmentUtilities.SetEnvironmentVariable(name, "a value");
+                Assert.NotNull(EnvironmentUtilities.GetEnvironmentVariable(name));
+
+                // Act
+                EnvironmentUtilities.RemoveEnvironmentVariable(name);
+
+                // Assert
+                Assert.Null(EnvironmentUtilities.GetEnvironmentVariable(name));
+                Assert.False(Environment.GetEnvironmentVariables().Contains(name));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that setting a variable to nothing removes it, which is how the framework's own
+        /// accessor behaves and what a caller clearing a value expects.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RemovesTheVariableWhenGivenNoValue()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                EnvironmentUtilities.SetEnvironmentVariable(name, "a value");
+
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, value: null);
+
+                // Assert
+                Assert.Null(EnvironmentUtilities.GetEnvironmentVariable(name));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that a value with no content is refused, since writing one produces a variable that
+        /// reads back as unset and is therefore never what the caller meant.
+        /// </summary>
+        /// <param name="value">The blank value to refuse.</param>
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData("\t")]
+        public void SetEnvironmentVariable_RefusesABlankValue(string value)
+        {
+            _ = Assert.Throws<ArgumentException>(() => EnvironmentUtilities.SetEnvironmentVariable(NewVariableName(), value));
+        }
+
+        /// <summary>
+        /// Verifies that a variable with no name is refused.
+        /// </summary>
+        /// <param name="name">The blank name to refuse.</param>
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void SetEnvironmentVariable_RefusesABlankName(string name)
+        {
+            _ = Assert.Throws<ArgumentException>(() => EnvironmentUtilities.SetEnvironmentVariable(name, "a value"));
+            _ = Assert.Throws<ArgumentException>(() => EnvironmentUtilities.RemoveEnvironmentVariable(name));
+        }
+
+        /// <summary>
+        /// Verifies that appending applies to the process scope the same way it does to a persisted one,
+        /// rather than replacing what was there.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_AppendsWithinTheProcessScope()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                Environment.SetEnvironmentVariable(name, "first");
+
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, "second", EnvironmentVariableTarget.Process, expandable: false, append: true, remove: false);
+
+                // Assert
+                Assert.Equal($"first{Path.PathSeparator}second", EnvironmentUtilities.GetEnvironmentVariable(name));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that removing takes the named entry out of a process-scoped list, rather than setting
+        /// the variable to the very entry that was to be removed.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RemovesWithinTheProcessScope()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                Environment.SetEnvironmentVariable(name, $"first{Path.PathSeparator}second");
+
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, "first", EnvironmentVariableTarget.Process, expandable: false, append: false, remove: true);
+
+                // Assert
+                Assert.Equal("second", EnvironmentUtilities.GetEnvironmentVariable(name));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that the process scope refuses appending and removing at once for the same reason the
+        /// persisted scopes do, now that both options mean something to it.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RefusesToAppendAndRemoveAtOnceInTheProcessScope()
+        {
+            // Arrange
+            string name = NewVariableName();
+
+            // Act & Assert
+            _ = Assert.Throws<NotSupportedException>(() => EnvironmentUtilities.SetEnvironmentVariable(name, "a value", EnvironmentVariableTarget.Process, expandable: false, append: true, remove: true));
+            Assert.False(Environment.GetEnvironmentVariables().Contains(name), $"A refused write left '{name}' behind in the process environment.");
+        }
+
+        /// <summary>
+        /// Verifies that appending and removing at once is refused for a persisted scope, since the two
+        /// ask for opposite things.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RefusesToAppendAndRemoveAtOnce()
+        {
+            // Arrange
+            string name = NewVariableName();
+
+            // Act & Assert
+            _ = Assert.Throws<NotSupportedException>(() => EnvironmentUtilities.SetEnvironmentVariable(name, "a value", EnvironmentVariableTarget.User, expandable: false, append: true, remove: true));
+            AssertNothingWasPersisted(name);
+        }
+
+        /// <summary>
+        /// Verifies that a name longer than the environment block allows is refused before anything is
+        /// written.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RefusesAnOverlongName()
+        {
+            // Arrange
+            string name = new('X', 1_025);
+
+            // Act & Assert
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => EnvironmentUtilities.SetEnvironmentVariable(name, "a value", EnvironmentVariableTarget.User, expandable: false, append: false, remove: false));
+            AssertNothingWasPersisted(name);
+        }
+
+        /// <summary>
+        /// Verifies that a name containing the separator between name and value is refused, since it
+        /// could not be read back.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RefusesANameContainingAnEqualsSign()
+        {
+            // Arrange
+            string name = $"{NewVariableName()}=EMBEDDED";
+
+            // Act & Assert
+            _ = Assert.Throws<FormatException>(() => EnvironmentUtilities.SetEnvironmentVariable(name, "a value", EnvironmentVariableTarget.User, expandable: false, append: false, remove: false));
+            AssertNothingWasPersisted(name);
+        }
+
+        /// <summary>
+        /// Verifies that a blank value is refused for a persisted scope too, before anything is written.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RefusesABlankValueForAPersistedScope()
+        {
+            // Arrange
+            string name = NewVariableName();
+
+            // Act & Assert
+            _ = Assert.Throws<ArgumentException>(() => EnvironmentUtilities.SetEnvironmentVariable(name, "   ", EnvironmentVariableTarget.User, expandable: false, append: false, remove: false));
+            AssertNothingWasPersisted(name);
+        }
+
+        /// <summary>
+        /// Verifies that a scope outside the defined set is refused rather than quietly treated as one of
+        /// them.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RefusesAnUndefinedScope()
+        {
+            // Arrange
+            string name = NewVariableName();
+
+            // Act & Assert
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => EnvironmentUtilities.SetEnvironmentVariable(name, "a value", (EnvironmentVariableTarget)99, expandable: false, append: false, remove: false));
+            AssertNothingWasPersisted(name);
+        }
+
+        /// <summary>
+        /// Verifies that a variable reference is expanded against the current process.
+        /// </summary>
+        [Fact]
+        public void ExpandEnvironmentVariables_ExpandsAReference()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                EnvironmentUtilities.SetEnvironmentVariable(name, "expanded");
+
+                // Act & Assert
+                Assert.Equal("before expanded after", EnvironmentUtilities.ExpandEnvironmentVariables($"before %{name}% after"));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that a reference to a variable that is not set is left alone rather than removed,
+        /// which is the expander's own behaviour and matters to a caller passing a path through.
+        /// </summary>
+        [Fact]
+        public void ExpandEnvironmentVariables_LeavesAnUnsetReferenceAlone()
+        {
+            // Arrange
+            string name = NewVariableName();
+
+            // Act & Assert
+            Assert.Equal($"%{name}%", EnvironmentUtilities.ExpandEnvironmentVariables($"%{name}%"));
+        }
+
+        /// <summary>
+        /// Verifies that text with nothing to expand comes back unchanged.
+        /// </summary>
+        [Fact]
+        public void ExpandEnvironmentVariables_LeavesPlainTextAlone()
+        {
+            Assert.Equal(@"C:\Program Files\App", EnvironmentUtilities.ExpandEnvironmentVariables(@"C:\Program Files\App"));
+        }
+
+        /// <summary>
+        /// Verifies that blank input is refused rather than expanded to nothing.
+        /// </summary>
+        /// <param name="name">The blank input to refuse.</param>
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void ExpandEnvironmentVariables_RefusesBlankInput(string name)
+        {
+            _ = Assert.Throws<ArgumentException>(() => EnvironmentUtilities.ExpandEnvironmentVariables(name));
+        }
+
+        /// <summary>
+        /// Verifies that the whole environment is readable, and holds the variables every process has.
+        /// </summary>
+        [Fact]
+        public void GetEnvironmentVariables_ReadsTheProcessEnvironment()
+        {
+            // Act
+            IReadOnlyDictionary<string, string?> variables = EnvironmentUtilities.GetEnvironmentVariables();
+
+            // Assert
+            Assert.NotEmpty(variables);
+            Assert.Contains(variables.Keys, static name => name.Equals("SystemRoot", StringComparison.OrdinalIgnoreCase));
+
+            // Assert: and every entry is either a real value or nothing, never blank
+            Assert.All(variables, static variable =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(variable.Key));
+                if (variable.Value is string value)
+                {
+                    Assert.False(string.IsNullOrWhiteSpace(value));
+                }
+            });
+        }
+
+        /// <summary>
+        /// Verifies that a variable can be found by name whatever case it was stored under, which is how
+        /// Windows itself treats environment variable names.
+        /// </summary>
+        /// <remarks>
+        /// This is the whole reason the wrapper rebuilds the dictionary rather than handing back the one
+        /// the runtime supplies. The two runtimes disagree: .NET Framework compares names without regard
+        /// to case and .NET compares them exactly, and a process inherits whatever casing its parent used
+        /// - a shell that spells it <c language="text">SYSTEMROOT</c> passes that on. Without this, the same lookup would
+        /// find a variable under Windows PowerShell and miss it under PowerShell 7.
+        /// </remarks>
+        [Fact]
+        public void GetEnvironmentVariables_MatchesNamesWithoutRegardToCase()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                EnvironmentUtilities.SetEnvironmentVariable(name, "a value");
+
+                // Act
+                IReadOnlyDictionary<string, string?> variables = EnvironmentUtilities.GetEnvironmentVariables();
+
+                // Assert: found under the casing it was set with, and under any other
+                Assert.Equal("a value", variables[name]);
+                Assert.Equal("a value", variables[name.ToUpperInvariant()]);
+                Assert.Equal("a value", variables[name.ToLowerInvariant()]);
+                Assert.True(variables.ContainsKey(name.ToUpperInvariant()));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that the dictionary handed back is a snapshot rather than a live view, so a caller
+        /// holding one is not silently reading a moving target.
+        /// </summary>
+        [Fact]
+        public void GetEnvironmentVariables_IsASnapshot()
+        {
+            // Arrange
+            string name = NewVariableName();
+            IReadOnlyDictionary<string, string?> before = EnvironmentUtilities.GetEnvironmentVariables();
+            try
+            {
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, "a value");
+
+                // Assert: the dictionary taken beforehand does not gain the variable, but a fresh one has it
+                Assert.False(before.ContainsKey(name));
+                Assert.True(EnvironmentUtilities.GetEnvironmentVariables().ContainsKey(name));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that a name that is not set is reported as absent rather than as an empty value, and
+        /// that reading it through the indexer fails loudly the way any typed dictionary's does.
+        /// </summary>
+        /// <remarks>
+        /// Worth stating because the previous shape of this - an untyped dictionary - answered a missing
+        /// name with null. A caller that had come to rely on that gets an exception now instead, and the
+        /// single-variable accessor is what it should be using.
+        /// </remarks>
+        [Fact]
+        public void GetEnvironmentVariables_ReportsAnUnsetNameAsAbsent()
+        {
+            // Arrange
+            string name = NewVariableName();
+
+            // Act
+            IReadOnlyDictionary<string, string?> variables = EnvironmentUtilities.GetEnvironmentVariables();
+
+            // Assert
+            Assert.False(variables.ContainsKey(name));
+            _ = Assert.Throws<KeyNotFoundException>(() => variables[name]);
+            Assert.Null(EnvironmentUtilities.GetEnvironmentVariable(name));
+        }
+
+        /// <summary>
+        /// Confirms that a refused write left nothing behind in the persisted scope.
+        /// </summary>
+        /// <param name="name">The variable that was refused.</param>
+        private static void AssertNothingWasPersisted(string name)
+        {
+            Assert.False(
+                Environment.GetEnvironmentVariables(EnvironmentVariableTarget.User).Contains(name),
+                $"A refused write left '{name}' behind in the user environment.");
+        }
+
+        /// <summary>
+        /// Verifies that appending reads what the target scope holds rather than what this process holds.
+        /// </summary>
+        /// <remarks>
+        /// The two differ constantly in practice: a process inherits the machine and user scopes already
+        /// merged and expanded, and anything the session has since added sits on top. Appending to that
+        /// and writing the result back to a hive replaces what the hive held with the merge, which on a
+        /// machine PATH means every user entry and every session addition is persisted into it.
+        /// </remarks>
+        [Fact]
+        public void SetEnvironmentVariable_AppendsToTheTargetScopeRatherThanTheProcess()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                Environment.SetEnvironmentVariable(name, "target", EnvironmentVariableTarget.User);
+                Environment.SetEnvironmentVariable(name, "process");
+
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, "added", EnvironmentVariableTarget.User, expandable: false, append: true, remove: false);
+
+                // Assert
+                Assert.Equal($"target{Path.PathSeparator}added", Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null, EnvironmentVariableTarget.User);
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that removing takes the entry out of what the target scope holds rather than out of
+        /// what this process holds.
+        /// </summary>
+        /// <remarks>
+        /// The same read, and the worse half of it: an entry present only in the process would be found,
+        /// reported as removed, and the hive overwritten with the remainder of the merge, leaving the
+        /// entry itself exactly where it was.
+        /// </remarks>
+        [Fact]
+        public void SetEnvironmentVariable_RemovesFromTheTargetScopeRatherThanTheProcess()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                Environment.SetEnvironmentVariable(name, $"keep{Path.PathSeparator}drop", EnvironmentVariableTarget.User);
+                Environment.SetEnvironmentVariable(name, $"process{Path.PathSeparator}drop");
+
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, "drop", EnvironmentVariableTarget.User, expandable: false, append: false, remove: true);
+
+                // Assert
+                Assert.Equal("keep", Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null, EnvironmentVariableTarget.User);
+                Environment.SetEnvironmentVariable(name, value: null);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that appending to an expandable value leaves the references in it unexpanded.
+        /// </summary>
+        /// <remarks>
+        /// The framework's scoped read expands a REG_EXPAND_SZ value on the way out, so appending to what
+        /// it returns writes the expansion back and the indirection is gone for good. A user PATH holding
+        /// %USERPROFILE% would be rewritten with one account's profile directory baked into it, which is
+        /// wrong for a roaming or redirected profile and wrong again for anyone else reading it.
+        /// </remarks>
+        [Fact]
+        public void SetEnvironmentVariable_AppendsWithoutExpandingWhatIsAlreadyThere()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                WriteUserValue(name, @"%SystemRoot%\A", RegistryValueKind.ExpandString);
+
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, @"C:\B", EnvironmentVariableTarget.User, expandable: false, append: true, remove: false);
+
+                // Assert
+                Assert.Equal($@"%SystemRoot%\A{Path.PathSeparator}C:\B", ReadUserValue(name, out RegistryValueKind kind));
+                Assert.Equal(RegistryValueKind.ExpandString, kind);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null, EnvironmentVariableTarget.User);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that removing from an expandable value leaves the references in it unexpanded.
+        /// </summary>
+        [Fact]
+        public void SetEnvironmentVariable_RemovesWithoutExpandingWhatIsLeft()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                WriteUserValue(name, $@"%SystemRoot%\A{Path.PathSeparator}C:\B", RegistryValueKind.ExpandString);
+
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, @"C:\B", EnvironmentVariableTarget.User, expandable: false, append: false, remove: true);
+
+                // Assert
+                Assert.Equal(@"%SystemRoot%\A", ReadUserValue(name, out RegistryValueKind kind));
+                Assert.Equal(RegistryValueKind.ExpandString, kind);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null, EnvironmentVariableTarget.User);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that a caller asking for an expandable value gets one even where the value it is being
+        /// appended to was plain.
+        /// </summary>
+        /// <remarks>
+        /// The counterpart to the two above, and the reason the rule is not simply "keep the kind it had".
+        /// Only demotion loses something: it turns every reference the value holds into literal text.
+        /// Promotion is what the caller asked for, and is the only way the reference just appended is ever
+        /// expanded - left plain it would sit in the value as characters forever.
+        /// </remarks>
+        [Fact]
+        public void SetEnvironmentVariable_AppendsAsExpandableWhenAskedEvenOntoAPlainValue()
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                WriteUserValue(name, @"C:\A", RegistryValueKind.String);
+
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, @"%SystemRoot%\B", EnvironmentVariableTarget.User, expandable: true, append: true, remove: false);
+
+                // Assert
+                Assert.Equal($@"C:\A{Path.PathSeparator}%SystemRoot%\B", ReadUserValue(name, out RegistryValueKind kind));
+                Assert.Equal(RegistryValueKind.ExpandString, kind);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null, EnvironmentVariableTarget.User);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that the caller's choice still decides the kind of a value being written for the
+        /// first time, since there is nothing there whose kind could be preserved instead.
+        /// </summary>
+        /// <param name="expandable">Whether the caller asked for an expandable value.</param>
+        /// <param name="expected">The kind that should be written.</param>
+        [Theory]
+        [InlineData(true, RegistryValueKind.ExpandString)]
+        [InlineData(false, RegistryValueKind.String)]
+        public void SetEnvironmentVariable_WritesTheRequestedKindForANewValue(bool expandable, RegistryValueKind expected)
+        {
+            // Arrange
+            string name = NewVariableName();
+            try
+            {
+                // Act
+                EnvironmentUtilities.SetEnvironmentVariable(name, @"%SystemRoot%\A", EnvironmentVariableTarget.User, expandable, append: false, remove: false);
+
+                // Assert
+                _ = ReadUserValue(name, out RegistryValueKind kind);
+                Assert.Equal(expected, kind);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(name, value: null, EnvironmentVariableTarget.User);
+            }
+        }
+
+        /// <summary>
+        /// Writes a value into the user's environment key with a kind of the test's choosing, which the
+        /// framework's own setter does not allow.
+        /// </summary>
+        /// <param name="name">The variable to write.</param>
+        /// <param name="value">The value to write.</param>
+        /// <param name="kind">The kind to write it as.</param>
+        /// <exception cref="InvalidOperationException">Thrown when the user's environment key is not there.</exception>
+        private static void WriteUserValue(string name, string value, RegistryValueKind kind)
+        {
+            using RegistryKey key = Registry.CurrentUser.OpenSubKey("Environment", writable: true)
+                ?? throw new InvalidOperationException("The user's environment key is not there to write to.");
+            key.SetValue(name, value, kind);
+        }
+
+        /// <summary>
+        /// Reads a value out of the user's environment key exactly as it is stored.
+        /// </summary>
+        /// <param name="name">The variable to read.</param>
+        /// <param name="kind">The kind it is stored as.</param>
+        /// <returns>The unexpanded value.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the user's environment key is not there.</exception>
+        private static string? ReadUserValue(string name, out RegistryValueKind kind)
+        {
+            using RegistryKey key = Registry.CurrentUser.OpenSubKey("Environment")
+                ?? throw new InvalidOperationException("The user's environment key is not there to read from.");
+            kind = key.GetValueKind(name);
+            return (string?)key.GetValue(name, defaultValue: null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        }
+
+        /// <summary>
+        /// Produces a variable name nothing else on the machine will be using.
+        /// </summary>
+        /// <returns>A unique variable name.</returns>
+        private static string NewVariableName()
+        {
+            return $"PSADT_TESTS_{Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture)}";
+        }
+    }
+}
