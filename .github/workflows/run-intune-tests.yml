@@ -506,6 +506,8 @@ jobs:
     - name: Build (minimal - Clean, DotNet, Build)
       id: build
       shell: pwsh
+      env:
+        TestTfmsInParallel: 'false'
       run: |
         $buildStart = Get-Date
         & (Import-Module -Name .\modules\PSAppDeployToolkit.Build -PassThru) {
@@ -583,6 +585,19 @@ jobs:
       run: |
         $pesterStart = Get-Date
         New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
+
+        # Current New-ADTTemplate validation rejects empty dictionary values. These optional
+        # properties can be omitted so the generated V4 template retains its defaults.
+        $v4TestRoot = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\V4'
+        $emptyOptionalPropertyPattern = "(?m)^[ \t]+(?:InstallName|InstallTitle)[ \t]*=[ \t]*''[ \t]*\r?\n"
+        foreach ($parameterFile in Get-ChildItem -Path $v4TestRoot -Filter 'New-ADTTemplate.params.ps1' -File -Recurse) {
+          $content = [System.IO.File]::ReadAllText($parameterFile.FullName)
+          $normalizedContent = [regex]::Replace($content, $emptyOptionalPropertyPattern, '')
+          if ($normalizedContent -ne $content) {
+            [System.IO.File]::WriteAllText($parameterFile.FullName, $normalizedContent, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "Removed empty optional session properties from: $($parameterFile.FullName)"
+          }
+        }
 
         $env:PSADT_INTUNE_EXCLUDE_APP_NAMES = 'Notepad++'
         $env:PSADT_INTUNE_CLEANUP_GROUP = 'false'

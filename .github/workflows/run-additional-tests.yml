@@ -687,6 +687,19 @@ jobs:
         $workspaceRoot = '${{ github.workspace }}'
         $additionalTestsPath = Join-Path $workspaceRoot 'src\Tests\Additional'
 
+        # Current New-ADTTemplate validation rejects empty dictionary values. These optional
+        # properties can be omitted so the generated V4 template retains its defaults.
+        $v4TestRoot = Join-Path $workspaceRoot 'src\Tests\V4'
+        $emptyOptionalPropertyPattern = "(?m)^[ \t]+(?:InstallName|InstallTitle)[ \t]*=[ \t]*''[ \t]*\r?\n"
+        foreach ($parameterFile in Get-ChildItem -Path $v4TestRoot -Filter 'New-ADTTemplate.params.ps1' -File -Recurse) {
+          $content = [System.IO.File]::ReadAllText($parameterFile.FullName)
+          $normalizedContent = [regex]::Replace($content, $emptyOptionalPropertyPattern, '')
+          if ($normalizedContent -ne $content) {
+            [System.IO.File]::WriteAllText($parameterFile.FullName, $normalizedContent, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "Removed empty optional session properties from: $($parameterFile.FullName)"
+          }
+        }
+
         # Pre-create SMB share before parallel tests to avoid race condition
         $shareName = 'PSADT_Content$'
         $shareRootPath = 'C:\PSADT'
@@ -707,7 +720,7 @@ jobs:
         # Discover all targeted tests first so we can report how many were not executed.
         $discoveryConfig = New-PesterConfiguration
         $discoveryConfig.Run.Path = $additionalTestsPath
-        $discoveryConfig.Filter.Tag = @('Validation', 'WinSCP', 'VLC', 'Notepad++', '7-Zip')
+        $discoveryConfig.Filter.Tag = @('Validation', 'WinSCP', 'VLC', 'Notepad++', '7-Zip', 'DigiExam', 'Everything')
         $discoveryConfig.Run.SkipRun = $true
         $discoveryConfig.Run.PassThru = $true
         $discoveryResult = Invoke-Pester -Configuration $discoveryConfig
