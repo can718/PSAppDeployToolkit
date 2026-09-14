@@ -605,6 +605,13 @@ jobs:
     - name: Build (minimal - Clean, DotNet, Build)
       id: build
       shell: pwsh
+      env:
+        TestTfmsInParallel: 'false'
+        # TEMPORARY: Remove these MTP diagnostics after this test run completes and the logs are downloaded.
+        TESTINGPLATFORM_DIAGNOSTIC: '1'
+        TESTINGPLATFORM_DIAGNOSTIC_VERBOSITY: 'Trace'
+        TESTINGPLATFORM_DIAGNOSTIC_SYNCHRONOUS_WRITE: '1'
+        TESTINGPLATFORM_DIAGNOSTIC_OUTPUT_DIRECTORY: '${{ github.workspace }}\TestResults\MTPDiagnostics'
       run: |
         $buildStart = Get-Date
         & (Import-Module -Name .\modules\PSAppDeployToolkit.Build -PassThru) {
@@ -977,11 +984,13 @@ jobs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # https://github.com/actions/upload-artifact/releases/tag/v7.0.1
       with:
         name: additional-test-results
+        # TEMPORARY: Remove the MTP diagnostics path with the diagnostic environment variables above.
         path: |
           .\src\Artifacts\TestOutput\AdditionalTests*.xml
           .\src\Artifacts\TestOutput\AdditionalTests-Cases.trx
           .\src\Artifacts\TestOutput\AdditionalTests-Cases.html
           .\src\Artifacts\TestOutput\PSADTLogs\*.log
+          .\TestResults\MTPDiagnostics\**\*.diag
         if-no-files-found: error
         overwrite: true
   # set test run end time job can be added here, using the test-run-id output from discover-agent job to correlate with the test run created in the beginning of the workflow
