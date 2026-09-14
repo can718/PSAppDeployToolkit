@@ -2098,6 +2098,7 @@ function Invoke-TFResetSessionVM
     # Check all XML result files -- if any file reports failures/errors/ignored, mark VM as Failed
     $anyXmlFound = $false
     $overallPassed = $true
+    $executedTotal = 0
 
     foreach ($xmlPath in $TestResultXmlPath)
     {
@@ -2114,6 +2115,7 @@ function Invoke-TFResetSessionVM
         $failures = [int]$xml.'test-results'.failures
         $errors = [int]$xml.'test-results'.errors
         $ignored = [int]$xml.'test-results'.ignored
+        $executedTotal += $total
 
         Write-Host "Results for '$xmlPath': Total=$total, Failures=$failures, Errors=$errors, Ignored=$ignored"
 
@@ -2126,6 +2128,10 @@ function Invoke-TFResetSessionVM
     if (-not $anyXmlFound)
     {
         Write-Warning "No test result files found -- resetting VM with status Failed."
+    }
+    elseif ($executedTotal -eq 0)
+    {
+        Write-Warning "No test cases were executed -- resetting VM with status Failed."
     }
     elseif ($overallPassed)
     {
