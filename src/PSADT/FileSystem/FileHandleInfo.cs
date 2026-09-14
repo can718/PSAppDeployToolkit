@@ -1,0 +1,61 @@
+﻿using System;
+using PSADT.Interop;
+
+namespace PSADT.FileSystem
+{
+    /// <summary>
+    /// Represents information about a file handle.
+    /// </summary>
+    public sealed record class FileHandleInfo
+    {
+        /// <summary>
+        /// Initializes a new instance of the FileHandleInfo class using the specified handle information and file
+        /// paths.
+        /// </summary>
+        /// <param name="handleInfo">The handle information associated with the file, represented as a SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX
+        /// structure.</param>
+        /// <param name="processName">The name of the process owning the handle. Supplied by the caller, which resolves it while holding an open
+        /// handle to that process. This value cannot be null or empty.</param>
+        /// <param name="filePath">The full path to the file. This value cannot be null or empty.</param>
+        /// <param name="ntPath">The NT path of the file. This value cannot be null or empty.</param>
+        /// <param name="handleType">The type of the handle. This value cannot be null or empty.</param>
+        /// <exception cref="ArgumentNullException">Thrown if the processName, filePath, ntPath, or handleType parameter is null or empty.</exception>
+        internal FileHandleInfo(in SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX handleInfo, string processName, string filePath, string ntPath, string handleType)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(processName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            ArgumentException.ThrowIfNullOrWhiteSpace(ntPath);
+            ArgumentException.ThrowIfNullOrWhiteSpace(handleType);
+            ProcessName = processName;
+            FilePath = filePath;
+            NtPath = ntPath;
+            HandleType = handleType;
+            HandleInfo = handleInfo;
+        }
+
+        /// <summary>
+        /// The name of the process that owns the handle.
+        /// </summary>
+        public string ProcessName { get; }
+
+        /// <summary>
+        /// The file path associated with the handle.
+        /// </summary>
+        public string FilePath { get; }
+
+        /// <summary>
+        /// The NT path associated with the handle.
+        /// </summary>
+        public string NtPath { get; }
+
+        /// <summary>
+        /// The type of the handle (e.g., "File", "Directory", etc.).
+        /// </summary>
+        public string HandleType { get; }
+
+        /// <summary>
+        /// Information about the open handle.
+        /// </summary>
+        public SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX HandleInfo { get; }
+    }
+}
