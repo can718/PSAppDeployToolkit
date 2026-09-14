@@ -604,6 +604,7 @@ jobs:
 
     - name: Build (minimal - Clean, DotNet, Build)
       id: build
+      timeout-minutes: 75
       shell: pwsh
       env:
         TestTfmsInParallel: 'false'
