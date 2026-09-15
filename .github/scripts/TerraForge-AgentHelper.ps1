@@ -20,7 +20,7 @@ function Get-TerraForgeAuthToken
     )
 
     # Step 1 - Login
-    Connect-AzureWithManagedIdentity -ClientId $ManagedIdentityClientId
+    Connect-TerraforgeAzureAccount
 
     # Step 2 - Get API access key from Key Vault
     $apiKey = Get-TerraForgeApiKey -SecretName $ApiKeySecretName -VaultName $KeyVaultName
@@ -29,18 +29,113 @@ function Get-TerraForgeAuthToken
     return Get-TerraForgeAccessToken -ApiBaseUrl $ApiBaseUrl -ApiAccessKey $apiKey
 }
 
-function Connect-AzureWithManagedIdentity
-{
+function Connect-TerraforgeAzureAccount {
     [CmdletBinding()]
-    param
-    (
-        [Parameter(Mandatory)]
-        [string]$ClientId
+    param (
+        [Parameter(Mandatory = $false)]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter(Mandatory = $false)]
+        [string]$CertificateName = $env:TERRAFORGE_CERTIFICATENAME,
+
+        [Parameter(Mandatory = $false)]
+        [string]$TenantId = $env:TERRAFORGE_TENANTID,
+
+        [Parameter(Mandatory = $false)]
+        [string]$CertificateApplicationClientId = $env:TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID,
+
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyString()]
+        [string]$SessionType,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$RegistryPath = "HKLM:\SOFTWARE\Microsoft\TerraforgeAgent"
     )
 
-    Write-Host "Connecting to Azure with Managed Identity (ClientId: $ClientId)..."
-    Connect-AzAccount -Identity -AccountId $ClientId | Out-Null
-    Write-Host "Connected to Azure successfully."
+    if ([string]::IsNullOrWhiteSpace($SessionType) -and (Test-Path -Path $RegistryPath)) {
+        $registryValue = Get-ItemProperty -Path $RegistryPath -Name "SessionType" -ErrorAction SilentlyContinue
+        if ($registryValue) {
+            $SessionType = $registryValue.SessionType
+        }
+    }
+
+    Write-Host "SessionType: $SessionType"
+
+    $connectWithManagedIdentity = {
+        if ([string]::IsNullOrWhiteSpace($ManagedIdentityClientId)) {
+            throw "Managed identity client id is required. Set INFRA_MI_CLIENT_ID in the workflow env or pass -ManagedIdentityClientId explicitly."
+        }
+
+        Write-Host "Connecting to Azure using Managed Identity..."
+        Connect-AzAccount -Identity -AccountId $ManagedIdentityClientId -ErrorAction Stop
+    }
+
+    $connectWithCertificate = {
+        $missingCertificateSettings = @(
+            if ([string]::IsNullOrWhiteSpace($CertificateName)) { 'TERRAFORGE_CERTIFICATENAME' }
+            if ([string]::IsNullOrWhiteSpace($TenantId)) { 'TERRAFORGE_TENANTID' }
+            if ([string]::IsNullOrWhiteSpace($CertificateApplicationClientId)) { 'TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID' }
+        )
+        if ($missingCertificateSettings.Count -gt 0) {
+            throw "Certificate-based login requires setting(s): $($missingCertificateSettings -join ', ')."
+        }
+
+        Write-Host "Connecting to Azure using Certificate..."
+        $certificate = Get-ChildItem -Path "Cert:\LocalMachine\My" -ErrorAction Stop |
+        Where-Object {
+            $_.Subject -eq "CN=$CertificateName" -and
+            $_.NotAfter -gt (Get-Date) -and
+            $_.HasPrivateKey
+        } |
+        Select-Object -First 1
+
+        if (-not $certificate) {
+            throw "Certificate with name '$CertificateName' was not found in LocalMachine\My store"
+        }
+
+        Connect-AzAccount `
+            -Tenant $TenantId `
+            -ApplicationId $CertificateApplicationClientId `
+            -CertificateThumbprint $certificate.Thumbprint `
+            -ErrorAction Stop
+    }
+
+    if ([string]::IsNullOrWhiteSpace($SessionType)) {
+        $errorMessages = @()
+
+        try {
+            return (& $connectWithManagedIdentity)
+        }
+        catch {
+            $errorMessages += $_.Exception.Message
+            Write-Host "Managed Identity connection failed: $($_.Exception.Message)"
+        }
+
+        Start-Sleep -Seconds 2
+
+        try {
+            return (& $connectWithCertificate)
+        }
+        catch {
+            $errorMessages += $_.Exception.Message
+            Write-Host "Certificate connection failed: $($_.Exception.Message)"
+        }
+
+        throw "Failed to connect to Azure using both Managed Identity and Certificate. Errors: $($errorMessages -join '; ')"
+    }
+
+    switch ($SessionType.ToLowerInvariant()) {
+        "hyperv" {
+            return (& $connectWithCertificate)
+        }
+        "azure" {
+            return (& $connectWithManagedIdentity)
+        }
+        default {
+            throw "Unsupported SessionType '$SessionType'. Expected 'HyperV' or 'Azure'."
+        }
+    }
 }
 
 function Get-TerraForgeApiKey
@@ -839,7 +934,7 @@ function Get-AzureKeyVaultSecretValue
             }
 
             Write-Host "Connecting to Azure (ManagedIdentity: $ManagedIdentityClientId)..."
-            Connect-AzAccount -Identity -AccountId $ManagedIdentityClientId | Out-Null
+            Connect-TerraforgeAzureAccount | Out-Null
             Write-Host "Retrieving secret '$SecretName' from Key Vault '$VaultName'..."
 
             if ($AsPlainText)
@@ -956,7 +1051,7 @@ function Get-AzureKeyVaultCertificate
 
     # Authenticate using User-Assigned Managed Identity
     Write-Host "Connecting to Azure with Managed Identity (ClientId: $ManagedIdentityClientId)..."
-    Connect-AzAccount -Identity -AccountId $ManagedIdentityClientId | Out-Null
+    Connect-TerraforgeAzureAccount | Out-Null
     Write-Host "Connected to Azure successfully."
 
     # Retrieve certificate secret (base64-encoded PFX) from Key Vault
