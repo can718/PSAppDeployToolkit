@@ -20,13 +20,13 @@ function Get-TerraForgeAuthToken
     )
 
     # Step 1 - Login
-    Connect-TerraforgeAzureAccount
+    Connect-TerraforgeAzureAccount | Out-Null
 
     # Step 2 - Get API access key from Key Vault
     $apiKey = Get-TerraForgeApiKey -SecretName $ApiKeySecretName -VaultName $KeyVaultName
 
     # Step 3 - Exchange for bearer token
-    return Get-TerraForgeAccessToken -ApiBaseUrl $ApiBaseUrl -ApiAccessKey $apiKey
+    return [string](Get-TerraForgeAccessToken -ApiBaseUrl $ApiBaseUrl -ApiAccessKey $apiKey)
 }
 
 function Connect-TerraforgeAzureAccount {
@@ -52,6 +52,11 @@ function Connect-TerraforgeAzureAccount {
         [ValidateNotNullOrEmpty()]
         [string]$RegistryPath = "HKLM:\SOFTWARE\Microsoft\TerraforgeAgent"
     )
+
+    # TEMPORARY: Allow workflows to force the auth branch during Azure login regression testing. Remove after validation.
+    if ([string]::IsNullOrWhiteSpace($SessionType) -and -not [string]::IsNullOrWhiteSpace($env:TERRAFORGE_SESSIONTYPE)) {
+        $SessionType = $env:TERRAFORGE_SESSIONTYPE
+    }
 
     if ([string]::IsNullOrWhiteSpace($SessionType) -and (Test-Path -Path $RegistryPath)) {
         $registryValue = Get-ItemProperty -Path $RegistryPath -Name "SessionType" -ErrorAction SilentlyContinue
