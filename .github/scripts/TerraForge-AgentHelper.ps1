@@ -53,11 +53,6 @@ function Connect-TerraforgeAzureAccount {
         [string]$RegistryPath = "HKLM:\SOFTWARE\Microsoft\TerraforgeAgent"
     )
 
-    # TEMPORARY: Allow workflows to force the auth branch during Azure login regression testing. Remove after validation.
-    if ([string]::IsNullOrWhiteSpace($SessionType) -and -not [string]::IsNullOrWhiteSpace($env:TERRAFORGE_SESSIONTYPE)) {
-        $SessionType = $env:TERRAFORGE_SESSIONTYPE
-    }
-
     if ([string]::IsNullOrWhiteSpace($SessionType) -and (Test-Path -Path $RegistryPath)) {
         $registryValue = Get-ItemProperty -Path $RegistryPath -Name "SessionType" -ErrorAction SilentlyContinue
         if ($registryValue) {
