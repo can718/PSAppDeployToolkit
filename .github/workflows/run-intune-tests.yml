@@ -124,6 +124,31 @@ jobs:
 
           Write-Host 'Agent restart verification passed.'
 
+          $currentProcess = [System.Diagnostics.Process]::GetCurrentProcess()
+          $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          Write-Host "Runner identity: $currentIdentity"
+          Write-Host "Runner process session ID: $($currentProcess.SessionId)"
+          Write-Host "SESSIONNAME environment variable: $(if ($env:SESSIONNAME) { $env:SESSIONNAME } else { '<not set>' })"
+
+          $queryExecutable = Join-Path $env:SystemRoot 'System32\query.exe'
+          if (Test-Path -LiteralPath $queryExecutable -PathType Leaf) {
+            Write-Host 'Windows user sessions:'
+            $queryOutput = & $queryExecutable user 2>&1
+            $queryExitCode = $LASTEXITCODE
+            $queryOutput | ForEach-Object { Write-Host $_ }
+            if ($queryExitCode -ne 0) {
+              Write-Warning "query user exited with code $queryExitCode. There may be no interactive user session."
+            }
+          }
+          else {
+            Write-Warning "Session query executable was not found: $queryExecutable"
+          }
+
+          if ($env:RESTART_SCHEDULED -eq 'true') {
+            Write-Host 'Waiting 120 seconds for post-restart services to finish initializing.'
+            Start-Sleep -Seconds 120
+          }
+
   run-intune-tests:
     name: Run Intune Tests
     needs: [discover-agent, verify-agent-restart]
