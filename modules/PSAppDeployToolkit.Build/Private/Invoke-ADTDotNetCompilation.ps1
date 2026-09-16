@@ -150,7 +150,20 @@ function Invoke-ADTDotNetCompilation
                 Push-Location -LiteralPath $Script:ModuleConstants.Paths.Repository
                 try
                 {
-                    & $dotnet test --solution $buildItem.SolutionPath --configuration $buildType --no-build --no-restore --report-trx | Write-ADTDotNetOutputBuildLogEntry
+                    $testArguments = [System.Collections.Generic.List[System.String]]@('test', '--solution', $buildItem.SolutionPath, '--configuration', $buildType, '--no-build', '--no-restore', '--report-trx')
+                    # TEMPORARY: PSADT-HANG-DIAGNOSTICS - Remove after the intermittent self-hosted runner hang is diagnosed.
+                    if (![System.String]::IsNullOrWhiteSpace($env:PSADT_TEST_HANG_TIMEOUT))
+                    {
+                        $hangDumpDirectory = [System.IO.Directory]::CreateDirectory((Join-Path $Script:ModuleConstants.Paths.Repository 'TestResults\HangDumps')).FullName
+                        $testArguments.Add('--hangdump')
+                        $testArguments.Add('--hangdump-timeout')
+                        $testArguments.Add($env:PSADT_TEST_HANG_TIMEOUT)
+                        $testArguments.Add('--hangdump-type')
+                        $testArguments.Add('Mini')
+                        $testArguments.Add('--hangdump-filename')
+                        $testArguments.Add((Join-Path $hangDumpDirectory '{asm}-{tfm}-{pid}-{time}.dmp'))
+                    }
+                    & $dotnet $testArguments | Write-ADTDotNetOutputBuildLogEntry
                     if ($Global:LASTEXITCODE)
                     {
                         throw "Unit testing solution [$($buildItem.SolutionPath -replace '^.+\\')] failed with exit code [$Global:LASTEXITCODE]."
