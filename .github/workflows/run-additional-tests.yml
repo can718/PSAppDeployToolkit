@@ -43,7 +43,7 @@ jobs:
     name: Check Agent Pending Reboot
     needs: discover-agent
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
-    timeout-minutes: 5
+    timeout-minutes: 15
     outputs:
       restart-scheduled: ${{ steps.pending-reboot.outputs.restart-scheduled }}
       boot-time-before: ${{ steps.pending-reboot.outputs.boot-time-before }}
