@@ -123,6 +123,34 @@ jobs:
 
           Write-Host 'Agent restart verification passed.'
 
+          if ($env:RESTART_SCHEDULED -eq 'true') {
+            $requiredServices = @('CcmExec', 'Winmgmt')
+            $deadline = (Get-Date).AddSeconds(120)
+
+            do {
+              $notReady = @(
+                foreach ($serviceName in $requiredServices) {
+                  $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+                  if (-not $service -or $service.Status -ne 'Running') {
+                    $serviceName
+                  }
+                }
+              )
+
+              if ($notReady.Count -eq 0) {
+                Write-Host 'Post-restart services are ready.'
+                break
+              }
+
+              if ((Get-Date) -ge $deadline) {
+                throw "Post-restart services were not ready within 120 seconds: $($notReady -join ', ')"
+              }
+
+              Write-Host "Waiting for post-restart services: $($notReady -join ', ')"
+              Start-Sleep -Seconds 5
+            } while ($true)
+          }
+
   run-additional-tests:
     name: Run Additional Tests
     needs: [discover-agent, verify-agent-restart]

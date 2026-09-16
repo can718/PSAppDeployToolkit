@@ -139,6 +139,7 @@ jobs:
             if ($queryExitCode -ne 0) {
               Write-Warning "query user exited with code $queryExitCode. There may be no interactive user session."
             }
+            $global:LASTEXITCODE = 0
           }
           else {
             Write-Warning "Session query executable was not found: $queryExecutable"
