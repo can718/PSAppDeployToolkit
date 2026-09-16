@@ -1728,18 +1728,20 @@ jobs:
       TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
-      TERRAFORGE_HELPER_PATH: 'C:\PSADTScripts\TerraForge-AgentHelper.ps1'
       PESTER_TOTAL: ${{ needs.run-intune-tests.outputs.pester_total || '0' }}
       PESTER_FAILED: ${{ needs.run-intune-tests.outputs.pester_failed || '0' }}
       PESTER_SKIPPED: ${{ needs.run-intune-tests.outputs.pester_skipped || '0' }}
       PESTER_NOTRUN: ${{ needs.run-intune-tests.outputs.pester_notrun || '0' }}
       CASES_JSON: ${{ needs.run-intune-tests.outputs.cases_json || '{}' }}
     steps:
+    - name: Check out reset scripts
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+
     - name: Reset session VM (finalizer)
       shell: pwsh
       run: |
-        $tfHelper = $env:TERRAFORGE_HELPER_PATH
-        if ([string]::IsNullOrWhiteSpace($tfHelper) -or -not (Test-Path -LiteralPath $tfHelper)) {
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
           throw "TerraForge helper script not found at path: $tfHelper"
         }
 

@@ -900,6 +900,30 @@ function Test-TFPendingReboot
     [OutputType([bool])]
     param ()
 
+    function Get-OptionalRegistryValue
+    {
+        param
+        (
+            [Parameter(Mandatory)]
+            [string]$LiteralPath,
+
+            [Parameter(Mandatory)]
+            [string]$Name
+        )
+
+        $registryKey = Get-ItemProperty -LiteralPath $LiteralPath -ErrorAction SilentlyContinue
+        if ($registryKey)
+        {
+            $property = $registryKey.PSObject.Properties[$Name]
+            if ($property)
+            {
+                return $property.Value
+            }
+        }
+
+        return $null
+    }
+
     $rebootReasons = [System.Collections.Generic.List[string]]::new()
     $rebootRegistryPaths = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
@@ -915,32 +939,28 @@ function Test-TFPendingReboot
         }
     }
 
-    $pendingFileRenames = Get-ItemPropertyValue `
+    $pendingFileRenames = Get-OptionalRegistryValue `
         -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' `
-        -Name 'PendingFileRenameOperations' `
-        -ErrorAction SilentlyContinue
+        -Name 'PendingFileRenameOperations'
     if ($null -ne $pendingFileRenames -and @($pendingFileRenames).Count -gt 0)
     {
         $rebootReasons.Add('PendingFileRenameOperations')
     }
 
-    $updateExeVolatile = Get-ItemPropertyValue `
+    $updateExeVolatile = Get-OptionalRegistryValue `
         -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Updates' `
-        -Name 'UpdateExeVolatile' `
-        -ErrorAction SilentlyContinue
+        -Name 'UpdateExeVolatile'
     if ($null -ne $updateExeVolatile -and [int]$updateExeVolatile -ne 0)
     {
         $rebootReasons.Add("UpdateExeVolatile=$updateExeVolatile")
     }
 
-    $activeComputerName = Get-ItemPropertyValue `
+    $activeComputerName = Get-OptionalRegistryValue `
         -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' `
-        -Name 'ComputerName' `
-        -ErrorAction SilentlyContinue
-    $pendingComputerName = Get-ItemPropertyValue `
+        -Name 'ComputerName'
+    $pendingComputerName = Get-OptionalRegistryValue `
         -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' `
-        -Name 'ComputerName' `
-        -ErrorAction SilentlyContinue
+        -Name 'ComputerName'
     if ($activeComputerName -and $pendingComputerName -and $activeComputerName -ne $pendingComputerName)
     {
         $rebootReasons.Add("ComputerRename=$activeComputerName->$pendingComputerName")
