@@ -39,9 +39,93 @@ jobs:
 
           Invoke-TFLaunchAgent -ConfigName $env:TERRAFORGE_CONFIG_NAME
 
+  prepare-agent:
+    name: Check Agent Pending Reboot
+    needs: discover-agent
+    runs-on: ${{ needs.discover-agent.outputs.runner-label }}
+    timeout-minutes: 5
+    outputs:
+      restart-scheduled: ${{ steps.pending-reboot.outputs.restart-scheduled }}
+      boot-time-before: ${{ steps.pending-reboot.outputs.boot-time-before }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+
+      - name: Restart agent when a reboot is pending
+        id: pending-reboot
+        shell: pwsh
+        run: |
+          $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+          if (-not (Test-Path -LiteralPath $tfHelper)) {
+            throw "TerraForge helper script not found: $tfHelper"
+          }
+          . $tfHelper
+
+          $bootTimeBefore = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
+          $restartScheduled = Invoke-TFRestartIfPendingReboot -DelaySeconds 60
+          "boot-time-before=$bootTimeBefore" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "restart-scheduled=$($restartScheduled.ToString().ToLowerInvariant())" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+  wait-for-agent-restart:
+    name: Wait for Agent Restart
+    needs: prepare-agent
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Allow scheduled restart to complete
+        if: needs.prepare-agent.outputs.restart-scheduled == 'true'
+        shell: pwsh
+        run: |
+          Write-Host 'A restart was scheduled. Waiting before verifying the target runner.'
+          Start-Sleep -Seconds 90
+
+  verify-agent-restart:
+    name: Verify Agent Restart
+    needs: [discover-agent, prepare-agent, wait-for-agent-restart]
+    runs-on: ${{ needs.discover-agent.outputs.runner-label }}
+    timeout-minutes: 5
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+
+      - name: Verify reboot completed and pending state cleared
+        shell: pwsh
+        env:
+          RESTART_SCHEDULED: ${{ needs.prepare-agent.outputs.restart-scheduled }}
+          BOOT_TIME_BEFORE: ${{ needs.prepare-agent.outputs.boot-time-before }}
+        run: |
+          $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+          if (-not (Test-Path -LiteralPath $tfHelper)) {
+            throw "TerraForge helper script not found: $tfHelper"
+          }
+          . $tfHelper
+
+          $currentBootTime = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime.ToUniversalTime()
+          Write-Host "Current boot time: $($currentBootTime.ToString('o'))"
+
+          if ($env:RESTART_SCHEDULED -eq 'true') {
+            $previousBootTime = [datetime]::Parse(
+              $env:BOOT_TIME_BEFORE,
+              [System.Globalization.CultureInfo]::InvariantCulture,
+              [System.Globalization.DateTimeStyles]::RoundtripKind
+            ).ToUniversalTime()
+            Write-Host "Boot time before restart: $($previousBootTime.ToString('o'))"
+            if ($currentBootTime -le $previousBootTime) {
+              throw 'The agent came online without completing the scheduled restart.'
+            }
+          }
+
+          if (Test-TFPendingReboot) {
+            throw 'The agent still has a pending reboot after the restart preflight.'
+          }
+
+          Write-Host 'Agent restart verification passed.'
+
   run-additional-tests:
     name: Run Additional Tests
-    needs: discover-agent
+    needs: [discover-agent, verify-agent-restart]
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     outputs:
       steps_json:     ${{ steps.collect-outputs.outputs.steps_json || '{}' }}

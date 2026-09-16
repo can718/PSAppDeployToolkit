@@ -894,6 +894,106 @@ function Get-MachineID
     }
 }
 
+function Test-TFPendingReboot
+{
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param ()
+
+    $rebootReasons = [System.Collections.Generic.List[string]]::new()
+    $rebootRegistryPaths = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending'
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
+    )
+
+    foreach ($registryPath in $rebootRegistryPaths)
+    {
+        if (Test-Path -LiteralPath $registryPath)
+        {
+            $rebootReasons.Add($registryPath)
+        }
+    }
+
+    $pendingFileRenames = Get-ItemPropertyValue `
+        -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' `
+        -Name 'PendingFileRenameOperations' `
+        -ErrorAction SilentlyContinue
+    if ($null -ne $pendingFileRenames -and @($pendingFileRenames).Count -gt 0)
+    {
+        $rebootReasons.Add('PendingFileRenameOperations')
+    }
+
+    $updateExeVolatile = Get-ItemPropertyValue `
+        -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Updates' `
+        -Name 'UpdateExeVolatile' `
+        -ErrorAction SilentlyContinue
+    if ($null -ne $updateExeVolatile -and [int]$updateExeVolatile -ne 0)
+    {
+        $rebootReasons.Add("UpdateExeVolatile=$updateExeVolatile")
+    }
+
+    $activeComputerName = Get-ItemPropertyValue `
+        -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' `
+        -Name 'ComputerName' `
+        -ErrorAction SilentlyContinue
+    $pendingComputerName = Get-ItemPropertyValue `
+        -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' `
+        -Name 'ComputerName' `
+        -ErrorAction SilentlyContinue
+    if ($activeComputerName -and $pendingComputerName -and $activeComputerName -ne $pendingComputerName)
+    {
+        $rebootReasons.Add("ComputerRename=$activeComputerName->$pendingComputerName")
+    }
+
+    if ($rebootReasons.Count -eq 0)
+    {
+        Write-Host 'No pending reboot indicators were detected.'
+        return $false
+    }
+
+    Write-Warning "Pending reboot detected: $($rebootReasons -join ', ')"
+    return $true
+}
+
+function Invoke-TFRestartIfPendingReboot
+{
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([bool])]
+    param
+    (
+        [Parameter()]
+        [ValidateRange(30, 300)]
+        [int]$DelaySeconds = 60
+    )
+
+    if (-not (Test-TFPendingReboot))
+    {
+        return $false
+    }
+
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
+    {
+        throw "A pending reboot was detected, but [$($identity.Name)] is not an administrator and cannot restart the computer."
+    }
+
+    if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Schedule restart in $DelaySeconds seconds"))
+    {
+        $shutdownExecutable = Join-Path $env:SystemRoot 'System32\shutdown.exe'
+        & $shutdownExecutable /r /t $DelaySeconds /f /d 'p:4:1' /c 'TerraForge pending reboot preflight'
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw "Failed to schedule restart. shutdown.exe exited with code $LASTEXITCODE."
+        }
+
+        Write-Host "Restart scheduled in $DelaySeconds seconds so the current GitHub Actions job can finish cleanly."
+    }
+
+    return $true
+}
+
 #endregion
 
 function Get-AzureKeyVaultSecretValue
