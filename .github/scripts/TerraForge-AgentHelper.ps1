@@ -1969,7 +1969,10 @@ function Invoke-TFLaunchAgent
         [string]$KeyVaultName = $env:INFRA_KEYVAULT,
 
         [Parameter()]
-        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET,
+
+        [Parameter()]
+        [string]$AdoBuildId = $env:GITHUB_RUN_ID
     )
 
     $attempt = 0
@@ -1990,7 +1993,8 @@ function Invoke-TFLaunchAgent
             $agent = Invoke-TerraForgeLaunchAgent `
                 -ApiBaseUrl  $ApiBaseUrl `
                 -AccessToken $accessToken `
-                -ConfigName  $ConfigName
+                -ConfigName  $ConfigName `
+                -AdoBuildId  $AdoBuildId
 
             # Success -- expose the runner label and return
             Set-GitHubOutput -Name 'runner-label' -Value $agent.AgentName
