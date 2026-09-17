@@ -204,7 +204,10 @@ function Invoke-TerraForgeLaunchAgent
         [string]$ConfigName,
 
         [Parameter()]
-        [int]$PoolType = 3
+        [int]$PoolType = 3,
+
+        [Parameter()]
+        [string]$AdoBuildId = $env:GITHUB_RUN_ID
     )
 
     $authHeaders = @{
@@ -215,6 +218,7 @@ function Invoke-TerraForgeLaunchAgent
     $launchPayload = @{
         configName = $ConfigName
         poolType   = $PoolType
+        adoBuildId = $AdoBuildId
     } | ConvertTo-Json
 
     Write-Host "Sending discover agent request for config: $ConfigName ..."
