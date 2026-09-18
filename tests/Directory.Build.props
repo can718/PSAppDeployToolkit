@@ -59,8 +59,6 @@
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
-    <!-- TEMPORARY: PSADT-HANG-DIAGNOSTICS - Remove after the intermittent self-hosted runner hang is diagnosed. -->
-    <PackageReference Include="Microsoft.Testing.Extensions.HangDump" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
   </ItemGroup>
 
