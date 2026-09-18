@@ -42,6 +42,7 @@ jobs:
 
   prepare-agent:
     name: Check Agent Pending Reboot
+    if: ${{ false }}
     needs: discover-agent
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     timeout-minutes: 5
@@ -71,6 +72,7 @@ jobs:
 
   wait-for-agent-restart:
     name: Wait for Agent Restart
+    if: ${{ false }}
     needs: prepare-agent
     runs-on: windows-latest
     timeout-minutes: 5
@@ -84,6 +86,7 @@ jobs:
 
   verify-agent-restart:
     name: Verify Agent Restart
+    if: ${{ false }}
     needs: [discover-agent, prepare-agent, wait-for-agent-restart]
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     timeout-minutes: 5
@@ -152,7 +155,7 @@ jobs:
 
   run-intune-tests:
     name: Run Intune Tests
-    needs: [discover-agent, verify-agent-restart]
+    needs: discover-agent
     runs-on: ${{ needs.discover-agent.outputs.runner-label }}
     outputs:
       steps_json:        ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
@@ -481,6 +484,7 @@ jobs:
           10.0.400
 
     - name: Ensure .NET Framework 4.7.2 targeting pack
+      if: ${{ false }}
       id: setup-netfx472
       shell: pwsh
       run: |
