@@ -40,119 +40,6 @@ jobs:
 
           Invoke-TFLaunchAgent -ConfigName $env:TERRAFORGE_CONFIG_NAME
 
-  prepare-agent:
-    name: Check Agent Pending Reboot
-    if: ${{ false }}
-    needs: discover-agent
-    runs-on: ${{ needs.discover-agent.outputs.runner-label }}
-    timeout-minutes: 5
-    outputs:
-      restart-scheduled: ${{ steps.pending-reboot.outputs.restart-scheduled }}
-      boot-time-before: ${{ steps.pending-reboot.outputs.boot-time-before }}
-    steps:
-      - name: Check out scripts
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
-
-      - name: Restart agent when a reboot is pending
-        id: pending-reboot
-        shell: pwsh
-        run: |
-          $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
-          if (-not (Test-Path -LiteralPath $tfHelper)) {
-            throw "TerraForge helper script not found: $tfHelper"
-          }
-          . $tfHelper
-
-          $bootTimeBefore = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
-          $restartScheduled = Invoke-TFRestartIfPendingReboot -DelaySeconds 60
-          "boot-time-before=$bootTimeBefore" |
-            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "restart-scheduled=$($restartScheduled.ToString().ToLowerInvariant())" |
-            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-  wait-for-agent-restart:
-    name: Wait for Agent Restart
-    if: ${{ false }}
-    needs: prepare-agent
-    runs-on: windows-latest
-    timeout-minutes: 5
-    steps:
-      - name: Allow scheduled restart to complete
-        if: needs.prepare-agent.outputs.restart-scheduled == 'true'
-        shell: pwsh
-        run: |
-          Write-Host 'A restart was scheduled. Waiting before verifying the target runner.'
-          Start-Sleep -Seconds 90
-
-  verify-agent-restart:
-    name: Verify Agent Restart
-    if: ${{ false }}
-    needs: [discover-agent, prepare-agent, wait-for-agent-restart]
-    runs-on: ${{ needs.discover-agent.outputs.runner-label }}
-    timeout-minutes: 5
-    steps:
-      - name: Check out scripts
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
-
-      - name: Verify reboot completed and pending state cleared
-        shell: pwsh
-        env:
-          RESTART_SCHEDULED: ${{ needs.prepare-agent.outputs.restart-scheduled }}
-          BOOT_TIME_BEFORE: ${{ needs.prepare-agent.outputs.boot-time-before }}
-        run: |
-          $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
-          if (-not (Test-Path -LiteralPath $tfHelper)) {
-            throw "TerraForge helper script not found: $tfHelper"
-          }
-          . $tfHelper
-
-          $currentBootTime = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime.ToUniversalTime()
-          Write-Host "Current boot time: $($currentBootTime.ToString('o'))"
-
-          if ($env:RESTART_SCHEDULED -eq 'true') {
-            $previousBootTime = [datetime]::Parse(
-              $env:BOOT_TIME_BEFORE,
-              [System.Globalization.CultureInfo]::InvariantCulture,
-              [System.Globalization.DateTimeStyles]::RoundtripKind
-            ).ToUniversalTime()
-            Write-Host "Boot time before restart: $($previousBootTime.ToString('o'))"
-            if ($currentBootTime -le $previousBootTime) {
-              throw 'The agent came online without completing the scheduled restart.'
-            }
-          }
-
-          if (Test-TFPendingReboot) {
-            throw 'The agent still has a pending reboot after the restart preflight.'
-          }
-
-          Write-Host 'Agent restart verification passed.'
-
-          $currentProcess = [System.Diagnostics.Process]::GetCurrentProcess()
-          $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-          Write-Host "Runner identity: $currentIdentity"
-          Write-Host "Runner process session ID: $($currentProcess.SessionId)"
-          Write-Host "SESSIONNAME environment variable: $(if ($env:SESSIONNAME) { $env:SESSIONNAME } else { '<not set>' })"
-
-          $queryExecutable = Join-Path $env:SystemRoot 'System32\query.exe'
-          if (Test-Path -LiteralPath $queryExecutable -PathType Leaf) {
-            Write-Host 'Windows user sessions:'
-            $queryOutput = & $queryExecutable user 2>&1
-            $queryExitCode = $LASTEXITCODE
-            $queryOutput | ForEach-Object { Write-Host $_ }
-            if ($queryExitCode -ne 0) {
-              Write-Warning "query user exited with code $queryExitCode. There may be no interactive user session."
-            }
-            $global:LASTEXITCODE = 0
-          }
-          else {
-            Write-Warning "Session query executable was not found: $queryExecutable"
-          }
-
-          if ($env:RESTART_SCHEDULED -eq 'true') {
-            Write-Host 'Waiting 120 seconds for post-restart services to finish initializing.'
-            Start-Sleep -Seconds 120
-          }
-
   run-intune-tests:
     name: Run Intune Tests
     needs: discover-agent
@@ -482,78 +369,6 @@ jobs:
         dotnet-version: |
           8.0.x
           10.0.400
-
-    - name: Ensure .NET Framework 4.7.2 targeting pack
-      if: ${{ false }}
-      id: setup-netfx472
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $referenceAssembly = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.2\mscorlib.dll'
-
-        if (-not (Test-Path -LiteralPath $referenceAssembly -PathType Leaf)) {
-          Write-Host '.NET Framework 4.7.2 targeting pack is missing; installing the Developer Pack.'
-          $runnerTemp = if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
-            [System.IO.Path]::GetTempPath()
-          }
-          else {
-            $env:RUNNER_TEMP
-          }
-          $workspace = if ([string]::IsNullOrWhiteSpace($env:GITHUB_WORKSPACE)) {
-            $PWD.Path
-          }
-          else {
-            $env:GITHUB_WORKSPACE
-          }
-          $installer = Join-Path $runnerTemp 'NDP472-DevPack-ENU.exe'
-          # TEMPORARY: NETFX472-INSTALL-DIAGNOSTICS - Keep until the Intune runner installation failure is diagnosed.
-          $diagnosticDirectory = Join-Path $workspace 'src\Artifacts\TestOutput\NetFx472'
-          $setupLog = Join-Path $diagnosticDirectory 'NDP472-DevPack-install.txt'
-          New-Item -ItemType Directory -Path $diagnosticDirectory -Force | Out-Null
-          Write-Host "Installer path: $installer"
-          Write-Host "Installer log: $setupLog"
-
-          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-          $isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-          Write-Host "Installer identity: $($identity.Name); administrator: $isAdministrator"
-
-          $pendingRebootPaths = @(
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
-          )
-          $pendingReboot = $pendingRebootPaths | Where-Object { Test-Path -LiteralPath $_ }
-          Write-Host "Pending reboot indicators: $(if ($pendingReboot) { $pendingReboot -join ', ' } else { 'none' })"
-
-          try {
-            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/?linkid=874338' -OutFile $installer -UseBasicParsing
-            $installerFile = Get-Item -LiteralPath $installer
-            $signature = Get-AuthenticodeSignature -LiteralPath $installer
-            Write-Host "Installer size: $($installerFile.Length) bytes; signature: $($signature.Status); signer: $($signature.SignerCertificate.Subject)"
-            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-              throw ".NET Framework 4.7.2 Developer Pack signature validation failed: $($signature.StatusMessage)"
-            }
-
-            $process = Start-Process -FilePath $installer -ArgumentList '/q', '/norestart', '/log', "`"$setupLog`"" -Wait -PassThru
-            if ($process.ExitCode -notin 0, 1641, 3010) {
-              if (Test-Path -LiteralPath $setupLog -PathType Leaf) {
-                Write-Host 'Last 100 lines of the Developer Pack installer log:'
-                Get-Content -LiteralPath $setupLog -Tail 100
-              }
-              throw ".NET Framework 4.7.2 Developer Pack installation failed with exit code $($process.ExitCode). See artifact log: $setupLog"
-            }
-          }
-          finally {
-            Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
-          }
-        }
-
-        if (-not (Test-Path -LiteralPath $referenceAssembly -PathType Leaf)) {
-          throw ".NET Framework 4.7.2 reference assemblies were not found after installation: $referenceAssembly"
-        }
-
-        Write-Host ".NET Framework 4.7.2 reference assemblies: $referenceAssembly"
-        dotnet --info
 
     - name: Cache NuGet packages
       id: cache-nuget
@@ -1016,13 +831,11 @@ jobs:
       with:
         name: intune-test-results
         # TEMPORARY: Remove the MTP diagnostics path with the diagnostic environment variables above.
-        # TEMPORARY: NETFX472-INSTALL-DIAGNOSTICS - Remove with the installer diagnostics above.
         path: |
           .\src\Artifacts\TestOutput\IntuneTests*.xml
           .\src\Artifacts\TestOutput\IntuneTests-Cases.trx
           .\src\Artifacts\TestOutput\IntuneTests-Cases.html
           .\src\Artifacts\TestOutput\PSADTLogs\*.log
-          .\src\Artifacts\TestOutput\NetFx472\**\*
           .\TestResults\MTPDiagnostics\**\*.diag
         if-no-files-found: error
         overwrite: true
