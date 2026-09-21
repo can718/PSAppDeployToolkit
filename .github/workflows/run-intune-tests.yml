@@ -662,6 +662,8 @@ jobs:
         $mainConfig.TestResult.OutputFormat = 'NUnitXml'
         $mainConfig.Run.PassThru = $true
         $mainResult = Invoke-Pester -Configuration $mainConfig
+        . '.\src\Tests\Intune\IntuneTestHelpers.ps1'
+        Complete-TFTestCaseResults -PesterResult $mainResult
 
         Remove-Item -Path Env:\PSADT_INTUNE_EXCLUDE_APP_NAMES -ErrorAction SilentlyContinue
         $env:PSADT_INTUNE_INCLUDE_APP_NAMES = 'Notepad++'
@@ -681,6 +683,7 @@ jobs:
         $notepadConfig.TestResult.OutputFormat = 'NUnitXml'
         $notepadConfig.Run.PassThru = $true
         $notepadResult = Invoke-Pester -Configuration $notepadConfig
+        Complete-TFTestCaseResults -PesterResult $notepadResult
 
         Remove-Item -Path Env:\PSADT_INTUNE_INCLUDE_APP_NAMES -ErrorAction SilentlyContinue
         Remove-Item -Path Env:\PSADT_INTUNE_CLEANUP_GROUP -ErrorAction SilentlyContinue

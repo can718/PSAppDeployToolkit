@@ -47,6 +47,7 @@ function Initialize-TerraForgeReporting
         AccessToken = $null
         TestRunId   = $env:TEST_RUN_ID
         ApiBaseUrl  = $env:TERRAFORGE_API_BASE_URL
+        ScriptRoot  = $ScriptRoot
     }
 
     $helperPath = [System.IO.Path]::GetFullPath((Join-Path $ScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
@@ -173,7 +174,7 @@ function Invoke-TFUpdateTestCase
         Updates a TerraForge test run result after the test completes.
     .DESCRIPTION
         Result codes: 2 = Passed, 0 = Failed, $null = Skipped.
-        Derives the outcome from ErrorRecord count and the Skipped flag.
+        The supplied Pester test result must be finalized after Invoke-Pester returns.
     #>
     param (
         [Parameter(Mandatory)]
@@ -186,17 +187,17 @@ function Invoke-TFUpdateTestCase
 
     try
     {
-        $resultCode = if ($TestResult.Skipped)
+        $resultCode = switch ([string]$TestResult.Result)
         {
-            $null
-        }
-        elseif ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0)
-        {
-            0
-        }
-        else
-        {
-            2
+            'Passed' { 2; break }
+            'Failed' { 0; break }
+            'Skipped' { $null; break }
+            'NotRun' { $null; break }
+            default
+            {
+                Write-Warning "[TerraForge] Result Id=$ResultId was not updated because Pester result '$($TestResult.Result)' is not final."
+                return
+            }
         }
         $errorMsg = if ($TestResult.ErrorRecord -and $TestResult.ErrorRecord.Count -gt 0)
         {
@@ -218,6 +219,71 @@ function Invoke-TFUpdateTestCase
     catch
     {
         Write-Warning "[TerraForge] Failed to update result Id=${ResultId}: $($_.Exception.Message)"
+    }
+}
+
+function Reset-TFTestCaseResultTracking
+{
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$TFState
+    )
+
+    $global:PSADTIntuneTFPendingResults = @{
+        TFState   = $TFState
+        ResultIds = @{}
+    }
+}
+
+function Register-TFTestCaseResult
+{
+    param (
+        [string]$TestMethod,
+        [string]$ResultId
+    )
+
+    if ([string]::IsNullOrWhiteSpace($TestMethod) -or [string]::IsNullOrWhiteSpace($ResultId)) { return }
+    if (-not $global:PSADTIntuneTFPendingResults) { return }
+
+    $global:PSADTIntuneTFPendingResults.ResultIds[$TestMethod] = $ResultId
+}
+
+function Complete-TFTestCaseResults
+{
+    param (
+        [Parameter(Mandatory)]
+        [object]$PesterResult
+    )
+
+    $tracking = $global:PSADTIntuneTFPendingResults
+    if (-not $tracking -or -not $tracking.TFState.Enabled) { return }
+
+    try
+    {
+        if (-not (Get-Command 'Update-TestRunResults' -ErrorAction SilentlyContinue))
+        {
+            $helperPath = [System.IO.Path]::GetFullPath((Join-Path $tracking.TFState.ScriptRoot '..\..\..\.github\scripts\TerraForge-AgentHelper.ps1'))
+            . $helperPath
+        }
+
+        foreach ($test in $PesterResult.Tests)
+        {
+            $testMethod = if ([string]::IsNullOrWhiteSpace($test.ExpandedName)) { $test.Name } else { $test.ExpandedName }
+            if (-not $tracking.ResultIds.ContainsKey($testMethod))
+            {
+                Write-Warning "[TerraForge] No result entry was registered for finalized test: $testMethod"
+                continue
+            }
+
+            Invoke-TFUpdateTestCase `
+                -TFState    $tracking.TFState `
+                -ResultId   $tracking.ResultIds[$testMethod] `
+                -TestResult $test
+        }
+    }
+    finally
+    {
+        Remove-Variable -Name PSADTIntuneTFPendingResults -Scope Global -ErrorAction SilentlyContinue
     }
 }
 
