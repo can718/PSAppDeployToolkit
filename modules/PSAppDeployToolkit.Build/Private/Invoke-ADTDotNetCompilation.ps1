@@ -150,8 +150,7 @@ function Invoke-ADTDotNetCompilation
                 Push-Location -LiteralPath $Script:ModuleConstants.Paths.Repository
                 try
                 {
-                    $testArguments = [System.Collections.Generic.List[System.String]]@('test', '--solution', $buildItem.SolutionPath, '--configuration', $buildType, '--no-build', '--no-restore', '--report-trx')
-                    & $dotnet $testArguments | Write-ADTDotNetOutputBuildLogEntry
+                    & $dotnet test --solution $buildItem.SolutionPath --configuration $buildType --no-build --no-restore --report-trx | Write-ADTDotNetOutputBuildLogEntry
                     if ($Global:LASTEXITCODE)
                     {
                         throw "Unit testing solution [$($buildItem.SolutionPath -replace '^.+\\')] failed with exit code [$Global:LASTEXITCODE]."
