@@ -1705,8 +1705,7 @@ jobs:
   notify-teams:
     name: Notify Teams (SCCM Tests)
     needs: [run-additional-tests, result-summary]
-    if: false
-      # ${{ always() }} # notify even if tests fail so the team can investigate
+    if: ${{ always() }}
     uses: ./.github/workflows/notify_teams.yml
     with:
       job_status:     ${{ needs.run-additional-tests.result || 'failed' }}

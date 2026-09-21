@@ -1613,8 +1613,7 @@ jobs:
   notify-teams:
     name: Notify Teams (Intune)
     needs: [run-intune-tests, result-summary]
-    if: false
-      # ${{ always() }} # notify even if tests fail so the team can investigate
+    if: ${{ always() }}
     uses: ./.github/workflows/notify_teams.yml
     with:
       job_status:        ${{ needs.run-intune-tests.result || 'failed' }}
