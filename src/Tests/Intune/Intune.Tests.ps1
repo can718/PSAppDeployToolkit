@@ -461,7 +461,9 @@ Describe 'Intune Tests' {
             $failures | Should -BeNullOrEmpty -Because "'$Name' failed: $($failures -join '; ')"
         }
 
-        It '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
+        if (@($parallelAppsForEach | Where-Object { -not $_.SkipUninstall }).Count -gt 0)
+        {
+            It '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
             # Build uninstall candidate list from installed apps, honoring per-app filters.
             $appsForUninstall = @()
             foreach ($appName in $script:ParallelInstallResults.Keys)
@@ -515,6 +517,7 @@ Describe 'Intune Tests' {
             {
                 $script:ParallelUninstallResults[$app] = $true
             }
+        }
         }
 
         It '[INTUNE:<Name>_Uninstall][<TemplateVersion>] <Name> should be uninstalled' -ForEach ($parallelAppsForEach | Where-Object { -not $_.SkipUninstall }) -AllowNullOrEmptyForEach {
