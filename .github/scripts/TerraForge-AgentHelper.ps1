@@ -2040,6 +2040,9 @@ function Invoke-TFStartTestRun
         [string]$QueuedBy = $env:GITHUB_ACTOR,
 
         [Parameter()]
+        [string]$BranchName = $env:GITHUB_REF_NAME,
+
+        [Parameter()]
         [string]$Title,
 
         [Parameter()]
@@ -2073,7 +2076,8 @@ function Invoke-TFStartTestRun
         -AdoBuildId  $AdoBuildId `
         -Product     $Product `
         -Title       $runTitle `
-        -QueuedBy    $QueuedBy
+        -QueuedBy    $QueuedBy `
+        -BranchName  $BranchName
 
     Set-GitHubOutput -Name 'test-run-id' -Value $testRun.Id
     return $testRun.Id
