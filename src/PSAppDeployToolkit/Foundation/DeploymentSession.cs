@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -55,11 +54,7 @@ namespace PSAppDeployToolkit.Foundation
 
 
                 // Establish initial variable values.
-                PSObject adtData = ModuleDatabase.Get();
                 EnvironmentTable adtEnv = ModuleDatabase.GetEnvironment();
-                IDictionary adtConfig = ModuleDatabase.GetConfig();
-                IDictionary configUI = (IDictionary)adtConfig["UI"]!;
-                IDictionary configToolkit = (IDictionary)adtConfig["Toolkit"]!;
                 bool forceProcessDetection = false;
                 bool writtenDivider = false;
 
@@ -74,14 +69,14 @@ namespace PSAppDeployToolkit.Foundation
                 NTAccount processNtAccount = adtEnv.ProcessNTAccount;
 
                 // Set up constant values for the lifetime of the deployment session.
-                ConfigLogPath = new((string)configToolkit["LogPath"]!);
-                LogStyle = (LogStyle)Enum.Parse(typeof(LogStyle), (string)configToolkit["LogStyle"]!);
-                LogMaxHistory = (int)configToolkit["LogMaxHistory"]!;
-                CompressLogs = (bool)configToolkit["CompressLogs"]!;
-                LogWriteToHost = (bool)configToolkit["LogWriteToHost"]!;
-                LogHostOutputToStdStreams = (bool)configToolkit["LogHostOutputToStdStreams"]!;
-                DefaultExitCode = (int)configUI["DefaultExitCode"]!;
-                DeferExitCode = (int)configUI["DeferExitCode"]!;
+                ConfigLogPath = new(ModuleDatabase.GetConfigValue<string>("Toolkit", "LogPath"));
+                LogStyle = Enum.Parse<LogStyle>(ModuleDatabase.GetConfigValue<string>("Toolkit", "LogStyle"));
+                LogMaxHistory = ModuleDatabase.GetConfigValue<int>("Toolkit", "LogMaxHistory");
+                CompressLogs = ModuleDatabase.GetConfigValue<bool>("Toolkit", "CompressLogs");
+                LogWriteToHost = ModuleDatabase.GetConfigValue<bool>("Toolkit", "LogWriteToHost");
+                LogHostOutputToStdStreams = ModuleDatabase.GetConfigValue<bool>("Toolkit", "LogHostOutputToStdStreams");
+                DefaultExitCode = ModuleDatabase.GetConfigValue<int>("UI", "DefaultExitCode");
+                DeferExitCode = ModuleDatabase.GetConfigValue<int>("UI", "DeferExitCode");
 
                 // Set up date and time backwards compatibility variables for the deployment session.
                 CurrentDate = CurrentDateTime.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture);
@@ -443,7 +438,7 @@ namespace PSAppDeployToolkit.Foundation
                 InstallName = invalidChars.Replace(DoubleUnderscoreRegex.Replace(InstallName.Trim('_').Replace(" ", newValue: null, StringComparison.Ordinal), "_"), string.Empty);
 
                 // Set the Defer History registry path.
-                RegKeyDeferBase = $@"{configToolkit["RegPath"]}\{appDeployToolkitName}\DeferHistory";
+                RegKeyDeferBase = $@"{ModuleDatabase.GetConfigValue<string>("Toolkit", "RegPath")}\{appDeployToolkitName}\DeferHistory";
                 RegKeyDeferHistory = $@"{RegKeyDeferBase}\{InstallName}";
 
 
@@ -468,14 +463,14 @@ namespace PSAppDeployToolkit.Foundation
                 }
 
                 // Append subfolder path if configured to do so.
-                if ((bool)configToolkit["LogToHierarchy"]!)
+                if (ModuleDatabase.GetConfigValue<bool>("Toolkit", "LogToHierarchy"))
                 {
                     // Create the hierarchical log path based on vendor, app name and version before checking whether we need to clean up old log folders.
                     LogPath = new(Directory.CreateDirectory(Path.Join(LogPath.FullName, $@"{AppVendor}\{AppName}\{AppVersion}".Replace(@"\\", newValue: null, StringComparison.Ordinal))).FullName);
 
                     // Check how many hierarchy levels to keep based on configuration.
                     DirectoryInfo[] hierarchyDirectories = [.. LogPath.Parent!.GetDirectories().Where(d => !d.FullName.Equals(LogPath.FullName, StringComparison.OrdinalIgnoreCase)).OrderBy(static d => d.CreationTime)];
-                    int logMaxHierarchy = (int)configToolkit["LogMaxHierarchy"]!;
+                    int logMaxHierarchy = ModuleDatabase.GetConfigValue<int>("Toolkit", "LogMaxHierarchy");
                     int hierarchyDirectoriesCount = hierarchyDirectories.Length;
                     if (hierarchyDirectoriesCount > logMaxHierarchy)
                     {
@@ -485,20 +480,23 @@ namespace PSAppDeployToolkit.Foundation
                         }
                     }
                 }
-                else if ((bool)configToolkit["LogToSubfolder"]!)
+                else if (ModuleDatabase.GetConfigValue<bool>("Toolkit", "LogToSubfolder"))
                 {
                     LogPath = new(Directory.CreateDirectory(Path.Join(LogPath.FullName, $"{InstallName}_{DeploymentType}")).FullName);
                 }
 
-                // Generate the log filename to use. Append the username unless running as an administrator, since users do not have the rights to modify files in the ProgramData folder that belong to other users.
-                DefaultLogName = invalidChars.Replace($"{InstallName}_{SubstitutionPlaceholder}_{DeploymentType}{(!AccountUtilities.CallerIsAdmin ? $"_{adtEnv.EnvUserName}" : string.Empty)}.log", string.Empty);
+                // Establish whether the caller owns the configured log path. This mirrors the redirection Import-ADTConfig performs, so that the file name matches wherever the path ended up.
+                bool callerOwnsLogPath = ModuleDatabase.GetConfigValue<bool>("Toolkit", "PathsBasedOnSystemContext") ? AccountUtilities.CallerIsLocalSystem : AccountUtilities.CallerIsAdmin;
+
+                // Generate the log filename to use. Append the username unless the caller owns the log path, since everybody else lacks the rights to modify files within it that belong to other users.
+                DefaultLogName = invalidChars.Replace($"{InstallName}_{SubstitutionPlaceholder}_{DeploymentType}{(!callerOwnsLogPath ? $"_{adtEnv.EnvUserName}" : string.Empty)}.log", string.Empty);
                 LogName = !string.IsNullOrWhiteSpace(LogName) ? invalidChars.Replace(LogName, string.Empty) : NewLogFileName(appDeployToolkitName, fileNameOnly: true);
                 FileInfo logFile = new(Path.Join(LogPath.FullName, LogName));
-                int logMaxSize = (int)configToolkit["LogMaxSize"]!;
+                int logMaxSize = ModuleDatabase.GetConfigValue<int>("Toolkit", "LogMaxSize");
                 bool logFileSizeExceeded = logFile.Exists && (logMaxSize > 0) && ((logFile.Length / 1_048_576.0) > logMaxSize);
 
                 // Check if log file needs to be rotated.
-                if ((logFile.Exists && !(bool)configToolkit["LogAppend"]!) || logFileSizeExceeded)
+                if ((logFile.Exists && !ModuleDatabase.GetConfigValue<bool>("Toolkit", "LogAppend")) || logFileSizeExceeded)
                 {
                     try
                     {
@@ -586,19 +584,18 @@ namespace PSAppDeployToolkit.Foundation
                         WriteLogEntry($"The following parameters were passed to [{DeployAppScriptFriendlyName}]: [{CommandLineUtilities.ArgumentListToCommandLine(PowerShellUtilities.ConvertBoundParametersToArgumentList(DeployAppScriptParameters))}].");
                     }
                 }
-                PSObject adtDirectories = (PSObject)adtData.Properties["Directories"].Value;
-                PSObject adtDurations = (PSObject)adtData.Properties["Durations"].Value;
+                ModuleDirectories moduleDirectories = ModuleDatabase.GetDirectories();
                 WriteLogEntry($"[{appDeployToolkitName}] module version is [{appDeployMainScriptVersion}].");
-                WriteLogEntry($"[{appDeployToolkitName}] module imported in [{((TimeSpan)adtDurations.Properties["ModuleImport"].Value).TotalSeconds.ToString(CultureInfo.InvariantCulture)}] seconds.");
-                WriteLogEntry($"[{appDeployToolkitName}] module initialized in [{((TimeSpan)adtDurations.Properties["ModuleInit"].Value).TotalSeconds.ToString(CultureInfo.InvariantCulture)}] seconds.");
+                WriteLogEntry($"[{appDeployToolkitName}] module imported in [{ModuleDatabase.GetImportDuration().TotalSeconds.ToString(CultureInfo.InvariantCulture)}] seconds.");
+                WriteLogEntry($"[{appDeployToolkitName}] module initialized in [{ModuleDatabase.GetInitDuration().TotalSeconds.ToString(CultureInfo.InvariantCulture)}] seconds.");
                 WriteLogEntry($"[{appDeployToolkitName}] module path is ['{adtEnv.AppDeployToolkitPath}'].");
-                if ((string[]?)adtDirectories.Properties["Config"].Value is { Length: > 0 } adtConfigDirs)
+                if (moduleDirectories.Config is { Count: > 0 } configDirectories)
                 {
-                    WriteLogEntry($"[{appDeployToolkitName}] config path is ['{string.Join("', '", adtConfigDirs)}'].");
+                    WriteLogEntry($"[{appDeployToolkitName}] config path is ['{string.Join("', '", configDirectories)}'].");
                 }
-                if ((string[]?)adtDirectories.Properties["Strings"].Value is { Length: > 0 } adtStringDirs)
+                if (moduleDirectories.Strings is { Count: > 0 } stringDirectories)
                 {
-                    WriteLogEntry($"[{appDeployToolkitName}] string path is ['{string.Join("', '", adtStringDirs)}'].");
+                    WriteLogEntry($"[{appDeployToolkitName}] string path is ['{string.Join("', '", stringDirectories)}'].");
                 }
 
                 // Test and warn if this toolkit was started with ServiceUI anywhere as a parent process.
@@ -692,11 +689,11 @@ namespace PSAppDeployToolkit.Foundation
                 WriteLogEntry($"The current execution context has a primary UI language of [{adtEnv.UICulture}].");
 
                 // Advise whether the UI language was overridden.
-                if (configUI["LanguageOverride"] is string languageOverride)
+                if (ModuleDatabase.TryGetConfigValue("UI", "LanguageOverride", out string? languageOverride))
                 {
                     WriteLogEntry($"The config file was configured to override the detected primary UI language with the following UI language: [{languageOverride}].");
                 }
-                WriteLogEntry($"The following locale was used to import UI messages from the strings.psd1 files: [{adtData.Properties["Language"].Value}].");
+                WriteLogEntry($"The following locale was used to import UI messages from the strings.psd1 files: [{ModuleDatabase.GetLanguage()}].");
 
 
                 #endregion LogLanguageInfo
@@ -1006,9 +1003,8 @@ namespace PSAppDeployToolkit.Foundation
         /// <param name="exitMessage">An optional exit message to use when closing the session.</param>
         /// <returns>The exit code.</returns>
         /// <exception cref="ObjectDisposedException">Thrown if this method is called after the session has already been closed.</exception>
+        /// <exception cref="InvalidProgramException">Thrown if the last exit code is not available.</exception>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S6561:Avoid using \"DateTime.Now\" for benchmarking or timing operations", Justification = "We don't require nanosecond precision here.")]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S3458:Empty \"case\" clauses that fall through to the \"default\" should be omitted", Justification = "The fallthrough is deliberate.")]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1069:Remove unnecessary case label", Justification = "The fallthrough is deliberate to silence other analyser warnings.")]
         public int Close(string? exitMessage = null)
         {
             // Throw if this object has already been disposed.
@@ -1016,9 +1012,6 @@ namespace PSAppDeployToolkit.Foundation
             {
                 throw new ObjectDisposedException(nameof(DeploymentSession), "This object has already been disposed.");
             }
-
-            // Establish initial variable values.
-            PSPropertyInfo adtExitCode = ModuleDatabase.Get().Properties["LastExitCode"];
 
             // If terminal server mode was specified, revert the installation mode to support it.
             if (TerminalServerMode)
@@ -1066,9 +1059,9 @@ namespace PSAppDeployToolkit.Foundation
             }
 
             // Update the module's last tracked exit code.
-            if (ExitCode is not 0)
+            if (ModuleDatabase.GetLastExitCode() is null || ExitCode is not 0)
             {
-                adtExitCode.Value = ExitCode;
+                ModuleDatabase.SetLastExitCode(ExitCode);
             }
 
             // Clean up state and write out a log divider to indicate the end of logging.
@@ -1108,7 +1101,7 @@ namespace PSAppDeployToolkit.Foundation
                     WriteLogEntry($"Failed to manage archive file [{destArchiveFileName}]: {ex}", LogSeverity.Error);
                 }
             }
-            return (int)adtExitCode.Value;
+            return ModuleDatabase.GetLastExitCode() ?? throw new InvalidProgramException("The last exit code is not available.");
         }
 
         /// <summary>
@@ -1322,13 +1315,7 @@ namespace PSAppDeployToolkit.Foundation
         /// <returns>The deployment status.</returns>
         public DeploymentStatus GetDeploymentStatus()
         {
-            return (ExitCode == DefaultExitCode) || (ExitCode == DeferExitCode)
-                ? DeploymentStatus.FastRetry
-                : AppRebootExitCodes.Contains(ExitCode)
-                ? DeploymentStatus.RestartRequired
-                : AppSuccessExitCodes.Contains(ExitCode)
-                ? DeploymentStatus.Complete
-                : DeploymentStatus.Error;
+            return GetDeploymentStatus(ExitCode);
         }
 
         /// <summary>
@@ -1386,6 +1373,39 @@ namespace PSAppDeployToolkit.Foundation
         }
 
         /// <summary>
+        /// Sets the exit code, judged as <see cref="GetDeploymentStatus()"/> would judge it, unless doing so would
+        /// downgrade the session's status.
+        /// </summary>
+        /// <param name="exitCode">The exit code to set.</param>
+        /// <returns>True if the exit code was set; otherwise, false.</returns>
+        public bool TrySetExitCode(int exitCode)
+        {
+            return TrySetExitCode(exitCode, GetDeploymentStatus(exitCode));
+        }
+
+        /// <summary>
+        /// Sets the exit code, unless doing so would downgrade the session's status.
+        /// </summary>
+        /// <remarks>The given sets are the caller's own, which is a separate judgement to the one
+        /// <see cref="GetDeploymentStatus()"/> makes against the session's, and one that has no deferral codes in
+        /// it.</remarks>
+        /// <param name="exitCode">The exit code to set.</param>
+        /// <param name="successExitCodes">The exit codes the caller treats as success.</param>
+        /// <param name="rebootExitCodes">The exit codes the caller treats as requiring a restart.</param>
+        /// <returns>True if the exit code was set; otherwise, false.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when either set of exit codes is null.</exception>
+        public bool TrySetExitCode(int exitCode, IReadOnlyList<int> successExitCodes, IReadOnlyList<int> rebootExitCodes)
+        {
+            ArgumentNullException.ThrowIfNull(successExitCodes);
+            ArgumentNullException.ThrowIfNull(rebootExitCodes);
+            return TrySetExitCode(exitCode, rebootExitCodes.Contains(exitCode)
+                ? DeploymentStatus.RestartRequired
+                : successExitCodes.Contains(exitCode)
+                ? DeploymentStatus.Complete
+                : DeploymentStatus.Error);
+        }
+
+        /// <summary>
         /// Add the mounted WIM files.
         /// </summary>
         /// <param name="wimFile">The WIM file to add to the list for dismounting upon session closure.</param>
@@ -1398,6 +1418,40 @@ namespace PSAppDeployToolkit.Foundation
         #endregion Public methods.
         #region Private methods.
 
+
+        /// <summary>
+        /// Judges an exit code against the session's own sets.
+        /// </summary>
+        /// <param name="exitCode">The exit code to judge.</param>
+        /// <returns>The status the exit code amounts to.</returns>
+        private DeploymentStatus GetDeploymentStatus(int exitCode)
+        {
+            return (exitCode == DefaultExitCode) || (exitCode == DeferExitCode)
+                ? DeploymentStatus.FastRetry
+                : AppRebootExitCodes.Contains(exitCode)
+                ? DeploymentStatus.RestartRequired
+                : AppSuccessExitCodes.Contains(exitCode)
+                ? DeploymentStatus.Complete
+                : DeploymentStatus.Error;
+        }
+
+        /// <summary>
+        /// Sets the exit code, unless the status it amounts to would downgrade the session's own.
+        /// </summary>
+        /// <remarks>The two are ranked against each other by <see cref="DeploymentStatus"/>'s declared order, so a
+        /// later success cannot clear an earlier failure, restart or deferral.</remarks>
+        /// <param name="exitCode">The exit code to set.</param>
+        /// <param name="exitCodeStatus">The status the exit code amounts to.</param>
+        /// <returns>True if the exit code was set; otherwise, false.</returns>
+        private bool TrySetExitCode(int exitCode, DeploymentStatus exitCodeStatus)
+        {
+            if (GetDeploymentStatus() > exitCodeStatus)
+            {
+                return false;
+            }
+            SetExitCode(exitCode);
+            return true;
+        }
 
         /// <summary>
         /// Writes a log divider.

@@ -45,7 +45,7 @@ function Show-ADTNotifyIcon
         https://psappdeploytoolkit.com/docs/reference/functions/Show-ADTNotifyIcon
 
     .LINK
-        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Show-ADTNotifyIcon.ps1
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/modules/PSAppDeployToolkit/Public/Show-ADTNotifyIcon.ps1
     #>
 
     [CmdletBinding()]
@@ -57,8 +57,11 @@ function Show-ADTNotifyIcon
 
     dynamicparam
     {
-        # Initialize the module first if needed.
-        $adtSession = Initialize-ADTModuleIfUninitialized -Cmdlet $PSCmdlet -PassThruActiveSession
+        # Get the active session if we have one.
+        $adtSession = if (Test-ADTSessionActive)
+        {
+            Get-ADTSession
+        }
 
         # Define parameter dictionary for returning at the end.
         $paramDictionary = [System.Management.Automation.RuntimeDefinedParameterDictionary]::new()
@@ -79,7 +82,7 @@ function Show-ADTNotifyIcon
     {
         # Initialize function.
         Initialize-ADTFunction -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
-        $adtConfig = Get-ADTConfig
+        $adtConfig = if (!(Test-ADTModuleInitialized)) { Get-ADTDefaultConfig } else { Get-ADTConfig }
         $forced = $false
 
         # Set up defaults if not specified.
@@ -139,7 +142,7 @@ function Show-ADTNotifyIcon
                             AppTaskbarIconImage = $adtConfig.Assets.TaskbarIcon
                             MessageText = $ToolTipText
                         })
-                    Add-ADTModuleCallback -Hookpoint OnFinish -Callback $Script:CommandTable.'Close-ADTNotifyIcon'
+                    Add-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-ADTCommand -Name Close-ADTNotifyIcon)
                 }
                 else
                 {

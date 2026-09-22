@@ -63,14 +63,14 @@ namespace PSAppDeployToolkit.Logging
             // Perform early return checks before wasting time.
             DateTime dateNow = DateTime.Now;
             bool canLogToDisk = !string.IsNullOrWhiteSpace(logFileDirectory) && !string.IsNullOrWhiteSpace(logFileName);
-            IDictionary? configToolkit = ModuleDatabase.IsInitialized() ? (IDictionary?)ModuleDatabase.GetConfig()["Toolkit"] : null;
-            if (debugMessage && configToolkit?["LogDebugMessage"] is not true)
+            IDictionary configToolkit = (!ModuleDatabase.IsInitialized() ? ModuleDatabase.GetDefaultConfig() : ModuleDatabase.GetConfig())["Toolkit"] as IDictionary ?? throw new InvalidProgramException("Failed to retrieve the 'Toolkit' configuration.");
+            if (debugMessage && configToolkit["LogDebugMessage"] is not true)
             {
                 return new ReadOnlyCollection<LogEntry>([]);
             }
 
             // Get the caller's source and filename, factoring in whether we're running outside of PowerShell or not.
-            bool noRunspace = (Runspace.DefaultRunspace is null) || (Runspace.DefaultRunspace.RunspaceStateInfo.State is not RunspaceState.Opened);
+            bool noRunspace = Runspace.DefaultRunspace?.RunspaceStateInfo.State is not RunspaceState.Opened;
             StackFrame[] stackFrames = [.. new StackTrace(fNeedFileInfo: true).GetFrames().Skip(1)]; string callerFileName, callerSource;
             if (noRunspace || !stackFrames.Any(static f => f.GetMethod()?.DeclaringType?.Namespace?.StartsWith("System.Management.Automation", StringComparison.Ordinal) is true))
             {
@@ -112,7 +112,7 @@ namespace PSAppDeployToolkit.Logging
             {
                 _ = Directory.CreateDirectory(logFileDirectory);
             }
-            logStyle ??= Enum.TryParse(configToolkit?["LogStyle"] as string, out LogStyle styleEnum) ? styleEnum : LogStyle.CMTrace;
+            logStyle ??= Enum.Parse<LogStyle>(configToolkit["LogStyle"] as string ?? throw new InvalidOperationException("Failed to retrieve the 'LogStyle' configuration."), ignoreCase: true);
             severity ??= LogSeverity.Info;
 
             // Build out the log entries and confirm whether there's anything to log.

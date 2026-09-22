@@ -21,6 +21,8 @@ function Start-ADTProcess
     .PARAMETER ArgumentList
         Arguments to be passed to the executable.
 
+        Passing an array says where each argument ends, so one element always reaches the executable as one argument however it is punctuated. What it does not do is sanitise: an element is quoted where it has to be and otherwise left in the form an installer expects, so interpolating a value you did not author into one leaves that value able to say anything an argument can say.
+
     .PARAMETER SecureArgumentList
         Hides all arguments passed to the executable from the Toolkit log file.
 
@@ -211,7 +213,7 @@ function Start-ADTProcess
         https://psappdeploytoolkit.com/docs/reference/functions/Start-ADTProcess
 
     .LINK
-        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Start-ADTProcess.ps1
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/modules/PSAppDeployToolkit/Public/Start-ADTProcess.ps1
     #>
 
     [CmdletBinding(SupportsShouldProcess = $true, DefaultParameterSetName = 'Default_CreateWindow_Wait')]
@@ -404,7 +406,7 @@ function Start-ADTProcess
         [Parameter(Mandatory = $false)]
         [PSAppDeployToolkit.Attributes.TimeSpanTransformation()]
         [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
-        [System.TimeSpan]$MsiExecWaitTime,
+        [System.TimeSpan]$MsiExecWaitTime = [System.TimeSpan]::FromSeconds($(if (!(Test-ADTModuleInitialized)) { Get-ADTDefaultConfig } else { Get-ADTConfig }).MSI.MutexWaitTime),
 
         [Parameter(Mandatory = $false)]
         [ValidateNotNullOrEmpty()]
@@ -593,26 +595,8 @@ function Start-ADTProcess
                 $PSCmdlet.ThrowTerminatingError((New-ADTErrorRecord @naerParams))
             }
 
-            # Start working out whether we can set the exit code or not.
-            $adtSessionStatus = $adtSession.GetDeploymentStatus()
-            $isSuccessCode = $SuccessExitCodes.Contains($ExitCode)
-            $isRestartCode = $RebootExitCodes.Contains($ExitCode)
-            $isFailureCode = !$isSuccessCode -and !$isRestartCode
-            if ($isFailureCode -and ($adtSessionStatus -le [PSAppDeployToolkit.Foundation.DeploymentStatus]::Error))
-            {
-                $adtSession.SetExitCode($ExitCode)
-                return
-            }
-            if ($isRestartCode -and ($adtSessionStatus -le [PSAppDeployToolkit.Foundation.DeploymentStatus]::RestartRequired))
-            {
-                $adtSession.SetExitCode($ExitCode)
-                return
-            }
-            if ($isSuccessCode -and ($adtSessionStatus -le [PSAppDeployToolkit.Foundation.DeploymentStatus]::Complete))
-            {
-                $adtSession.SetExitCode($ExitCode)
-                return
-            }
+            # Let the session work out whether it can take the exit code or not.
+            $null = $adtSession.TrySetExitCode($ExitCode, $SuccessExitCodes, $RebootExitCodes)
         }
 
         # Initalize function and get required objects.
@@ -659,14 +643,6 @@ function Start-ADTProcess
         else
         {
             $canSetExitCode = $false
-        }
-        if (!$PSBoundParameters.ContainsKey('MsiExecWaitTime'))
-        {
-            if (!$adtSession)
-            {
-                Initialize-ADTModuleIfUninitialized -Cmdlet $PSCmdlet
-            }
-            $MsiExecWaitTime = [System.TimeSpan]::FromSeconds((Get-ADTConfig).MSI.MutexWaitTime)
         }
 
         # Set up initial variables.
@@ -816,7 +792,7 @@ function Start-ADTProcess
                         {
                             [PSADT.Security.ElevatedTokenType]::HighestAvailable
                         }
-                        elseif ($RunAsActiveUser -eq [PSADT.AccountManagement.AccountUtilities]::CallerRunAsActiveUser)
+                        elseif (($RunAsActiveUser -eq [PSADT.AccountManagement.AccountUtilities]::CallerRunAsActiveUser) -and [PSADT.AccountManagement.AccountUtilities]::CallerIsLoggedOnUser)
                         {
                             [PSADT.Security.ElevatedTokenType]::None
                         }
@@ -906,8 +882,8 @@ function Start-ADTProcess
                     [PSADT.ProcessManagement.ProcessManager]::LaunchAsync($launchData)
                 }
 
-                # Handle if the returned value is null. The `Out-String` setup primes the Process object.
-                if ([System.String]::IsNullOrWhiteSpace(($execution | Out-String)))
+                # Handle if the returned value is null. The `Out-ADTString` setup primes the Process object.
+                if (!($execution | Out-ADTString))
                 {
                     # A null result without using ShellExecute is entirely unexpected.
                     if (!$UseShellExecute)
@@ -1112,7 +1088,7 @@ function Start-ADTProcess
                 # property list belongs to a parameter set that -Silent and -DisableErrorResolving are not in.
                 if ($SecureArgumentList)
                 {
-                    $iafehParams.Add('ResolveErrorProperties', ($Script:CommandTable.'Resolve-ADTErrorRecord'.ScriptBlock.Ast.Body.ParamBlock.Parameters.Where({ $_.Name.VariablePath.UserPath.Equals('Property') }).DefaultValue.Pipeline.PipelineElements.Expression.Elements.Value | & { process { if (!$_.Equals('PositionMessage')) { return $_ } } }))
+                    $iafehParams.Add('ResolveErrorProperties', ((Get-ADTCommand -Name Resolve-ADTErrorRecord).ScriptBlock.Ast.Body.ParamBlock.Parameters.Where({ $_.Name.VariablePath.UserPath.Equals('Property') }).DefaultValue.Pipeline.PipelineElements.Expression.Elements.Value | & { process { if (!$_.Equals('PositionMessage')) { return $_ } } }))
                 }
                 Invoke-ADTFunctionErrorHandler @iafehParams -LogMessage "Error occurred while attempting to start the specified process." -ErrorAction Stop
             }

@@ -54,7 +54,7 @@ function Set-ADTDeferHistory
         https://psappdeploytoolkit.com/docs/reference/functions/Set-ADTDeferHistory
 
     .LINK
-        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Set-ADTDeferHistory.ps1
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/modules/PSAppDeployToolkit/Public/Set-ADTDeferHistory.ps1
 
     #>
 
@@ -80,7 +80,7 @@ function Set-ADTDeferHistory
     )
 
     # Throw if at least one parameter isn't called.
-    if (!($PSBoundParameters.Keys.GetEnumerator() | & { process { if (!$Script:PowerShellCommonParameters.Contains($_)) { return $_ } } }))
+    if (!($PSBoundParameters.Keys.GetEnumerator() | & { process { if (!$Script:PowerShellCommonParameters.Contains($_)) { return $_ } } } | Select-Object -First 1))
     {
         $naerParams = @{
             Exception = [System.InvalidOperationException]::new("The function [$($MyInvocation.MyCommand.Name)] requires at least one parameter be specified.")

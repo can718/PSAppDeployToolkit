@@ -40,7 +40,7 @@ function Close-ADTNotifyIcon
         https://psappdeploytoolkit.com/docs/reference/functions/Close-ADTNotifyIcon
 
     .LINK
-        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Close-ADTNotifyIcon.ps1
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/modules/PSAppDeployToolkit/Public/Close-ADTNotifyIcon.ps1
     #>
 
     [CmdletBinding()]
@@ -51,7 +51,6 @@ function Close-ADTNotifyIcon
     begin
     {
         # Initialise function.
-        $adtSession = Initialize-ADTModuleIfUninitialized -Cmdlet $PSCmdlet -PassThruActiveSession
         Initialize-ADTFunction -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
     }
 
@@ -88,13 +87,13 @@ function Close-ADTNotifyIcon
         finally
         {
             # Remove any callback that might be lingering in the backing buffer.
-            Remove-ADTModuleCallback -Hookpoint OnFinish -Callback $Script:CommandTable.($MyInvocation.MyCommand.Name)
+            Remove-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-ADTCommand -Name $MyInvocation.MyCommand.Name)
         }
 
         # Close the client/server process when we're running sessionless.
-        if (!$adtSession -and !(Test-ADTInstallationProgressOpen -RunAsActiveUser $runAsActiveUser))
+        if (!(Test-ADTSessionActive) -and !(Test-ADTInstallationProgressOpen -RunAsActiveUser $runAsActiveUser))
         {
-            Close-ADTClientServerProcess
+            Close-ADTClientServerInstance
         }
     }
 
