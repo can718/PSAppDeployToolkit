@@ -1,0 +1,20 @@
+name: Run Tests from Upstream Artifacts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+jobs:
+  run-additional-tests:
+    name: Run Additional Tests (MCM)
+    uses: ./.github/workflows/run-additional-tests-upstream-artifacts.yml
+    secrets: inherit
+
+  run-intune-tests:
+    name: Run Additional Tests (Intune)
+    uses: ./.github/workflows/run-intune-tests-upstream-artifacts.yml
+    secrets: inherit

@@ -1,0 +1,1759 @@
+name: Run Intune Tests from Upstream Artifacts
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+env:
+  NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
+
+jobs:
+  discover-agent:
+    name: Discover Agent Machine
+    runs-on: [self-hosted, Windows, X64, API]
+    # if: false  # TODO: re-enable after self-hosted runner testing
+    outputs:
+      runner-label: ${{ steps.launch-agent.outputs.runner-label }}
+    env:
+      INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID: ${{ secrets.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID || vars.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID }}
+      TERRAFORGE_CERTIFICATENAME: ${{ secrets.TERRAFORGE_CERTIFICATENAME || vars.TERRAFORGE_CERTIFICATENAME }}
+      TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
+      TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_INTUNE_CONFIG_NAME || 'Intune (Github)-Agent' || 'Intune (Github) Lab-Agent' }}
+      TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+      TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+
+      - name: Launch Agent
+        id: launch-agent
+        shell: pwsh
+        run: |
+          # Load shared TerraForge helper functions (extracted for reuse across workflows)
+          $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+          if (-not (Test-Path -LiteralPath $tfHelper)) {
+            throw "TerraForge helper script not found: $tfHelper"
+          }
+          . $tfHelper
+
+          Invoke-TFLaunchAgent -ConfigName $env:TERRAFORGE_CONFIG_NAME
+
+  run-intune-tests:
+    name: Run Intune Tests
+    needs: discover-agent
+    runs-on: ${{ needs.discover-agent.outputs.runner-label }}
+    outputs:
+      steps_json:        ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
+      pester_discovered: ${{ steps.collect-cases.outputs.pester_discovered || '0' }}
+      pester_total:      ${{ steps.collect-cases.outputs.pester_total || '0' }}
+      pester_passed:     ${{ steps.collect-cases.outputs.pester_passed || '0' }}
+      pester_failed:     ${{ steps.collect-cases.outputs.pester_failed || '0' }}
+      pester_skipped:    ${{ steps.collect-cases.outputs.pester_skipped || '0' }}
+      pester_notrun:     ${{ steps.collect-cases.outputs.pester_notrun || '0' }}
+      cases_json:        ${{ steps.collect-cases.outputs.cases_json || '{}' }}
+      cases_order_json:  ${{ steps.collect-cases.outputs.cases_order_json || '[]' }}
+      recording_urls_json: ${{ steps.upload-to-blob.outputs.public_recording_urls_json || '[]' }}
+      result_summary_payload: ${{ steps.result-summary-collect.outputs.result_summary_payload || '{}' }}
+      result_summary_console: ${{ steps.result-summary-collect.outputs.result_summary_console || '' }}
+      result_summary_markdown: ${{ steps.result-summary-collect.outputs.result_summary_markdown || '' }}
+    strategy:
+      fail-fast: false
+    env:
+      INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID: ${{ secrets.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID || vars.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID }}
+      TERRAFORGE_CERTIFICATENAME: ${{ secrets.TERRAFORGE_CERTIFICATENAME || vars.TERRAFORGE_CERTIFICATENAME }}
+      TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
+      TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+      TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+      TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_INTUNE_CONFIG_NAME || 'Intune (Github)-Agent' }}
+      AAD_USER_CODE: ${{ secrets.AAD_USER_CODE }}
+      TEST_TENANTID: ${{ vars.TEST_TENANTID }}
+      TEST_CLIENTID: ${{ vars.TEST_CLIENTID }}
+      TEST_CLIENTSECRET: ${{ secrets.TEST_CLIENTSECRET }}
+      TERRAFORGE_HELPER_PATH: 'C:\PSADTScripts\TerraForge-AgentHelper.ps1'
+    steps:
+    - name: Ensure Git is available
+      shell: pwsh
+      run: |
+        $gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
+        if (-not $gitCommand) {
+          $gitInstallPath = Get-ItemPropertyValue `
+            -Path 'HKLM:\SOFTWARE\GitForWindows' `
+            -Name InstallPath `
+            -ErrorAction SilentlyContinue
+          $gitDirectories = @(
+            if ($gitInstallPath) { Join-Path $gitInstallPath 'cmd' }
+            "$env:ProgramFiles\Git\cmd"
+            "${env:ProgramFiles(x86)}\Git\cmd"
+          ) | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'git.exe') }
+
+          $gitDirectory = $gitDirectories | Select-Object -First 1
+          if (-not $gitDirectory) {
+            if ($env:RUNNER_ARCH -ne 'X64') {
+              throw "Automatic MinGit installation is not supported for runner architecture [$env:RUNNER_ARCH]."
+            }
+
+            $gitVersion = '2.51.0.windows.1'
+            $gitArchiveName = 'MinGit-2.51.0-64-bit.zip'
+            $gitArchiveHash = 'c2c955a21fa99889d83f485f24fa5d9a38fffc2d509d4022385510e11c26b250'
+            $toolCache = if ($env:RUNNER_TOOL_CACHE) { $env:RUNNER_TOOL_CACHE } else { $env:RUNNER_TEMP }
+            $gitRoot = Join-Path $toolCache "MinGit\$gitVersion\x64"
+            $gitDirectory = Join-Path $gitRoot 'cmd'
+            $gitExecutable = Join-Path $gitDirectory 'git.exe'
+
+            if (-not (Test-Path -LiteralPath $gitExecutable)) {
+              $gitArchive = Join-Path $env:RUNNER_TEMP $gitArchiveName
+              $gitDownloadUrl = "https://github.com/git-for-windows/git/releases/download/v$gitVersion/$gitArchiveName"
+              Write-Host "Git was not found. Downloading MinGit $gitVersion..."
+              Invoke-WebRequest -Uri $gitDownloadUrl -OutFile $gitArchive
+
+              $actualHash = (Get-FileHash -LiteralPath $gitArchive -Algorithm SHA256).Hash
+              if ($actualHash -ne $gitArchiveHash) {
+                Remove-Item -LiteralPath $gitArchive -Force -ErrorAction SilentlyContinue
+                throw "MinGit archive checksum mismatch. Expected [$gitArchiveHash], received [$actualHash]."
+              }
+
+              Remove-Item -LiteralPath $gitRoot -Recurse -Force -ErrorAction SilentlyContinue
+              New-Item -ItemType Directory -Path $gitRoot -Force | Out-Null
+              Expand-Archive -LiteralPath $gitArchive -DestinationPath $gitRoot -Force
+              Remove-Item -LiteralPath $gitArchive -Force -ErrorAction SilentlyContinue
+            }
+
+            if (-not (Test-Path -LiteralPath $gitExecutable)) {
+              throw "MinGit executable was not found after extraction: $gitExecutable"
+            }
+          }
+
+          $env:PATH = "$gitDirectory;$env:PATH"
+          $gitDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        }
+
+        git --version
+
+    - name: Check out repository
+      id: checkout-repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+      env:
+        GIT_CONFIG_COUNT: 1
+        GIT_CONFIG_KEY_0: core.autocrlf
+        GIT_CONFIG_VALUE_0: 'true'
+
+    - name: Set Test Run Start
+      id: set-test-run-start
+      shell: pwsh
+      env:
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_ACTOR: ${{ github.actor }}
+      run: |
+        # Load shared TerraForge helper functions (extracted for reuse across workflows)
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        $tfScriptsDir = 'C:\PSADTScripts'
+        New-Item -ItemType Directory -Path $tfScriptsDir -Force | Out-Null
+        Copy-Item -LiteralPath $tfHelper -Destination $tfScriptsDir -Force
+
+        $RecordingScriptsDir = 'C:\PSADTScripts\PSAppDeployToolkit.Recording'
+        New-Item -ItemType Directory -Path $RecordingScriptsDir -Force | Out-Null
+        # copy PSAppDeployToolkit.Recording.psm1 and PSAppDeployToolkit.Recording.psd1 to $RecordingScriptsDir
+        $recordingPathpsm1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psm1'
+        Copy-Item -LiteralPath $recordingPathpsm1 -Destination $RecordingScriptsDir -Force
+        $recordingPathpsd1 = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\_Shared\PSAppDeployToolkit.Recording.psd1'
+        Copy-Item -LiteralPath $recordingPathpsd1 -Destination $RecordingScriptsDir -Force
+
+        # Add module parent path into PSModulePath.
+        # PSModulePath entries should point to parent folders that contain module directories.
+        $moduleRoot = $tfScriptsDir
+        $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+        $processPath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Process')
+        if ([string]::IsNullOrWhiteSpace($machinePath)) {
+          $machinePath = ''
+        }
+        if ([string]::IsNullOrWhiteSpace($processPath)) {
+          $processPath = ''
+        }
+
+        # Check if module path is already in Machine PSModulePath
+        $segments = @($machinePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        $moduleExists = $false
+        foreach ($segment in $segments) {
+          if ($segment -eq $moduleRoot) {
+            $moduleExists = $true
+            break
+          }
+        }
+
+        # Preserve current process module paths (including user-scope paths) and append moduleRoot once.
+        $combinedSegments = @($processPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($combinedSegments -notcontains $moduleRoot) {
+          $combinedSegments += $moduleRoot
+        }
+        $newProcessPath = ($combinedSegments | Select-Object -Unique) -join ';'
+        [Environment]::SetEnvironmentVariable('PSModulePath', $newProcessPath, 'Process')
+
+        if (-not $moduleExists) {
+          # Persist module root at machine scope for future sessions.
+          $newPath = if ([string]::IsNullOrWhiteSpace($machinePath)) { $moduleRoot } else { "$machinePath;$moduleRoot" }
+          [Environment]::SetEnvironmentVariable('PSModulePath', $newPath, 'Machine')
+          Write-Host "Machine PSModulePath updated: $newPath"
+        }
+        else {
+          Write-Host "Module path already exists in Machine PSModulePath"
+        }
+        Write-Host "Process PSModulePath updated: $newProcessPath"
+
+        function Ensure-AzModule {
+          param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name
+          )
+
+          if (-not (Get-Module -ListAvailable -Name $Name)) {
+            Write-Warning ("Module {0} not found. Installing from PSGallery..." -f $Name)
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+            Install-Module -Name $Name -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+          }
+
+          Import-Module -Name $Name -ErrorAction Stop -Force
+          Write-Host "Preloaded module: $Name"
+        }
+
+        # Ensure critical Azure modules are available before calling TerraForge helper
+        $modulesToLoad = @('Az.Accounts', 'Az.KeyVault', 'Az.Storage')
+        foreach ($moduleName in $modulesToLoad) {
+          try {
+            Ensure-AzModule -Name $moduleName
+          }
+          catch {
+            Write-Warning ("Failed to ensure module {0}: {1}" -f $moduleName, $PSItem.Exception.Message)
+          }
+        }
+
+        $recordingManifest = Join-Path $RecordingScriptsDir 'PSAppDeployToolkit.Recording.psd1'
+        try {
+          Import-Module -Name $recordingManifest -ErrorAction Stop -Force
+          Write-Host "Preloaded module from manifest: $recordingManifest"
+        }
+        catch {
+          Write-Warning ("Failed to preload recording module from {0}: {1}" -f $recordingManifest, $PSItem.Exception.Message)
+        }
+
+        . $tfHelper
+
+        # Register a new test run in TerraForge and expose its ID as 'test-run-id' output.
+        # All connection parameters (API URL, credentials, config) are resolved from job-level env vars.
+        Invoke-TFStartTestRun `
+            -Title "PSADT Intune Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
+
+    - name: Download Test Results from Azure Blob Storage and enroll envronment for next test run
+      id: download-test-assets
+      if: always()
+      shell: pwsh
+      run: |
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
+
+        $accessToken = Get-TerraForgeAuthToken -ApiBaseUrl $env:TERRAFORGE_API_BASE_URL
+
+        Invoke-TFDownloadTestAssets -LocalDestinationDir "C:\Tools\PSADT\AutoEnroll"
+
+    - name: Check runner environment
+      id: check-runner-environment
+      shell: pwsh
+      run: |
+        Write-Host "========== Runner Info =========="
+        Write-Host "Hostname:       $env:COMPUTERNAME"
+        Write-Host "Runner Name:    $env:RUNNER_NAME"
+        Write-Host "Runner OS:      $env:RUNNER_OS"
+        Write-Host "Runner Arch:    $env:RUNNER_ARCH"
+        Write-Host "Workspace:      $env:GITHUB_WORKSPACE"
+
+        Write-Host "`n========== OS =========="
+        [System.Environment]::OSVersion
+        (Get-CimInstance Win32_OperatingSystem).Caption
+
+        Write-Host "`n========== PowerShell =========="
+        $PSVersionTable
+
+        Write-Host "`n========== .NET SDK =========="
+        $dotnet = Get-Command dotnet -ErrorAction Ignore
+        if ($dotnet) {
+          Write-Host "dotnet path:    $($dotnet.Source)"
+          & dotnet --version
+          & dotnet --list-sdks
+        } else {
+          Write-Warning ".NET SDK not found!"
+        }
+
+        Write-Host "`n========== Disk Space =========="
+        Get-PSDrive C | Select-Object Name, @{N='Used(GB)';E={[math]::Round($_.Used/1GB,1)}}, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,1)}}
+
+        Write-Host "`n========== Environment Variables =========="
+        Get-ChildItem Env: | Where-Object { $_.Name -match 'GITHUB|RUNNER|DOTNET|NUGET|PATH' } | Sort-Object Name | Format-Table Name, Value -AutoSize
+
+    - name: Install Node.js (required for GitHub Actions on self-hosted runner)
+      id: install-node
+      shell: pwsh
+      run: |
+        if (-not (Get-Command node -ErrorAction Ignore)) {
+          Write-Host "Node.js not found, installing..."
+          $installer = "$env:TEMP\node-lts.msi"
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.19.0/node-v20.19.0-x64.msi" -OutFile $installer
+          Start-Process msiexec.exe -Wait -ArgumentList "/I $installer /quiet /norestart"
+          $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+          Write-Host "Node.js installed: $(node --version)"
+        } else {
+          Write-Host "Node.js already installed: $(node --version)"
+        }
+
+    - name: Install 7-Zip (required for build packaging on self-hosted runner)
+      id: install-7zip
+      shell: pwsh
+      run: |
+        # Check if 7-Zip is already installed via registry
+        $registryPaths = @(
+          'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+          'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        )
+        $installedVersion = $null
+        foreach ($path in $registryPaths) {
+          $app = Get-ItemProperty $path -ErrorAction SilentlyContinue |
+                 Where-Object { $_.DisplayName -like '*7-Zip*' }
+          if ($app) { $installedVersion = $app.DisplayVersion; break }
+        }
+        if ($installedVersion) {
+          Write-Host "7-Zip $installedVersion is already installed."
+        } else {
+          # Detect architecture and build download URL
+          $arch = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x32' }
+          $fileName = "7z2409-$arch.msi"
+          $downloadUrl = "https://www.7-zip.org/a/$fileName"
+          $tempFile = Join-Path $env:TEMP $fileName
+          Write-Host "Downloading 7-Zip from $downloadUrl ..."
+          (New-Object System.Net.WebClient).DownloadFile($downloadUrl, $tempFile)
+          Write-Host "Installing 7-Zip silently..."
+          $process = Start-Process msiexec.exe -ArgumentList "/i `"$tempFile`" /qn /norestart" -Wait -PassThru
+          Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+          if ($process.ExitCode -ne 0) {
+            throw "7-Zip installation failed with exit code: $($process.ExitCode)"
+          }
+          # Refresh PATH in current session
+          $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+          # Verify
+          $ver = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+                  Where-Object { $_.DisplayName -like '*7-Zip*' }).DisplayVersion
+          Write-Host "7-Zip $ver installed successfully."
+        }
+
+    - name: Display the path
+      id: display-path
+      shell: pwsh
+      run: echo ${env:PATH}
+
+    - name: Version Display
+      id: version-display
+      shell: pwsh
+      run: $PSVersionTable
+
+    - name: Install .NET 8 and 10 SDKs
+      id: setup-dotnet
+      if: ${{ false }}
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # https://github.com/actions/setup-dotnet/releases/tag/v4.3.1
+      with:
+        dotnet-version: |
+          8.0.x
+          10.0.400
+
+    - name: Cache NuGet packages
+      id: cache-nuget
+      if: ${{ false }}
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # https://github.com/actions/cache/releases/tag/v5.0.5
+      with:
+        path: ${{ env.NUGET_PACKAGES }}
+        key: ${{ runner.os }}-${{ runner.arch }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '**/packages.lock.json', '**/nuget.config', 'global.json') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-nuget-
+
+    - name: Cache PowerShell modules
+      id: psmodule-cache
+      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306  # https://github.com/actions/cache/releases/tag/v5.0.3
+      with:
+        path: |
+          ~\Documents\PowerShell\Modules
+          ~\Documents\WindowsPowerShell\Modules
+        key: ${{ runner.os }}-psmodule-PSScriptAnalyzer-1.25.0-Pester-6.1.0-platyPS-0.14.2-Alt3.Docusaurus.Powershell-1.0.37
+
+    - name: Install PowerShell modules
+      id: install-psmodules
+      if: steps.psmodule-cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+        function Initialize-PSGalleryBootstrap {
+          $nugetProvider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |
+                           Where-Object { $_.Version -ge [version]'2.8.5.201' } |
+                           Sort-Object Version -Descending |
+                           Select-Object -First 1
+          if (-not $nugetProvider) {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope CurrentUser
+          }
+
+          Import-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
+
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        }
+
+        function Ensure-ModulePresent {
+          param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            [Parameter(Mandatory = $false)]
+            [version]$RequiredVersion,
+            [switch]$SkipPublisherCheck
+          )
+
+          $module = Get-Module -ListAvailable -Name $Name |
+                    Sort-Object Version -Descending |
+                    Select-Object -First 1
+
+          if ($RequiredVersion) {
+            if ($module -and $module.Version -ge $RequiredVersion) {
+              Write-Host "Module '$Name' already available at version $($module.Version)."
+              return
+            }
+            $installModuleParams = @{
+              Name = $Name
+              RequiredVersion = $RequiredVersion
+              Force = $true
+              Scope = 'CurrentUser'
+              AllowClobber = $true
+              Repository = 'PSGallery'
+            }
+            if ($SkipPublisherCheck) {
+              $installModuleParams.SkipPublisherCheck = $true
+            }
+            Install-Module @installModuleParams
+            return
+          }
+
+          if ($module) {
+            Write-Host "Module '$Name' already available at version $($module.Version)."
+            return
+          }
+
+          Install-Module -Name $Name -Force -Scope CurrentUser -AllowClobber -Repository PSGallery
+        }
+
+        Initialize-PSGalleryBootstrap
+        Ensure-ModulePresent -Name PowerShellGet -RequiredVersion ([version]'2.2.5')
+        $requiredPowerShellGetVersionPrefix = '2.2.5'
+        $powerShellGetModule = Get-Module -ListAvailable -Name PowerShellGet |
+                              Where-Object { $_.Version.ToString().StartsWith($requiredPowerShellGetVersionPrefix) } |
+                              Sort-Object Path |
+                              Select-Object -First 1
+        if (-not $powerShellGetModule) {
+          $availablePowerShellGetVersions = (Get-Module -ListAvailable -Name PowerShellGet | Sort-Object Version -Descending | Select-Object -ExpandProperty Version | ForEach-Object { $_.ToString() }) -join ', '
+          throw "PowerShellGet version prefix $requiredPowerShellGetVersionPrefix was not found after installation. Available versions: $availablePowerShellGetVersions"
+        }
+        Write-Host "Importing PowerShellGet from: $($powerShellGetModule.Path)"
+        Import-Module -Name $powerShellGetModule.Path -Force
+        Initialize-PSGalleryBootstrap
+        Ensure-ModulePresent -Name PSScriptAnalyzer -RequiredVersion ([version]'1.25.0')
+        Ensure-ModulePresent -Name Pester -RequiredVersion ([version]'6.1.0') -SkipPublisherCheck
+        Ensure-ModulePresent -Name platyPS -RequiredVersion ([version]'0.14.2')
+        Ensure-ModulePresent -Name Alt3.Docusaurus.Powershell -RequiredVersion ([version]'1.0.37')
+
+    - name: Configure NuGet source
+      id: configure-nuget
+      if: ${{ false }}
+      shell: pwsh
+      run: |
+        dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org 2>&1 | Out-Null
+        Write-Host "NuGet sources:"
+        dotnet nuget list source
+
+    - name: Build (minimal - Clean, DotNet, Build)
+      id: build
+      if: ${{ false }}
+      timeout-minutes: 90
+      shell: pwsh
+      env:
+        TestTfmsInParallel: 'false'
+      run: |
+        $buildStart = Get-Date
+
+        $buildScript = Join-Path $env:RUNNER_TEMP 'Invoke-PSADTBuild.ps1'
+        @'
+        $ErrorActionPreference = 'Stop'
+        Set-Location -LiteralPath $env:GITHUB_WORKSPACE
+        & (Import-Module -Name .\modules\PSAppDeployToolkit.Build -PassThru) {
+          Invoke-ADTModuleBuild -Steps 'Clean', 'DotNet', 'Build'
+        }
+        '@ | Set-Content -LiteralPath $buildScript -Encoding utf8
+
+        $attemptTimeout = [TimeSpan]::FromMinutes(40)
+        $buildSucceeded = $false
+
+        foreach ($attempt in 1..2) {
+          Write-Host "Starting build attempt $attempt of 2 (timeout: $($attemptTimeout.TotalMinutes) minutes)."
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "psadt-build-$attempt.stdout.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "psadt-build-$attempt.stderr.log"
+          Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+
+          $process = Start-Process -FilePath (Get-Command pwsh).Source `
+            -ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', "`"$buildScript`"") `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath `
+            -PassThru
+
+          $deadline = [DateTime]::UtcNow.Add($attemptTimeout)
+          while (-not $process.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+            Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue
+            if (-not $process.HasExited) {
+              Write-Host "Build attempt $attempt is still running (PID $($process.Id))."
+              $process.Refresh()
+            }
+          }
+
+          if (-not $process.HasExited) {
+            Write-Warning "Build attempt $attempt exceeded $($attemptTimeout.TotalMinutes) minutes. Terminating its process tree."
+            & taskkill.exe /PID $process.Id /T /F 2>&1 | Write-Host
+            Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue
+            $exitCode = 124
+          }
+          else {
+            $exitCode = $process.ExitCode
+          }
+
+          if (Test-Path -LiteralPath $stdoutPath) {
+            Get-Content -LiteralPath $stdoutPath
+          }
+          if (Test-Path -LiteralPath $stderrPath) {
+            Get-Content -LiteralPath $stderrPath | Write-Error -ErrorAction Continue
+          }
+
+          if ($exitCode -eq 0) {
+            $buildSucceeded = $true
+            break
+          }
+
+          Write-Warning "Build attempt $attempt failed with exit code $exitCode."
+          if ($attempt -lt 2) {
+            Remove-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'TestResults') -Recurse -Force -ErrorAction SilentlyContinue
+          }
+        }
+
+        Remove-Item -LiteralPath $buildScript -Force -ErrorAction SilentlyContinue
+        $buildLogDirectory = Join-Path $env:GITHUB_WORKSPACE 'src\Artifacts\TestOutput\BuildLogs'
+        New-Item -ItemType Directory -Path $buildLogDirectory -Force | Out-Null
+        Copy-Item -Path (Join-Path $env:RUNNER_TEMP 'psadt-build-*.log') -Destination $buildLogDirectory -Force -ErrorAction SilentlyContinue
+
+        if (-not $buildSucceeded) {
+          throw 'PSADT build failed after 2 attempts.'
+        }
+
+        $buildEnd = Get-Date
+        $duration = $buildEnd - $buildStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "build_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    - name: Generate artifact templates
+      id: exports
+      if: ${{ false }}
+      shell: pwsh
+      run: |
+        $exportsStart = Get-Date
+        & (Import-Module -Name .\modules\PSAppDeployToolkit.Build -PassThru) { Invoke-ADTCustomModuleBuild -Actions 'Export-ADTScriptTemplate', 'Compress-ADTBuildAssetContent' }
+        $exportsEnd = Get-Date
+        $duration = $exportsEnd - $exportsStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "exports_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    - name: Download upstream V3 and V4 templates
+      id: download-templates
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # https://github.com/actions/download-artifact/releases/tag/v8.0.1
+      with:
+        pattern: PSAppDeployToolkit_Template_v[34]__main_2026-09-22T075734Z_2e3afbb.7z
+        path: artifacts\UpstreamTemplates
+        merge-multiple: true
+        github-token: ${{ secrets.API_TOKEN_GITHUB || secrets.SYNC_PR_PAT || github.token }}
+        repository: PSAppDeployToolkit/PSAppDeployToolkit
+        run-id: '35699733553'
+
+    - name: Extract upstream V3 and V4 templates
+      id: extract-templates
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $downloadRoot = Join-Path $env:GITHUB_WORKSPACE 'artifacts\UpstreamTemplates'
+        $sevenZip = Get-Command 7z.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
+        if (-not $sevenZip) {
+          $sevenZip = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
+        }
+        if (-not (Test-Path -LiteralPath $sevenZip)) {
+          throw "7-Zip executable not found: $sevenZip"
+        }
+
+        $templates = @(
+          @{
+            Archive = 'PSAppDeployToolkit_Template_v3__main_2026-09-22T075734Z_2e3afbb.7z'
+            Hash = '42179effda7fbc8f44ed64482efebc934dd6c0d3979ac805bb1db54a83af522c'
+            Destination = Join-Path $env:GITHUB_WORKSPACE 'artifacts\Template_v3'
+          },
+          @{
+            Archive = 'PSAppDeployToolkit_Template_v4__main_2026-09-22T075734Z_2e3afbb.7z'
+            Hash = 'b77fcf105bd69e6cb9381bb6203837eb95aecd5c6c5cd30c9b7f42f481ddedb8'
+            Destination = Join-Path $env:GITHUB_WORKSPACE 'artifacts\Template_v4'
+          }
+        )
+
+        foreach ($template in $templates) {
+          $archivePath = Join-Path $downloadRoot $template.Archive
+          if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
+            throw "Downloaded template archive not found: $archivePath"
+          }
+
+          $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
+          if ($actualHash -ne $template.Hash) {
+            throw "Template archive checksum mismatch for [$($template.Archive)]. Expected [$($template.Hash)], received [$actualHash]."
+          }
+
+          Remove-Item -LiteralPath $template.Destination -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $template.Destination -Force | Out-Null
+          & $sevenZip x $archivePath "-o$($template.Destination)" -y
+          if ($LASTEXITCODE -ne 0) {
+            throw "7-Zip failed to extract [$($template.Archive)] with exit code [$LASTEXITCODE]."
+          }
+        }
+
+    - name: Prepare PSADT templates for deployment test
+      id: template-prep
+      shell: pwsh
+      run: |
+        $templateStart = Get-Date
+        $v3Src = '.\artifacts\Template_v3'
+        $v4Src = '.\artifacts\Template_v4'
+
+        Write-Host "V3 source: $(Resolve-Path $v3Src -ErrorAction SilentlyContinue)"
+        Write-Host "V4 source: $(Resolve-Path $v4Src -ErrorAction SilentlyContinue)"
+
+        if (-not (Test-Path $v3Src)) {
+          Write-Warning "Template_v3 directory not found: '$v3Src' - skipping template prep"
+          exit 0
+        }
+        if (-not (Test-Path $v4Src)) {
+          Write-Warning "Template_v4 directory not found: '$v4Src' - skipping template prep"
+          exit 0
+        }
+
+        $v3Dest = (New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestTemplates\v3').FullName
+        $v4Dest = (New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestTemplates\v4').FullName
+
+        Copy-Item -Path "$v3Src\*" -Destination $v3Dest -Recurse -Force
+        Copy-Item -Path "$v4Src\*" -Destination $v4Dest -Recurse -Force
+
+        Write-Host "V3 template ready at: $v3Dest"
+        Write-Host "V4 template ready at: $v4Dest"
+        Write-Host "V3 contents: $((Get-ChildItem $v3Dest | Select-Object -ExpandProperty Name) -join ', ')"
+        Write-Host "V4 contents: $((Get-ChildItem $v4Dest | Select-Object -ExpandProperty Name) -join ', ')"
+
+        "PSADT_TEMPLATE_V3_DIR=$v3Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "PSADT_TEMPLATE_V4_DIR=$v4Dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+        $templateEnd = Get-Date
+        $duration = $templateEnd - $templateStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "template_prep_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    # Add your new Intune test cases below this line
+    - name: Run Intune Tests
+      id: run-pester
+      shell: pwsh
+      env:
+        PSADT_TEMPLATE_V3_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V3_DIR }}
+        PSADT_TEMPLATE_V4_DIR: ${{ steps.template-prep.outputs.PSADT_TEMPLATE_V4_DIR }}
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
+      run: |
+        $pesterStart = Get-Date
+        New-Item -ItemType Directory -Force -Path '.\src\Artifacts\TestOutput' | Out-Null
+
+        # Current New-ADTTemplate validation rejects empty dictionary values. These optional
+        # properties can be omitted so the generated V4 template retains its defaults.
+        $v4TestRoot = Join-Path $env:GITHUB_WORKSPACE 'src\Tests\V4'
+        $emptyOptionalPropertyPattern = "(?m)^[ \t]+(?:InstallName|InstallTitle)[ \t]*=[ \t]*''[ \t]*\r?\n"
+        foreach ($parameterFile in Get-ChildItem -Path $v4TestRoot -Filter 'New-ADTTemplate.params.ps1' -File -Recurse) {
+          $content = [System.IO.File]::ReadAllText($parameterFile.FullName)
+          $normalizedContent = [regex]::Replace($content, $emptyOptionalPropertyPattern, '')
+          if ($normalizedContent -ne $content) {
+            [System.IO.File]::WriteAllText($parameterFile.FullName, $normalizedContent, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "Removed empty optional session properties from: $($parameterFile.FullName)"
+          }
+        }
+
+        $env:PSADT_INTUNE_EXCLUDE_APP_NAMES = 'Notepad++'
+        $env:PSADT_INTUNE_CLEANUP_GROUP = 'false'
+
+        $mainDiscoveryConfig = New-PesterConfiguration
+        $mainDiscoveryConfig.Run.Path = '.\src\Tests\Intune'
+        $mainDiscoveryConfig.Run.SkipRun = $true
+        $mainDiscoveryConfig.Run.PassThru = $true
+        $mainDiscoveryResult = Invoke-Pester -Configuration $mainDiscoveryConfig
+
+        $mainConfig = New-PesterConfiguration
+        $mainConfig.Run.Path = '.\src\Tests\Intune'
+        $mainConfig.Output.Verbosity = 'Detailed'
+        $mainConfig.TestResult.Enabled = $true
+        $mainConfig.TestResult.OutputPath = '.\src\Artifacts\TestOutput\IntuneTests.xml'
+        $mainConfig.TestResult.OutputFormat = 'NUnitXml'
+        $mainConfig.Run.PassThru = $true
+        $mainResult = Invoke-Pester -Configuration $mainConfig
+        . '.\src\Tests\Intune\IntuneTestHelpers.ps1'
+        Complete-TFTestCaseResults -PesterResult $mainResult
+
+        Remove-Item -Path Env:\PSADT_INTUNE_EXCLUDE_APP_NAMES -ErrorAction SilentlyContinue
+        $env:PSADT_INTUNE_INCLUDE_APP_NAMES = 'Notepad++'
+        $env:PSADT_INTUNE_CLEANUP_GROUP = 'true'
+
+        $notepadDiscoveryConfig = New-PesterConfiguration
+        $notepadDiscoveryConfig.Run.Path = '.\src\Tests\Intune'
+        $notepadDiscoveryConfig.Run.SkipRun = $true
+        $notepadDiscoveryConfig.Run.PassThru = $true
+        $notepadDiscoveryResult = Invoke-Pester -Configuration $notepadDiscoveryConfig
+
+        $notepadConfig = New-PesterConfiguration
+        $notepadConfig.Run.Path = '.\src\Tests\Intune'
+        $notepadConfig.Output.Verbosity = 'Detailed'
+        $notepadConfig.TestResult.Enabled = $true
+        $notepadConfig.TestResult.OutputPath = '.\src\Artifacts\TestOutput\IntuneTests-Notepad++.xml'
+        $notepadConfig.TestResult.OutputFormat = 'NUnitXml'
+        $notepadConfig.Run.PassThru = $true
+        $notepadResult = Invoke-Pester -Configuration $notepadConfig
+        Complete-TFTestCaseResults -PesterResult $notepadResult
+
+        Remove-Item -Path Env:\PSADT_INTUNE_INCLUDE_APP_NAMES -ErrorAction SilentlyContinue
+        Remove-Item -Path Env:\PSADT_INTUNE_CLEANUP_GROUP -ErrorAction SilentlyContinue
+        Remove-Item -Path Env:\PSADT_INTUNE_TEST_GROUP_ID -ErrorAction SilentlyContinue
+
+        $results = @($mainResult, $notepadResult)
+        $discoveredTotal = [int]$mainDiscoveryResult.TotalCount + [int]$notepadDiscoveryResult.TotalCount
+        $executedTotal = [int](($results | Measure-Object -Property TotalCount -Sum).Sum)
+        $passed = [int](($results | Measure-Object -Property PassedCount -Sum).Sum)
+        $failed = [int](($results | Measure-Object -Property FailedCount -Sum).Sum)
+        $skipped = [int](($results | Measure-Object -Property SkippedCount -Sum).Sum)
+        $notRun = [math]::Max($discoveredTotal - $executedTotal, 0)
+
+        "pester_discovered=$discoveredTotal" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_total=$executedTotal"        | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_passed=$passed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_failed=$failed"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_skipped=$skipped"            | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "pester_notrun=$notRun"              | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+        if ($failed -gt 0) {
+          throw "One or more Intune tests failed. Failed count: $failed"
+        }
+
+        $pesterEnd = Get-Date
+        $duration = $pesterEnd - $pesterStart
+        $mins = [int]($duration.TotalSeconds / 60)
+        $secs = [int]($duration.TotalSeconds % 60)
+        if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+        "run_pester_duration=$($mins)m $($secs)s" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    - name: Collect test case results from XML
+      id: collect-cases
+      if: always()
+      shell: pwsh
+      run: |
+        $caseEntries = [ordered]@{}
+        $outcomePriority = @{
+          unknown = 0
+          skipped = 1
+          failure = 2
+          success = 3
+        }
+
+        function Get-XmlAttributeValue {
+          param(
+            [Parameter(Mandatory = $true)]
+            [System.Xml.XmlNode]$Node,
+            [Parameter(Mandatory = $true)]
+            [string]$Name
+          )
+
+          if ($Node -and $Node.Attributes) {
+            $attribute = $Node.Attributes[$Name]
+            if ($attribute) {
+              return [string]$attribute.Value
+            }
+          }
+
+          return ''
+        }
+
+        $xmlFiles = Get-ChildItem -Path '.\src\Artifacts\TestOutput\IntuneTests*.xml' -ErrorAction SilentlyContinue | Sort-Object Name
+        foreach ($xmlFile in $xmlFiles) {
+          try {
+            [xml]$xml = Get-Content $xmlFile.FullName -Raw -Encoding UTF8
+            $testCases = $xml.SelectNodes('/test-results/test-suite/results//test-case')
+
+            foreach ($tc in $testCases) {
+              $caseDescription = (Get-XmlAttributeValue -Node $tc -Name 'description').Trim()
+              $caseNodeName = (Get-XmlAttributeValue -Node $tc -Name 'name').Trim()
+              $caseName = if (-not [string]::IsNullOrWhiteSpace($caseDescription)) {
+                $caseDescription
+              }
+              else {
+                ($caseNodeName -split '\.')[-1].Trim()
+              }
+              if ([string]::IsNullOrWhiteSpace($caseName)) { $caseName = '(unnamed)' }
+
+              $result = (Get-XmlAttributeValue -Node $tc -Name 'result').Trim().ToLowerInvariant()
+              $executed = (Get-XmlAttributeValue -Node $tc -Name 'executed').Trim().ToLowerInvariant()
+              $success = (Get-XmlAttributeValue -Node $tc -Name 'success').Trim().ToLowerInvariant()
+
+              $outcome = if (-not [string]::IsNullOrWhiteSpace($result)) {
+                switch ($result) {
+                  'passed'       { 'success' }
+                  'success'      { 'success' }
+                  'failed'       { 'failure' }
+                  'failure'      { 'failure' }
+                  'skipped'      { 'skipped' }
+                  'ignored'      { 'skipped' }
+                  'inconclusive' { 'unknown' }
+                  default        { 'unknown' }
+                }
+              }
+              elseif ($executed -eq 'false') {
+                'skipped'
+              }
+              elseif ($success -eq 'true') {
+                'success'
+              }
+              elseif ($success -eq 'false') {
+                'failure'
+              }
+              else {
+                'unknown'
+              }
+
+              $durationText = (Get-XmlAttributeValue -Node $tc -Name 'duration').Trim()
+              if ([string]::IsNullOrWhiteSpace($durationText)) {
+                $durationText = (Get-XmlAttributeValue -Node $tc -Name 'time').Trim()
+              }
+
+              $durationSec = 0.0
+              [void][double]::TryParse(
+                $durationText,
+                [System.Globalization.NumberStyles]::Float,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [ref]$durationSec
+              )
+              $mins = [int]($durationSec / 60)
+              $secs = [int]($durationSec % 60)
+              if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+              $durationStr = "${mins}m ${secs}s"
+
+              $existingOutcome = if ($caseEntries.Contains($caseName)) {
+                (([string]$caseEntries[$caseName] -split '\|', 2)[0]).Trim().ToLowerInvariant()
+              }
+              else {
+                $null
+              }
+
+              if (
+                -not $caseEntries.Contains($caseName) -or
+                $outcomePriority[$outcome] -gt $outcomePriority[$existingOutcome]
+              ) {
+                $caseEntries[$caseName] = "$outcome | $durationStr"
+              }
+            }
+          }
+          catch {
+            Write-Warning "Failed to parse $($xmlFile.Name): $($_.Exception.Message)"
+          }
+        }
+
+        $casesJson = if ($caseEntries.Count -gt 0) { $caseEntries | ConvertTo-Json -Compress } else { '{}' }
+        $casesOrderJson = @($caseEntries.Keys) | ConvertTo-Json -Compress
+        $outcomes = @($caseEntries.Values | ForEach-Object { (([string]$_ -split '\|', 2)[0]).Trim().ToLowerInvariant() })
+        $passed = @($outcomes | Where-Object { $_ -eq 'success' }).Count
+        $failed = @($outcomes | Where-Object { $_ -eq 'failure' }).Count
+        $skipped = @($outcomes | Where-Object { $_ -eq 'skipped' }).Count
+        $notRun = @($outcomes | Where-Object { $_ -eq 'unknown' }).Count
+        $total = $caseEntries.Count
+
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_json=$casesJson`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "cases_order_json=$casesOrderJson`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_discovered=$total`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_total=$total`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_passed=$passed`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_failed=$failed`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_skipped=$skipped`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "pester_notrun=$notRun`n", [System.Text.Encoding]::UTF8)
+        Write-Host "Collected $($caseEntries.Count) test case result(s)."
+
+    - name: Generate case TRX and HTML report
+      id: generate-case-trx
+      if: always()
+      shell: pwsh
+      run: |
+        $inputPattern = '.\src\Artifacts\TestOutput\IntuneTests*.xml'
+        if (@(Get-ChildItem -Path $inputPattern -File -ErrorAction SilentlyContinue).Count -eq 0) {
+          Write-Warning 'No Intune test XML exists because the test step did not run or did not produce results; skipping report generation.'
+          exit 0
+        }
+
+        $generatorScript = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\Generate-CaseTrxReport.ps1'
+        if (-not (Test-Path -LiteralPath $generatorScript)) {
+          throw "Case TRX generator script not found: $generatorScript"
+        }
+
+        & $generatorScript `
+          -InputPattern $inputPattern `
+          -TrxOutputPath '.\src\Artifacts\TestOutput\IntuneTests-Cases.trx' `
+          -HtmlOutputPath '.\src\Artifacts\TestOutput\IntuneTests-Cases.html'
+
+    - name: Stage PSADT logs for artifact upload
+      id: stage-psadt-logs
+      if: always()
+      shell: pwsh
+      run: |
+        $logDestination = '.\src\Artifacts\TestOutput\PSADTLogs'
+        New-Item -ItemType Directory -Path $logDestination -Force | Out-Null
+
+        $logSource = 'C:\Windows\Logs\Software'
+        if (-not (Test-Path -LiteralPath $logSource -PathType Container)) {
+          Write-Warning "PSADT log directory not found: $logSource"
+          exit 0
+        }
+
+        $patterns = @('*_Install.log', '*_Uninstall.log', '*_Repair.log')
+        $copiedCount = 0
+        foreach ($pattern in $patterns) {
+          $logs = @(Get-ChildItem -Path $logSource -Filter $pattern -File -ErrorAction SilentlyContinue)
+          foreach ($log in $logs) {
+            Copy-Item -LiteralPath $log.FullName -Destination (Join-Path $logDestination $log.Name) -Force
+            $copiedCount++
+          }
+        }
+
+        Write-Host "Staged $copiedCount PSADT log file(s) to $logDestination"
+
+    - name: Upload Intune test results
+      id: upload-artifacts
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # https://github.com/actions/upload-artifact/releases/tag/v7.0.1
+      with:
+        name: intune-test-results
+        path: |
+          .\src\Artifacts\TestOutput\IntuneTests*.xml
+          .\src\Artifacts\TestOutput\IntuneTests-Cases.trx
+          .\src\Artifacts\TestOutput\IntuneTests-Cases.html
+          .\src\Artifacts\TestOutput\PSADTLogs\*.log
+          .\src\Artifacts\TestOutput\BuildLogs\*.log
+        if-no-files-found: error
+        overwrite: true
+
+    - name: Complete Test Run
+      id: complete-test-run
+      if: always()
+      shell: pwsh
+      env:
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
+      run: |
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
+        Invoke-TFCompleteTestRun
+
+    - name: Upload Test Results to Azure Blob Storage
+      id: upload-to-blob
+      if: always()
+      shell: pwsh
+      env:
+        TEST_RUN_ID: ${{ steps.set-test-run-start.outputs.test-run-id }}
+      run: |
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found: $tfHelper"
+        }
+        . $tfHelper
+        $sessionID = Get-SessionID
+        $machineID = Get-MachineID
+
+        # Collect NUnit XML files plus generated case TRX/HTML for upload.
+        $testArtifactPaths = [System.Collections.Generic.List[string]]::new()
+
+        $xmlPaths = @(Get-ChildItem -Path '.\src\Artifacts\TestOutput\IntuneTests*.xml' -File -ErrorAction SilentlyContinue |
+          Sort-Object Name |
+          ForEach-Object { $_.FullName })
+        foreach ($path in $xmlPaths) {
+          $testArtifactPaths.Add($path)
+        }
+
+        $extraPatternPaths = @(
+          '.\src\Artifacts\TestOutput\IntuneTests-Cases.trx',
+          '.\src\Artifacts\TestOutput\IntuneTests-Cases.html'
+        )
+
+        foreach ($patternPath in $extraPatternPaths) {
+          $resolved = Resolve-Path -Path $patternPath -ErrorAction SilentlyContinue
+          foreach ($item in @($resolved)) {
+            $testArtifactPaths.Add($item.Path)
+          }
+        }
+
+        # Include PSADT installation logs from the default log folder.
+        $psadtLogRoot = 'C:\Windows\Logs\Software'
+        if (Test-Path -LiteralPath $psadtLogRoot -PathType Container) {
+          $psadtLogPatterns = @('*_Install.log', '*_Uninstall.log', '*_Repair.log')
+          foreach ($pattern in $psadtLogPatterns) {
+            $logPaths = @(Get-ChildItem -Path $psadtLogRoot -Filter $pattern -File -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending |
+              ForEach-Object { $_.FullName })
+            foreach ($logPath in $logPaths) {
+              $testArtifactPaths.Add($logPath)
+            }
+          }
+        }
+        else {
+          Write-Warning "PSADT log directory not found: $psadtLogRoot"
+        }
+
+        $uploadPaths = @($testArtifactPaths | Select-Object -Unique)
+
+        if ($uploadPaths.Count -eq 0) {
+          Write-Warning 'No IntuneTests XML/TRX/HTML files were found to upload.'
+        }
+        else {
+          Write-Host "Uploading $($uploadPaths.Count) test result artifact file(s) to blob storage:"
+          $uploadPaths | ForEach-Object { Write-Host "  - $_" }
+          Invoke-TFUploadTestResults -TestResultXmlPath $uploadPaths -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
+        }
+
+        $publicRecordingEntries = @()
+
+        $recordFile = Get-RegistryValue -Name 'RecordingUploadNotRequested'
+        if ($recordFile) {
+          Write-Host "Uploading recording file(s) to blob storage: $recordFile"
+          $recordFiles = $recordFile -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "testruns/$env:TEST_RUN_ID/$sessionID/$machineID"
+          Invoke-TFUploadTestResults -TestResultXmlPath $recordFiles -BlobPathBase "psadt/$env:TEST_RUN_ID/$sessionID/$machineID" -ContainerName "tfp-public"
+
+          foreach ($recordPath in $recordFiles) {
+            $recordName = [System.IO.Path]::GetFileName([string]$recordPath)
+            if ([string]::IsNullOrWhiteSpace($recordName)) {
+              continue
+            }
+
+            $encodedName = [System.Uri]::EscapeDataString($recordName)
+            $publicUrl = "https://tfpfsstorage.blob.core.windows.net/tfp-public/psadt/$env:TEST_RUN_ID/$sessionID/$machineID/$encodedName"
+            $publicRecordingEntries += [ordered]@{
+              Name = $recordName
+              Url  = $publicUrl
+            }
+          }
+        } else {
+          Write-Host "No recording file found for upload."
+        }
+
+        $publicRecordingJson = @($publicRecordingEntries) | ConvertTo-Json -Compress
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "public_recording_urls_json=$publicRecordingJson`n", [System.Text.Encoding]::UTF8)
+
+    - name: Collect step outcomes
+      id: collect-outputs
+      if: always()
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $apiStepTimings = @{}
+        try {
+          $apiHeaders = @{
+            Authorization          = "Bearer $env:GH_TOKEN"
+            Accept                 = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $jobsUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/jobs?per_page=100"
+          $jobsData = Invoke-RestMethod -Uri $jobsUrl -Headers $apiHeaders -ErrorAction Stop
+
+          $thisJob = $jobsData.jobs |
+                     Where-Object { $_.steps | Where-Object { $_.name -eq 'Collect step outcomes' } } |
+                     Select-Object -First 1
+
+          if ($thisJob) {
+            foreach ($apiStep in $thisJob.steps) {
+              if ($apiStep.started_at -and $apiStep.completed_at) {
+                $started = [datetime]::Parse($apiStep.started_at, $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                $completed = [datetime]::Parse($apiStep.completed_at, $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                $sec = ($completed - $started).TotalSeconds
+                $mins = [int]($sec / 60)
+                $secs = [int]($sec % 60)
+                if ($mins -eq 0 -and $secs -eq 0) { $secs = 1 }
+                $apiStepTimings[$apiStep.name] = "${mins}m ${secs}s"
+              }
+            }
+            Write-Host "Fetched timings for $($apiStepTimings.Count) step(s) from GitHub API."
+          }
+          else {
+            Write-Warning 'Could not locate this job in the GitHub API response; falling back to env-based timings.'
+          }
+        }
+        catch {
+          Write-Warning "GitHub API call failed; falling back to env-based timings. Error: $_"
+        }
+
+        $displayToApiPattern = [ordered]@{
+          'Check out repository'        = 'Check out repository'
+          'Set Test Run Start'          = 'Set Test Run Start'
+          'Download Test Assets'        = 'Download Test Results from Azure Blob Storage*'
+          'Check runner environment'    = 'Check runner environment'
+          'Install Node.js'             = 'Install Node.js*'
+          'Install 7-Zip'               = 'Install 7-Zip*'
+          'Display the path'            = 'Display the path'
+          'Version Display'             = 'Version Display'
+          'Cache PowerShell modules'    = 'Cache PowerShell modules'
+          'Install PowerShell modules'  = 'Install PowerShell modules'
+          'Download Templates'          = 'Download upstream V3 and V4 templates'
+          'Extract Templates'           = 'Extract upstream V3 and V4 templates'
+          'Prepare Templates'           = 'Prepare PSADT*'
+          'Run Pester Tests'            = 'Run Intune Tests'
+          'Collect test case results'   = 'Collect test case results*'
+          'Upload Test Results'         = 'Upload Intune test results'
+          'Complete Test Run'           = 'Complete Test Run'
+          'Upload to Blob Storage'      = 'Upload Test Results to Azure*'
+        }
+
+        function Get-ApiDuration {
+          param([string]$DisplayName)
+          $pattern = $displayToApiPattern[$DisplayName]
+          if (-not $pattern) { return $null }
+          foreach ($key in $apiStepTimings.Keys) {
+            if ($key -like $pattern) { return $apiStepTimings[$key] }
+          }
+          return $null
+        }
+
+        function Resolve-Duration {
+          param([string[]]$Candidates)
+          foreach ($v in $Candidates) {
+            if (-not [string]::IsNullOrWhiteSpace($v)) { return $v }
+          }
+          return '-'
+        }
+
+        $steps = [ordered]@{
+          'Check out repository'        = @{ outcome = '${{ steps.checkout-repository.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Check out repository')) }
+          'Set Test Run Start'          = @{ outcome = '${{ steps.set-test-run-start.outcome }}';  duration = (Resolve-Duration (Get-ApiDuration 'Set Test Run Start')) }
+          'Download Test Assets'        = @{ outcome = '${{ steps.download-test-assets.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Download Test Assets')) }
+          'Check runner environment'    = @{ outcome = '${{ steps.check-runner-environment.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Check runner environment')) }
+          'Install Node.js'             = @{ outcome = '${{ steps.install-node.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Install Node.js')) }
+          'Install 7-Zip'               = @{ outcome = '${{ steps.install-7zip.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Install 7-Zip')) }
+          'Display the path'            = @{ outcome = '${{ steps.display-path.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Display the path')) }
+          'Version Display'             = @{ outcome = '${{ steps.version-display.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Version Display')) }
+          'Cache PowerShell modules'    = @{ outcome = '${{ steps.psmodule-cache.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Cache PowerShell modules')) }
+          'Install PowerShell modules'  = @{ outcome = '${{ steps.install-psmodules.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Install PowerShell modules')) }
+          'Download Templates'          = @{ outcome = '${{ steps.download-templates.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Download Templates')) }
+          'Extract Templates'           = @{ outcome = '${{ steps.extract-templates.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Extract Templates')) }
+          'Prepare Templates'           = @{ outcome = '${{ steps.template-prep.outcome }}'; duration = (Resolve-Duration @((Get-ApiDuration 'Prepare Templates'), $env:template_prep_duration)) }
+          'Run Pester Tests'            = @{ outcome = '${{ steps.run-pester.outcome }}'; duration = (Resolve-Duration @((Get-ApiDuration 'Run Pester Tests'), $env:run_pester_duration)) }
+          'Collect test case results'   = @{ outcome = '${{ steps.collect-cases.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Collect test case results')) }
+          'Upload Test Results'         = @{ outcome = '${{ steps.upload-artifacts.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Upload Test Results')) }
+          'Complete Test Run'           = @{ outcome = '${{ steps.complete-test-run.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Complete Test Run')) }
+          'Upload to Blob Storage'      = @{ outcome = '${{ steps.upload-to-blob.outcome }}'; duration = (Resolve-Duration (Get-ApiDuration 'Upload to Blob Storage')) }
+        }
+
+        $stepsJson = [ordered]@{}
+        foreach ($stepName in $steps.Keys) {
+          $outcome = $steps[$stepName].outcome
+          $duration = $steps[$stepName].duration
+
+          if ([string]::IsNullOrWhiteSpace($duration) -or $duration -eq '$null') {
+            $duration = '-'
+          }
+
+          if ($duration -eq '-') {
+            $stepsJson[$stepName] = $outcome
+          } else {
+            $stepsJson[$stepName] = "$outcome | $duration"
+          }
+        }
+
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "steps_json=$($stepsJson | ConvertTo-Json -Compress)`n", [System.Text.Encoding]::UTF8)
+
+    - name: ResultSummary (Collect)
+      id: result-summary-collect
+      if: always()
+      shell: pwsh
+      env:
+        JOB_STATUS: ${{ job.status }}
+        PESTER_DISCOVERED: ${{ steps.collect-cases.outputs.pester_discovered || '0' }}
+        PESTER_TOTAL: ${{ steps.collect-cases.outputs.pester_total || '0' }}
+        PESTER_PASSED: ${{ steps.collect-cases.outputs.pester_passed || '0' }}
+        PESTER_FAILED: ${{ steps.collect-cases.outputs.pester_failed || '0' }}
+        PESTER_SKIPPED: ${{ steps.collect-cases.outputs.pester_skipped || '0' }}
+        PESTER_NOTRUN: ${{ steps.collect-cases.outputs.pester_notrun || '0' }}
+        STEPS_JSON: ${{ steps.collect-outputs.outputs.steps_json || '{}' }}
+        CASES_JSON: ${{ steps.collect-cases.outputs.cases_json || '{}' }}
+        CASES_ORDER_JSON: ${{ steps.collect-cases.outputs.cases_order_json || '[]' }}
+        RECORDING_URLS_JSON: ${{ steps.upload-to-blob.outputs.public_recording_urls_json || '[]' }}
+        NOTIFICATION_SOURCE: Intune Tests
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        BRANCH: ${{ github.ref_name }}
+        ACTOR: ${{ github.actor }}
+      run: |
+        function Get-StatusIcon {
+          param([string]$Status)
+
+          switch (($Status ?? '').Trim().ToLowerInvariant()) {
+            'success'   { return '✅' }
+            'failure'   { return '❌' }
+            'cancelled' { return '🚫' }
+            'skipped'   { return '⏭️' }
+            default     { return '⚠️' }
+          }
+        }
+
+        function Parse-OutcomeAndDuration {
+          param([string]$Value)
+
+          $text = ([string]$Value).Trim()
+          if ($text -match '^\s*(.+?)\s*\|\s*(.+?)\s*$') {
+            return @($matches[1].Trim(), $matches[2].Trim())
+          }
+
+          if ([string]::IsNullOrWhiteSpace($text)) {
+            return @('unknown', '-')
+          }
+
+          return @($text, '-')
+        }
+
+        function Escape-MarkdownCell {
+          param([string]$Value)
+          return ([string]$Value).Replace('|', '\|').Replace("`r", ' ').Replace("`n", ' ')
+        }
+
+        function Get-NormalizedTokens {
+          param([string]$Text)
+
+          $raw = ([string]$Text).ToLowerInvariant()
+          $raw = $raw -replace '\+', ' plus '
+          $parts = $raw -split '[^a-z0-9]+'
+          return @($parts | Where-Object { $_.Length -ge 3 } | Select-Object -Unique)
+        }
+
+        function Expand-TokenAliases {
+          param([string[]]$Tokens)
+
+          $expanded = New-Object System.Collections.Generic.HashSet[string]
+          foreach ($token in @($Tokens)) {
+            if ([string]::IsNullOrWhiteSpace($token)) {
+              continue
+            }
+
+            $null = $expanded.Add($token)
+            switch ($token) {
+              'notepad' { $null = $expanded.Add('notepadplusplus') }
+              'plusplus' { $null = $expanded.Add('notepadplusplus') }
+              'notepadplusplus' {
+                $null = $expanded.Add('notepad')
+                $null = $expanded.Add('plusplus')
+              }
+              'vlc' { $null = $expanded.Add('mediaplayer') }
+              'media' { $null = $expanded.Add('mediaplayer') }
+              'player' { $null = $expanded.Add('mediaplayer') }
+              'mediaplayer' {
+                $null = $expanded.Add('vlc')
+                $null = $expanded.Add('media')
+                $null = $expanded.Add('player')
+              }
+              'zip' { $null = $expanded.Add('sevenzipforceclose') }
+              'sevenzip' { $null = $expanded.Add('sevenzipforceclose') }
+              'forceclose' { $null = $expanded.Add('sevenzipforceclose') }
+              'sevenzipforceclose' {
+                $null = $expanded.Add('zip')
+                $null = $expanded.Add('sevenzip')
+                $null = $expanded.Add('forceclose')
+              }
+            }
+          }
+
+          return @($expanded)
+        }
+
+        function Parse-RecordingNameMetadata {
+          param([string]$RecordingFileName)
+
+          $stem = [System.IO.Path]::GetFileNameWithoutExtension([string]$RecordingFileName)
+          if ([string]::IsNullOrWhiteSpace($stem)) {
+            return $null
+          }
+
+          $appPart = $stem
+          $deploymentType = $null
+
+          if ($stem -match '^(?<app>.+?)_(?<action>Install|Uninstall|Repair)_\d{8}_\d{6}$') {
+            $appPart = [string]$matches['app']
+            $deploymentType = ([string]$matches['action']).ToLowerInvariant()
+          }
+
+          $baseTokens = Get-NormalizedTokens -Text $appPart
+          $tokens = Expand-TokenAliases -Tokens $baseTokens
+
+          return [pscustomobject]@{
+            Name           = [string]$RecordingFileName
+            AppNameRaw     = $appPart
+            AppTokens      = @($tokens)
+            DeploymentType = $deploymentType
+          }
+        }
+
+        function Parse-CaseRecordingHint {
+          param([string]$CaseName)
+
+          if ([string]::IsNullOrWhiteSpace($CaseName)) {
+            return $null
+          }
+
+          if ($CaseName -notmatch '\[INTUNE:(?<app>[A-Za-z0-9_+\- ]+?)_(?<action>Install|Uninstall|Repair)(?:_[^\]]+)?\]') {
+            return $null
+          }
+
+          $hintApp = [string]$matches['app']
+          $hintAction = ([string]$matches['action']).ToLowerInvariant()
+          $hintTokens = Expand-TokenAliases -Tokens (Get-NormalizedTokens -Text $hintApp)
+
+          return [pscustomobject]@{
+            AppTokens      = @($hintTokens)
+            DeploymentType = $hintAction
+          }
+        }
+
+        function Find-CaseRecordingLinks {
+          param(
+            [string]$CaseName,
+            [array]$RecordingEntries
+          )
+
+          if (-not $RecordingEntries -or $RecordingEntries.Count -eq 0) {
+            return @()
+          }
+
+          $caseHint = Parse-CaseRecordingHint -CaseName $CaseName
+          if (-not $caseHint) {
+            return @()
+          }
+
+          $matched = foreach ($entry in $RecordingEntries) {
+            $recordingMeta = Parse-RecordingNameMetadata -RecordingFileName ([string]$entry.Name)
+            if (-not $recordingMeta -or $recordingMeta.AppTokens.Count -eq 0) {
+              continue
+            }
+
+            $hintOverlap = @($caseHint.AppTokens | Where-Object { $recordingMeta.AppTokens -contains $_ })
+            if ($hintOverlap.Count -gt 0 -and $recordingMeta.DeploymentType -and $recordingMeta.DeploymentType -eq $caseHint.DeploymentType) {
+              [pscustomobject]@{
+                Name  = [string]$entry.Name
+                Url   = [string]$entry.Url
+              }
+            }
+          }
+
+          return @($matched | Sort-Object -Property Name -Descending | Select-Object -First 1)
+        }
+
+        function Get-IntFromEnv {
+          param([string]$Name)
+          $value = 0
+          [void][int]::TryParse([string](Get-Item -Path "Env:$Name" -ErrorAction SilentlyContinue).Value, [ref]$value)
+          return $value
+        }
+
+        $jobStatus = ([string]$env:JOB_STATUS).Trim().ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($jobStatus)) { $jobStatus = 'unknown' }
+        $jobStatusIcon = Get-StatusIcon -Status $jobStatus
+
+        $pesterDiscovered = Get-IntFromEnv -Name 'PESTER_DISCOVERED'
+        $pesterTotal = Get-IntFromEnv -Name 'PESTER_TOTAL'
+        $pesterPassed = Get-IntFromEnv -Name 'PESTER_PASSED'
+        $pesterFailed = Get-IntFromEnv -Name 'PESTER_FAILED'
+        $pesterSkipped = Get-IntFromEnv -Name 'PESTER_SKIPPED'
+        $pesterNotRun = Get-IntFromEnv -Name 'PESTER_NOTRUN'
+        if ($pesterNotRun -lt 0) {
+          $pesterNotRun = [math]::Max($pesterDiscovered - ($pesterPassed + $pesterFailed + $pesterSkipped), 0)
+        }
+
+        $steps = @{}
+        try {
+          $rawSteps = if ([string]::IsNullOrWhiteSpace($env:STEPS_JSON)) { '{}' } else { $env:STEPS_JSON }
+          $parsedSteps = $rawSteps | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+          if ($parsedSteps -is [hashtable]) {
+            $steps = $parsedSteps
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse STEPS_JSON: $($_.Exception.Message)"
+        }
+
+        $cases = @{}
+        try {
+          $rawCases = if ([string]::IsNullOrWhiteSpace($env:CASES_JSON)) { '{}' } else { $env:CASES_JSON }
+          $parsedCases = $rawCases | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+          if ($parsedCases -is [hashtable]) {
+            $cases = $parsedCases
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse CASES_JSON: $($_.Exception.Message)"
+        }
+
+        $caseOrder = @()
+        try {
+          $rawCaseOrder = if ([string]::IsNullOrWhiteSpace($env:CASES_ORDER_JSON)) { '[]' } else { $env:CASES_ORDER_JSON }
+          $parsedCaseOrder = $rawCaseOrder | ConvertFrom-Json -ErrorAction Stop
+          if ($parsedCaseOrder) {
+            $caseOrder = @($parsedCaseOrder | ForEach-Object { [string]$_ })
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse CASES_ORDER_JSON: $($_.Exception.Message)"
+        }
+
+        $recordingEntries = @()
+        try {
+          $rawRecordingUrls = if ([string]::IsNullOrWhiteSpace($env:RECORDING_URLS_JSON)) { '[]' } else { $env:RECORDING_URLS_JSON }
+          $parsedRecordingUrls = $rawRecordingUrls | ConvertFrom-Json -ErrorAction Stop
+          if ($parsedRecordingUrls) {
+            foreach ($item in @($parsedRecordingUrls)) {
+              $name = [string]$item.Name
+              $url = [string]$item.Url
+              if (-not [string]::IsNullOrWhiteSpace($name) -and -not [string]::IsNullOrWhiteSpace($url)) {
+                $recordingEntries += [pscustomobject]@{ Name = $name; Url = $url }
+              }
+            }
+          }
+        }
+        catch {
+          Write-Warning "Failed to parse RECORDING_URLS_JSON: $($_.Exception.Message)"
+        }
+
+        $orderedCaseNames = @()
+        if ($cases.Count -gt 0) {
+          $seenCaseNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+          foreach ($caseName in @($caseOrder)) {
+            if ([string]::IsNullOrWhiteSpace($caseName)) {
+              continue
+            }
+
+            if ($cases.ContainsKey($caseName) -and $seenCaseNames.Add($caseName)) {
+              $orderedCaseNames += $caseName
+            }
+          }
+
+          foreach ($caseName in $cases.Keys) {
+            $caseNameText = [string]$caseName
+            if ($seenCaseNames.Add($caseNameText)) {
+              $orderedCaseNames += $caseNameText
+            }
+          }
+        }
+
+        $consoleLines = New-Object System.Collections.Generic.List[string]
+        $consoleLines.Add("Source:           $env:NOTIFICATION_SOURCE") | Out-Null
+        $consoleLines.Add("Job status:       $jobStatusIcon $jobStatus") | Out-Null
+        $consoleLines.Add("Branch:           $env:BRANCH") | Out-Null
+        $consoleLines.Add("Triggered by:     $env:ACTOR") | Out-Null
+        $consoleLines.Add("Workflow run URL: $env:RUN_URL") | Out-Null
+        $consoleLines.Add('') | Out-Null
+        $consoleLines.Add('Pester Metrics') | Out-Null
+        $consoleLines.Add("  Discovered: $pesterDiscovered") | Out-Null
+        $consoleLines.Add("  Executed:   $pesterTotal") | Out-Null
+        $consoleLines.Add("  Passed:     ✅ $pesterPassed") | Out-Null
+        $consoleLines.Add("  Failed:     ❌ $pesterFailed") | Out-Null
+        $consoleLines.Add("  Skipped:    ⏭️ $pesterSkipped") | Out-Null
+        $consoleLines.Add("  Not Run:    ⏸️ $pesterNotRun") | Out-Null
+
+        if ($steps.Count -gt 0) {
+          $consoleLines.Add('') | Out-Null
+          $consoleLines.Add('Pipeline Steps (parsed)') | Out-Null
+          foreach ($stepName in ($steps.Keys | Sort-Object)) {
+            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$steps[$stepName])
+            $icon = Get-StatusIcon -Status $outcome
+            $consoleLines.Add(("  - {0}: {1} {2} | {3}" -f $stepName, $icon, $outcome, $duration)) | Out-Null
+          }
+        }
+
+        if ($cases.Count -gt 0) {
+          $maxCaseLogCount = 30
+          $visibleCaseNames = @($orderedCaseNames | Select-Object -First $maxCaseLogCount)
+          $consoleLines.Add('') | Out-Null
+          $consoleLines.Add(("Test Cases (parsed, showing {0}/{1})" -f $visibleCaseNames.Count, $orderedCaseNames.Count)) | Out-Null
+          foreach ($caseName in $visibleCaseNames) {
+            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
+            $icon = Get-StatusIcon -Status $outcome
+            $matchedRecordings = @(Find-CaseRecordingLinks -CaseName $caseName -RecordingEntries $recordingEntries)
+            $recordingText = if ($matchedRecordings.Count -gt 0) {
+              ($matchedRecordings | ForEach-Object { $_.Name }) -join ', '
+            }
+            elseif ($recordingEntries.Count -gt 0) {
+              'Folder only'
+            }
+            else {
+              '-'
+            }
+            $consoleLines.Add(("  - {0}: {1} {2} | {3} | Recording: {4}" -f $caseName, $icon, $outcome, $duration, $recordingText)) | Out-Null
+          }
+          if ($orderedCaseNames.Count -gt $maxCaseLogCount) {
+            $consoleLines.Add(("  ... and {0} more test case(s)." -f ($orderedCaseNames.Count - $maxCaseLogCount))) | Out-Null
+          }
+        }
+
+        if ($steps.Count -gt 0) {
+          $consoleLines.Add('') | Out-Null
+          $consoleLines.Add("Pipeline steps captured: $($steps.Count)") | Out-Null
+        }
+
+        if ($cases.Count -gt 0) {
+          $consoleLines.Add("Test cases captured:     $($cases.Count)") | Out-Null
+        }
+
+        $summaryLines = New-Object System.Collections.Generic.List[string]
+        $summaryLines.Add("## $jobStatusIcon $($env:NOTIFICATION_SOURCE) - Result Summary") | Out-Null
+        $summaryLines.Add('') | Out-Null
+        $summaryLines.Add("**Job Status:** $jobStatusIcon $jobStatus") | Out-Null
+        $summaryLines.Add("**Branch:** $([string]$env:BRANCH)") | Out-Null
+        $summaryLines.Add("**Triggered by:** $([string]$env:ACTOR)") | Out-Null
+        $summaryLines.Add("**Workflow Run:** [Open run]($([string]$env:RUN_URL))") | Out-Null
+        $summaryLines.Add('') | Out-Null
+        $summaryLines.Add('### Pester Metrics') | Out-Null
+        $summaryLines.Add('') | Out-Null
+        $summaryLines.Add('| Metric | Value |') | Out-Null
+        $summaryLines.Add('|---|---|') | Out-Null
+        $summaryLines.Add("| Discovered | $pesterDiscovered |") | Out-Null
+        $summaryLines.Add("| Executed | $pesterTotal |") | Out-Null
+        $summaryLines.Add("| Passed | ✅ $pesterPassed |") | Out-Null
+        $summaryLines.Add("| Failed | ❌ $pesterFailed |") | Out-Null
+        $summaryLines.Add("| Skipped | ⏭️ $pesterSkipped |") | Out-Null
+        $summaryLines.Add("| Not Run | ⏸️ $pesterNotRun |") | Out-Null
+
+        if ($cases.Count -gt 0) {
+          $maxCases = 25
+          $visibleCaseNames = @($orderedCaseNames | Select-Object -First $maxCases)
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('<details>') | Out-Null
+          $summaryLines.Add("<summary>Test Cases (Top $($visibleCaseNames.Count) / $($orderedCaseNames.Count))</summary>") | Out-Null
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('| Test Case | Status | Duration | Recording |') | Out-Null
+          $summaryLines.Add('|---|---|---|---|') | Out-Null
+
+          foreach ($caseName in $visibleCaseNames) {
+            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$cases[$caseName])
+            $icon = Get-StatusIcon -Status $outcome
+            $safeCase = Escape-MarkdownCell -Value ([string]$caseName)
+            $safeDuration = Escape-MarkdownCell -Value $duration
+            $matchedRecordings = @(Find-CaseRecordingLinks -CaseName $caseName -RecordingEntries $recordingEntries)
+            $recordingCell = if ($matchedRecordings.Count -gt 0) {
+              ($matchedRecordings | ForEach-Object {
+                $safeName = Escape-MarkdownCell -Value ([string]$_.Name)
+                "[$safeName]($($_.Url))"
+              }) -join '<br/>'
+            }
+            elseif ($recordingEntries.Count -gt 0) {
+              'Not record'
+            }
+            else {
+              '-'
+            }
+            $summaryLines.Add("| $safeCase | $icon $outcome | $safeDuration | $recordingCell |") | Out-Null
+          }
+
+          if ($orderedCaseNames.Count -gt $maxCases) {
+            $remaining = $orderedCaseNames.Count - $maxCases
+            $summaryLines.Add('') | Out-Null
+            $summaryLines.Add("_... and $remaining more test case(s). Full details are in Teams notification and test artifacts._") | Out-Null
+          }
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('</details>') | Out-Null
+        }
+
+        if ($steps.Count -gt 0) {
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('<details>') | Out-Null
+          $summaryLines.Add("<summary>Pipeline Steps ($($steps.Count))</summary>") | Out-Null
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('| Step | Status | Duration |') | Out-Null
+          $summaryLines.Add('|---|---|---|') | Out-Null
+
+          foreach ($stepName in ($steps.Keys | Sort-Object)) {
+            $outcome, $duration = Parse-OutcomeAndDuration -Value ([string]$steps[$stepName])
+            $icon = Get-StatusIcon -Status $outcome
+            $safeName = Escape-MarkdownCell -Value ([string]$stepName)
+            $safeDuration = Escape-MarkdownCell -Value $duration
+            $summaryLines.Add("| $safeName | $icon $outcome | $safeDuration |") | Out-Null
+          }
+
+          $summaryLines.Add('') | Out-Null
+          $summaryLines.Add('</details>') | Out-Null
+        }
+
+        $payload = [ordered]@{
+          JobStatus = $jobStatus
+          JobStatusIcon = $jobStatusIcon
+          PesterDiscovered = [string]$pesterDiscovered
+          PesterTotal = [string]$pesterTotal
+          PesterPassed = [string]$pesterPassed
+          PesterFailed = [string]$pesterFailed
+          PesterSkipped = [string]$pesterSkipped
+          PesterNotRun = [string]$pesterNotRun
+          NotificationSource = [string]$env:NOTIFICATION_SOURCE
+          RunUrl = [string]$env:RUN_URL
+          Branch = [string]$env:BRANCH
+          Actor = [string]$env:ACTOR
+        }
+
+        $resultSummaryPayload = $payload | ConvertTo-Json -Compress -Depth 5
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_payload=$resultSummaryPayload`n", [System.Text.Encoding]::UTF8)
+
+        $consoleText = ($consoleLines -join "`n")
+        $markdownText = ($summaryLines -join "`n") + "`n"
+        $delimConsole = [guid]::NewGuid().Guid
+        $delimMarkdown = [guid]::NewGuid().Guid
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_console<<$delimConsole`n$consoleText`n$delimConsole`n", [System.Text.Encoding]::UTF8)
+        [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "result_summary_markdown<<$delimMarkdown`n$markdownText`n$delimMarkdown`n", [System.Text.Encoding]::UTF8)
+        Write-Host 'Result summary payload, console text, and markdown prepared.'
+        Write-Host 'Result summary payload collected.'
+  result-summary:
+    name: Result Summary
+    needs: run-intune-tests
+    if: ${{ always() }}
+    runs-on: windows-latest
+    steps:
+    - name: ResultSummary
+      shell: pwsh
+      env:
+        RESULT_SUMMARY_MARKDOWN: ${{ needs.run-intune-tests.outputs.result_summary_markdown || '' }}
+      run: |
+        $markdownText = [string]$env:RESULT_SUMMARY_MARKDOWN
+        if (-not [string]::IsNullOrWhiteSpace($markdownText)) {
+          [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, $markdownText, [System.Text.Encoding]::UTF8)
+          Write-Host 'Published workflow result summary to GITHUB_STEP_SUMMARY.'
+        }
+        else {
+          Write-Host 'No workflow result summary text was provided.'
+        }
+
+  notify-teams:
+    name: Notify Teams (Intune)
+    needs: [run-intune-tests, result-summary]
+    if: ${{ always() }}
+    uses: ./.github/workflows/notify_teams.yml
+    with:
+      job_status:        ${{ needs.run-intune-tests.result || 'failed' }}
+      notification_source: 'Intune Tests'
+      steps_json:        ${{ needs.run-intune-tests.outputs.steps_json || '{}' }}
+      pester_discovered: ${{ needs.run-intune-tests.outputs.pester_discovered || '0' }}
+      pester_total:      ${{ needs.run-intune-tests.outputs.pester_total || '0' }}
+      pester_passed:     ${{ needs.run-intune-tests.outputs.pester_passed || '0' }}
+      pester_failed:     ${{ needs.run-intune-tests.outputs.pester_failed || '0' }}
+      pester_skipped:    ${{ needs.run-intune-tests.outputs.pester_skipped || '0' }}
+      pester_notrun:     ${{ needs.run-intune-tests.outputs.pester_notrun || '0' }}
+      cases_json:        ${{ needs.run-intune-tests.outputs.cases_json || '{}' }}
+    secrets: inherit
+
+  reset-session-vm:
+    name: Reset Azure Session VM
+    needs: [discover-agent, run-intune-tests, result-summary, notify-teams]
+    if: ${{ always() }}
+    runs-on: ${{ needs.discover-agent.outputs.runner-label }}
+    env:
+      INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID: ${{ secrets.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID || vars.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID }}
+      TERRAFORGE_CERTIFICATENAME: ${{ secrets.TERRAFORGE_CERTIFICATENAME || vars.TERRAFORGE_CERTIFICATENAME }}
+      TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
+      TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+      TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+      PESTER_TOTAL: ${{ needs.run-intune-tests.outputs.pester_total || '0' }}
+      PESTER_FAILED: ${{ needs.run-intune-tests.outputs.pester_failed || '0' }}
+      PESTER_SKIPPED: ${{ needs.run-intune-tests.outputs.pester_skipped || '0' }}
+      PESTER_NOTRUN: ${{ needs.run-intune-tests.outputs.pester_notrun || '0' }}
+      CASES_JSON: ${{ needs.run-intune-tests.outputs.cases_json || '{}' }}
+    steps:
+    - name: Check out reset scripts
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+
+    - name: Reset session VM (finalizer)
+      shell: pwsh
+      run: |
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found at path: $tfHelper"
+        }
+
+        . $tfHelper
+
+        $total = 0
+        $failed = 0
+        $skipped = 0
+        $notRun = 0
+        [void][int]::TryParse([string]$env:PESTER_TOTAL, [ref]$total)
+        [void][int]::TryParse([string]$env:PESTER_FAILED, [ref]$failed)
+        [void][int]::TryParse([string]$env:PESTER_SKIPPED, [ref]$skipped)
+        [void][int]::TryParse([string]$env:PESTER_NOTRUN, [ref]$notRun)
+
+        $allowedSkippedCases = @(
+          '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations'
+        )
+        $allowedSkippedCount = 0
+        try {
+          $cases = ([string]$env:CASES_JSON) | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+          foreach ($caseName in $allowedSkippedCases) {
+            if ($cases.ContainsKey($caseName)) {
+              $outcome = (([string]$cases[$caseName] -split '\|', 2)[0]).Trim().ToLowerInvariant()
+              if ($outcome -eq 'skipped') {
+                $allowedSkippedCount++
+                Write-Host "Allowed skipped case will count as passed for VM reset: $caseName"
+              }
+            }
+          }
+        }
+        catch {
+          Write-Warning "Unable to evaluate allowed skipped cases: $($PSItem.Exception.Message)"
+        }
+
+        $effectiveSkipped = [math]::Max($skipped - $allowedSkippedCount, 0)
+        $ignored = [math]::Max($effectiveSkipped + $notRun, 0)
+        Write-Host "Reset status counts: Total=$total, Failed=$failed, Skipped=$skipped, AllowedSkipped=$allowedSkippedCount, EffectiveSkipped=$effectiveSkipped, NotRun=$notRun"
+
+        $statusXmlPath = Join-Path $env:RUNNER_TEMP 'IntuneTests-ResetStatus.xml'
+        $statusXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?><test-results total=`"$total`" failures=`"$failed`" errors=`"0`" ignored=`"$ignored`"></test-results>"
+
+        [System.IO.File]::WriteAllText($statusXmlPath, $statusXml, [System.Text.Encoding]::UTF8)
+        Write-Host "Generated reset status XML at: $statusXmlPath"
+
+        Invoke-TFResetSessionVM -TestResultXmlPath $statusXmlPath
