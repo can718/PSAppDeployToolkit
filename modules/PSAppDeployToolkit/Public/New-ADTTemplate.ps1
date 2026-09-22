@@ -188,7 +188,7 @@ function New-ADTTemplate
                 }
                 if ($_ -match '\.(?:exe|ps1|pdb)$')
                 {
-                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName LauncherName -ProvidedValue $_ -ExceptionMessage "The specified launcher base name should not contains a file extension."))
+                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName LauncherName -ProvidedValue $_ -ExceptionMessage "The specified launcher base name should not contain a file extension."))
                 }
                 return $true
             })]
@@ -504,7 +504,7 @@ function New-ADTTemplate
                 [ValidateScript({
                         if ($null -eq $_.Start -or $null -eq $_.End -or $null -eq $_.Value)
                         {
-                            $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName 'Replacements' -ProvidedValue ($_ | Out-ADTString).Trim() -ExceptionMessage 'The specified replacement does not have the required Start/End/Value properties.'))
+                            $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName 'Replacements' -ProvidedValue $_ -ExceptionMessage 'The specified replacement does not have the required Start/End/Value properties.'))
                         }
                         return $true
                     })]
