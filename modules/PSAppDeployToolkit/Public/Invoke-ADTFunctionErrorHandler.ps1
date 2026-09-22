@@ -69,7 +69,7 @@ function Invoke-ADTFunctionErrorHandler
         https://psappdeploytoolkit.com/docs/reference/functions/Invoke-ADTFunctionErrorHandler
 
     .LINK
-        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Invoke-ADTFunctionErrorHandler.ps1
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/modules/PSAppDeployToolkit/Public/Invoke-ADTFunctionErrorHandler.ps1
     #>
 
     [CmdletBinding(DefaultParameterSetName = 'None')]
@@ -147,7 +147,7 @@ function Invoke-ADTFunctionErrorHandler
     {
         $raerProps = @{ ErrorRecord = $ErrorRecord }; if ($PSCmdlet.ParameterSetName.Equals('AdditionalResolveErrorProperties'))
         {
-            $raerProps.Add('Property', $($Script:CommandTable.'Resolve-ADTErrorRecord'.ScriptBlock.Ast.Body.ParamBlock.Parameters.Where({ $_.Name.VariablePath.UserPath.Equals('Property') }).DefaultValue.Pipeline.PipelineElements.Expression.Elements.Value; $AdditionalResolveErrorProperties))
+            $raerProps.Add('Property', $((Get-ADTCommand -Name Resolve-ADTErrorRecord).ScriptBlock.Ast.Body.ParamBlock.Parameters.Where({ $_.Name.VariablePath.UserPath.Equals('Property') }).DefaultValue.Pipeline.PipelineElements.Expression.Elements.Value; $AdditionalResolveErrorProperties))
         }
         elseif ($PSCmdlet.ParameterSetName.Equals('ResolveErrorProperties'))
         {

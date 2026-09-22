@@ -56,7 +56,7 @@ function Block-ADTAppExecution
         https://psappdeploytoolkit.com/docs/reference/functions/Block-ADTAppExecution
 
     .LINK
-        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Block-ADTAppExecution.ps1
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/modules/PSAppDeployToolkit/Public/Block-ADTAppExecution.ps1
     #>
 
     [CmdletBinding(SupportsShouldProcess = $true)]
@@ -124,18 +124,18 @@ function Block-ADTAppExecution
                 }
 
                 # Configure the appropriate permissions for the client/server process.
-                if (!$Script:ADT.ClientServerProcess)
+                if (!(Test-ADTClientServerActive))
                 {
                     if (!($runAsActiveUser = Get-ADTClientServerUser))
                     {
                         Write-ADTLogEntry -Message "There is no active logged on user. Verifying client/server access permissions using [BUILTIN\Users]."
                         $usersSid = [System.Security.Principal.SecurityIdentifier]::new([System.Security.Principal.WellKnownSidType]::BuiltinUsersSid, $null)
                         $usersNtAccount = $usersSid.Translate([System.Security.Principal.NTAccount]); $usersSessionId = [System.UInt32]::MaxValue
-                        Set-ADTClientServerProcessPermissions -User ([PSADT.Foundation.RunAsActiveUser]::new($usersNtAccount, $usersSid, $usersSessionId, $false))
+                        Set-ADTClientServerFilePermissions -User ([PSADT.Foundation.RunAsActiveUser]::new($usersNtAccount, $usersSid, $usersSessionId, $false))
                     }
                     else
                     {
-                        Set-ADTClientServerProcessPermissions -User $runAsActiveUser
+                        Set-ADTClientServerFilePermissions -User $runAsActiveUser
                     }
                 }
 
@@ -148,7 +148,7 @@ function Block-ADTAppExecution
                     AppBannerImage = $adtConfig.Assets.Banner
                     AppTaskbarIconImage = $adtConfig.Assets.TaskbarIcon
                     DialogTopMost = $true
-                    Language = $Script:ADT.Language
+                    Language = Get-ADTStringLanguage
                     MinimizeWindows = $false
                     DialogExpiryDuration = [System.TimeSpan]::FromSeconds($adtConfig.UI.DefaultTimeout)
                     MessageText = $adtStrings.BlockExecutionText.Message.($adtSession.DeploymentType.ToString())
@@ -203,7 +203,7 @@ function Block-ADTAppExecution
                     $nstParams = @{
                         Principal = New-ScheduledTaskPrincipal -Id Author -UserId S-1-5-18
                         Trigger = New-ScheduledTaskTrigger -AtStartup
-                        Action = New-ScheduledTaskAction -Execute (Get-ADTPowerShellProcessPath) -Argument "-NonInteractive -NoProfile -NoLogo -WindowStyle Hidden -EncodedCommand $(Out-ADTPowerShellEncodedCommand -Command "& {$($Script:CommandTable.'Unblock-ADTAppExecutionInternal'.ScriptBlock)} -TaskName '$($taskName.Replace("'", "''"))'")"
+                        Action = New-ScheduledTaskAction -Execute (Get-ADTPowerShellProcessPath) -Argument "-NonInteractive -NoProfile -NoLogo -WindowStyle Hidden -EncodedCommand $(Out-ADTPowerShellEncodedCommand -Command "& {$((Get-ADTCommand -Name Unblock-ADTAppExecutionInternal).ScriptBlock)} -TaskName '$($taskName.Replace("'", "''"))'")"
                         Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -ExecutionTimeLimit ([System.TimeSpan]::FromHours(1))
                     }
                     $null = New-ScheduledTask @nstParams | Register-ScheduledTask -TaskName $taskName
@@ -236,7 +236,7 @@ function Block-ADTAppExecution
                 }
 
                 # Add callback to remove all blocked app executions during the shutdown of the final session.
-                Add-ADTModuleCallback -Hookpoint OnFinish -Callback $Script:CommandTable.'Unblock-ADTAppExecution'
+                Add-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-ADTCommand -Name Unblock-ADTAppExecution)
             }
             catch
             {

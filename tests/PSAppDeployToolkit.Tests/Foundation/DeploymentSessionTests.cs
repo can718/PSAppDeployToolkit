@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -191,6 +192,156 @@ namespace PSAppDeployToolkit.Tests.Foundation
             Assert.False(session.TerminalServerMode);
             Assert.False(session.DisableLogging);
             Assert.False(session.RequireAdmin);
+        }
+
+        /// <summary>
+        /// Verifies that every setting the constructor reads from the configuration lands on the field that belongs to it.
+        /// </summary>
+        /// <remarks>
+        /// Ten near-identical reads, each naming a section and a key as string literals with nothing checking that
+        /// the pair belongs together, which is where a transposed key or a pasted-and-not-edited line hides. The two
+        /// exit codes live in a different section from everything else and are the pair most likely to be crossed, so
+        /// they are set to values nothing else uses. Read off the fields directly because none of the ten has a public
+        /// surface, and reaching them through the behaviour each one changes would test the behaviour instead.
+        /// </remarks>
+        [Fact]
+        public void DeploymentSession_MapsEveryConfiguredSettingToItsOwnField()
+        {
+            // Arrange: every value distinct from every other of its type, so a pair read the wrong way round cannot
+            // agree by accident.
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            ModuleConfiguration configuration = Configuration(temp);
+            configuration.LogStyle = "Legacy";
+            configuration.LogMaxHistory = 17;
+            configuration.LogMaxSize = 23;
+            configuration.DefaultExitCode = 60101;
+            configuration.DeferExitCode = 60102;
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(configuration, powerShell.NewEnvironmentTable());
+
+            // Act
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+
+            // Assert
+            Assert.Equal(temp.GetPath("Logs"), FieldOf<DirectoryInfo>(session, "ConfigLogPath").FullName);
+            Assert.Equal(LogStyle.Legacy, FieldOf<LogStyle>(session, "LogStyle"));
+            Assert.Equal(17, FieldOf<int>(session, "LogMaxHistory"));
+            Assert.Equal(60101, FieldOf<int>(session, "DefaultExitCode"));
+            Assert.Equal(60102, FieldOf<int>(session, "DeferExitCode"));
+            Assert.StartsWith($@"{configuration.RegPath}\", FieldOf<string>(session, "RegKeyDeferBase"), StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Verifies that each flag the constructor reads from the configuration lands on the field that belongs to it.
+        /// </summary>
+        /// <remarks>
+        /// Separated from the settings above because three booleans cannot all differ from one another in one run, so
+        /// two of them read the wrong way round would agree. One case per flag, each turning on exactly the one it is
+        /// for, which leaves no pair agreeing in every case.
+        /// </remarks>
+        /// <param name="compressLogs">Whether logs are compressed on closure.</param>
+        /// <param name="logWriteToHost">Whether log entries are echoed to the host.</param>
+        /// <param name="logHostOutputToStdStreams">Whether host output bypasses PowerShell.</param>
+        [Theory]
+        [InlineData(true, false, false)]
+        [InlineData(false, true, false)]
+        [InlineData(false, false, true)]
+        public void DeploymentSession_MapsEachConfiguredFlagToItsOwnField(bool compressLogs, bool logWriteToHost, bool logHostOutputToStdStreams)
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            ModuleConfiguration configuration = Configuration(temp);
+            configuration.CompressLogs = compressLogs;
+            configuration.LogWriteToHost = logWriteToHost;
+            configuration.LogHostOutputToStdStreams = logHostOutputToStdStreams;
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(configuration, powerShell.NewEnvironmentTable());
+
+            // Act
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+
+            // Assert
+            Assert.Equal(compressLogs, FieldOf<bool>(session, "CompressLogs"));
+            Assert.Equal(logWriteToHost, FieldOf<bool>(session, "LogWriteToHost"));
+            Assert.Equal(logHostOutputToStdStreams, FieldOf<bool>(session, "LogHostOutputToStdStreams"));
+        }
+
+        /// <summary>
+        /// Verifies that a configured language override is reported, and that nothing is said when there is none.
+        /// </summary>
+        /// <remarks>
+        /// The one configured setting read as a nullable rather than as a value, since a deployment that has not
+        /// overridden its language is the ordinary case rather than a misconfiguration.
+        /// </remarks>
+        [Fact]
+        public void DeploymentSession_ReportsAConfiguredLanguageOverrideOnlyWhenThereIsOne()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            ModuleConfiguration overridden = Configuration(temp);
+            overridden.LanguageOverride = "en-AU";
+
+            // Act
+            IReadOnlyList<LogEntry> withOverride = LogBufferOf(overridden);
+            IReadOnlyList<LogEntry> withoutOverride = LogBufferOf(Configuration(temp));
+
+            // Assert
+            Assert.Contains(withOverride, static entry => entry.Message.Contains("[en-AU]", StringComparison.Ordinal));
+            Assert.DoesNotContain(withoutOverride, static entry => entry.Message.Contains("override the detected primary UI language", StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// Verifies that a language override that is not a language is passed over rather than stopping the session.
+        /// </summary>
+        /// <remarks>
+        /// The one configured setting a deployment reads without insisting on it, so a value of the wrong type reads
+        /// as no override at all and the session opens. Worth pinning because it is the only one of the ten that
+        /// behaves this way: every other setting stops the session if the configuration got it wrong, and a reader
+        /// skimming the constructor would reasonably expect this one to as well.
+        /// </remarks>
+        [Fact]
+        public void DeploymentSession_PassesOverALanguageOverrideThatIsNotALanguage()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            Assert.IsType<IDictionary>(ModuleDatabase.GetConfig()["UI"], exactMatch: false)["LanguageOverride"] = 3081;
+
+            // Act
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+
+            // Assert
+            Assert.DoesNotContain(session.GetLogBuffer(), static entry => entry.Message.Contains("override the detected primary UI language", StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// Verifies that a configured setting the constructor cannot read is named rather than guessed at.
+        /// </summary>
+        /// <remarks>
+        /// A setting removed from <c language="text">config.psd1</c> used to fail on the cast that followed it, which
+        /// named the type it could not convert and not the setting that was wrong. What is being pinned is that the
+        /// name survives the constructor's own failure handling, which closes the half-built session and wraps
+        /// whatever went wrong before rethrowing it.
+        /// </remarks>
+        [Fact]
+        public void DeploymentSession_NamesTheConfiguredSettingItCouldNotRead()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            Assert.IsType<IDictionary>(ModuleDatabase.GetConfig()["Toolkit"], exactMatch: false).Remove("LogMaxHistory");
+
+            // Act
+            Exception failure = ThrowsLeavingTheProcessExitCodeAlone<ApplicationException>(static () => new DeploymentSession(MinimalParameters(), noExitOnClose: true, compatibilityMode: false));
+
+            // Assert
+            Assert.Contains(
+                "'LogMaxHistory'",
+                Assert.IsType<InvalidOperationException>(failure.InnerException).Message,
+                StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -769,6 +920,40 @@ namespace PSAppDeployToolkit.Tests.Foundation
 
             // Assert: the user's name is there exactly when the deployment could not write over another's file.
             Assert.Equal(!environment.IsAdmin, name.Contains($"_{environment.EnvUserName}.", StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Verifies that the log file name follows the LocalSystem account rather than administrative rights when the
+        /// configuration asks for its paths to be based on the system context.
+        /// </summary>
+        /// <remarks>
+        /// PathsBasedOnSystemContext sends every caller but LocalSystem to the user-accessible log path, so the name
+        /// has to carry the user for every caller but LocalSystem as well, or an administrator would claim the
+        /// unsuffixed file that LocalSystem writes. Asserted as an equivalence, so it holds under any account.
+        /// </remarks>
+        [Fact]
+        public void NewLogFileName_FollowsTheSystemContextWhenTheConfigurationAsksForIt()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            EnvironmentTable environment = powerShell.NewEnvironmentTable();
+            ModuleConfiguration configuration = Configuration(temp);
+            configuration.PathsBasedOnSystemContext = true;
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(configuration, environment);
+
+            // Act
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+            string name = session.NewLogFileName("Discriminator", fileNameOnly: true);
+
+            // Assert
+            Assert.Equal(
+                $"{session.InstallName}_Discriminator_{session.DeploymentType}{(environment.IsLocalSystemAccount ? null : $"_{environment.EnvUserName}")}.log",
+                name,
+                StringComparer.Ordinal);
+
+            // Assert: the user's name is there for every account but LocalSystem, which owns the unsuffixed file.
+            Assert.Equal(!environment.IsLocalSystemAccount, name.Contains($"_{environment.EnvUserName}.", StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -1513,6 +1698,222 @@ namespace PSAppDeployToolkit.Tests.Foundation
         }
 
         /// <summary>
+        /// Verifies that an exit code is only taken when it is at least as severe as where the session already sits.
+        /// </summary>
+        /// <remarks>
+        /// The starting codes stand for the four statuses in the order the enum declares them: 0 is complete, 3010
+        /// asks for a restart, 60012 is a deferral and 1 is a failure.
+        /// </remarks>
+        /// <param name="startExitCode">The exit code the session is already carrying.</param>
+        /// <param name="exitCode">The exit code being offered to it.</param>
+        /// <param name="expected">Whether the offered code should be taken.</param>
+        [Theory]
+        [InlineData(0, 4001, true)]
+        [InlineData(0, 4002, true)]
+        [InlineData(0, 4003, true)]
+        [InlineData(3010, 4001, false)]
+        [InlineData(3010, 4002, true)]
+        [InlineData(3010, 4003, true)]
+        [InlineData(60012, 4001, false)]
+        [InlineData(60012, 4002, false)]
+        [InlineData(60012, 4003, true)]
+        [InlineData(1, 4001, false)]
+        [InlineData(1, 4002, false)]
+        [InlineData(1, 4003, true)]
+        public void TrySetExitCode_TakesACodeOnlyWhenItIsAtLeastAsSevereAsTheSession(int startExitCode, int exitCode, bool expected)
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+            session.SetExitCode(startExitCode);
+
+            // Act
+            bool taken = session.TrySetExitCode(exitCode, callerSuccessExitCodes, callerRebootExitCodes);
+
+            // Assert
+            Assert.Equal(expected, taken);
+            Assert.Equal(expected ? exitCode : startExitCode, session.GetExitCode());
+        }
+
+        /// <summary>
+        /// Verifies that the sets a caller hands over decide what a code means, not the ones the session holds.
+        /// </summary>
+        [Fact]
+        public void TrySetExitCode_JudgesACodeByTheGivenSetsRatherThanTheSessionsOwn()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+
+            // Assert: a code the session calls a success is taken where the caller calls it a restart.
+            session.SetExitCode(3010);
+            Assert.True(session.TrySetExitCode(0, [], [0]));
+            Assert.Equal(0, session.GetExitCode());
+
+            // Assert: a code the session calls a restart is refused where the caller calls it a success.
+            session.SetExitCode(3010);
+            Assert.False(session.TrySetExitCode(1641, [1641], []));
+            Assert.Equal(3010, session.GetExitCode());
+        }
+
+        /// <summary>
+        /// Verifies that the session's own sets judge the code when the caller hands none over.
+        /// </summary>
+        [Fact]
+        public void TrySetExitCode_FallsBackToTheSessionsOwnSetsWhenGivenNone()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            Dictionary<string, object> parameters = MinimalParameters();
+            parameters.Add("AppSuccessExitCodes", customAppSuccessExitCodes);
+            parameters.Add("AppRebootExitCodes", customAppRebootExitCodes);
+            DeploymentSession session = new(parameters, noExitOnClose: true, compatibilityMode: false);
+            session.SetExitCode(customAppRebootExitCodes[0]);
+
+            // Assert: a code the session's own set calls a restart is taken.
+            Assert.True(session.TrySetExitCode(customAppRebootExitCodes[1]));
+            Assert.Equal(customAppRebootExitCodes[1], session.GetExitCode());
+
+            // Assert: a code the session's own set calls a success is refused, since a restart is still outstanding.
+            Assert.False(session.TrySetExitCode(customAppSuccessExitCodes[0]));
+            Assert.Equal(customAppRebootExitCodes[1], session.GetExitCode());
+        }
+
+        /// <summary>
+        /// Verifies that the session's own sets put the deferral codes above a restart and below a failure.
+        /// </summary>
+        /// <remarks>
+        /// The offered codes are the two the session defers with: 60001 is the default and 60012 the deferral.
+        /// </remarks>
+        /// <param name="startExitCode">The exit code the session is already carrying.</param>
+        /// <param name="exitCode">The deferral code being offered to it.</param>
+        /// <param name="expected">Whether the offered code should be taken.</param>
+        [Theory]
+        [InlineData(0, 60001, true)]
+        [InlineData(0, 60012, true)]
+        [InlineData(3010, 60001, true)]
+        [InlineData(3010, 60012, true)]
+        [InlineData(60012, 60001, true)]
+        [InlineData(1, 60001, false)]
+        [InlineData(1, 60012, false)]
+        public void TrySetExitCode_JudgesTheDeferralCodesAsARetryWhenGivenNoSets(int startExitCode, int exitCode, bool expected)
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+            session.SetExitCode(startExitCode);
+
+            // Act
+            bool taken = session.TrySetExitCode(exitCode);
+
+            // Assert
+            Assert.Equal(expected, taken);
+            Assert.Equal(expected ? exitCode : startExitCode, session.GetExitCode());
+        }
+
+        /// <summary>
+        /// Verifies that the deferral codes mean nothing to the sets a caller hands over.
+        /// </summary>
+        /// <remarks>
+        /// A caller's sets name what one process returned, where a deferral is the session's own affair, so the same
+        /// code is a failure to the one overload and a retry to the other.
+        /// </remarks>
+        [Fact]
+        public void TrySetExitCode_LeavesTheDeferralCodesOutOfTheGivenSets()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+            session.SetExitCode(1);
+
+            // Assert: the session's own sets make a retry of it, which a failure outranks.
+            Assert.False(session.TrySetExitCode(60012));
+            Assert.Equal(1, session.GetExitCode());
+
+            // Assert: sets the caller handed over make a failure of it, which nothing outranks.
+            Assert.True(session.TrySetExitCode(60012, callerSuccessExitCodes, callerRebootExitCodes));
+            Assert.Equal(60012, session.GetExitCode());
+        }
+
+        /// <summary>
+        /// Verifies that a code in both of the given sets is judged as asking for a restart.
+        /// </summary>
+        /// <remarks>
+        /// Nothing stops a caller putting the same code in both sets, so the order they are consulted in decides it.
+        /// </remarks>
+        [Fact]
+        public void TrySetExitCode_JudgesACodeInBothSetsAsAskingForARestart()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+            session.SetExitCode(3010);
+
+            // Act
+            bool taken = session.TrySetExitCode(5000, [5000], [5000]);
+
+            // Assert: a success would have been refused by a session already needing a restart.
+            Assert.True(taken);
+            Assert.Equal(5000, session.GetExitCode());
+        }
+
+        /// <summary>
+        /// Verifies that a code in neither set is a failure, which empty sets make of every code.
+        /// </summary>
+        [Fact]
+        public void TrySetExitCode_TakesAnyCodeWhenGivenEmptySets()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+            session.SetExitCode(1);
+
+            // Act
+            bool taken = session.TrySetExitCode(0, [], []);
+
+            // Assert
+            Assert.True(taken);
+            Assert.Equal(0, session.GetExitCode());
+        }
+
+        /// <summary>
+        /// Verifies that a set left null is refused by name rather than read as an empty one.
+        /// </summary>
+        [Fact]
+        public void TrySetExitCode_RefusesASetItWasNotGiven()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+            session.SetExitCode(3010);
+
+            // Act
+            ArgumentNullException success = Assert.Throws<ArgumentNullException>(() => session.TrySetExitCode(0, null!, []));
+            ArgumentNullException reboot = Assert.Throws<ArgumentNullException>(() => session.TrySetExitCode(0, [], null!));
+
+            // Assert
+            Assert.Equal("successExitCodes", success.ParamName);
+            Assert.Equal("rebootExitCodes", reboot.ParamName);
+            Assert.Equal(3010, session.GetExitCode());
+        }
+
+        /// <summary>
         /// Verifies that closing a session hands back its exit code and marks it closed.
         /// </summary>
         [Fact]
@@ -1796,6 +2197,38 @@ namespace PSAppDeployToolkit.Tests.Foundation
         }
 
         /// <summary>
+        /// Reads one of the settings a session took from the configuration.
+        /// </summary>
+        /// <remarks>
+        /// None of them has a public surface, so the field is the only place the mapping can be asserted as a
+        /// mapping rather than as its distant consequences.
+        /// </remarks>
+        /// <typeparam name="T">The type the field holds.</typeparam>
+        /// <param name="session">The session to read.</param>
+        /// <param name="name">The field to read.</param>
+        /// <returns>What the field holds.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the field is gone or holds nothing, since a
+        /// silently skipped assertion would be worse than a failure.</exception>
+        [SuppressMessage("Major Code Smell", "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields", Justification = "The settings a session takes from the configuration are private with no public surface, so reading the field is the only way to assert the mapping.")]
+        private static T FieldOf<T>(DeploymentSession session, string name)
+        {
+            FieldInfo field = typeof(DeploymentSession).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)
+                ?? throw new InvalidOperationException($"DeploymentSession no longer carries a {name} field for the tests to read.");
+            return (T)(field.GetValue(session) ?? throw new InvalidOperationException($"DeploymentSession's {name} field held nothing."));
+        }
+
+        /// <summary>
+        /// Opens a session against the given configuration and hands back what it wrote to its log.
+        /// </summary>
+        /// <param name="configuration">The configuration to open the session against.</param>
+        /// <returns>The session's log entries.</returns>
+        private IReadOnlyList<LogEntry> LogBufferOf(ModuleConfiguration configuration)
+        {
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(configuration, powerShell.NewEnvironmentTable());
+            return new DeploymentSession(MinimalParameters(), noExitOnClose: true, compatibilityMode: false).GetLogBuffer();
+        }
+
+        /// <summary>
         /// Every switch the constructor reads, against the flag it is meant to set.
         /// </summary>
         /// <remarks>
@@ -1837,5 +2270,16 @@ namespace PSAppDeployToolkit.Tests.Foundation
         /// The exit codes a custom application uses to signal that it needs a reboot, for the tests that need them.
         /// </summary>
         private static readonly int[] customAppRebootExitCodes = [7001, 7002];
+
+        /// <summary>
+        /// The exit codes a caller offering one treats as success, which the session holds in neither of its sets.
+        /// </summary>
+        private static readonly int[] callerSuccessExitCodes = [4001];
+
+        /// <summary>
+        /// The exit codes a caller offering one treats as needing a reboot, which the session holds in neither of its
+        /// sets.
+        /// </summary>
+        private static readonly int[] callerRebootExitCodes = [4002];
     }
 }
