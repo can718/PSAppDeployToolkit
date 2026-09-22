@@ -10,7 +10,7 @@ param()
 #   2. Context BeforeAll  - create Azure AD test group, resolve IntuneWinAppUtil
 #   3. Per-test BeforeEach - TerraForge reporting, Intune Graph auth, skip guard
 #   4. It block           - prepare -> wrap -> upload -> assign -> sync -> verify
-#   5. Per-test AfterEach - TerraForge result update
+#   5. Per-test AfterEach - client registry cleanup
 # ---------------------------------------------------------------------------
 
 function Get-IntuneTestApps
@@ -72,6 +72,7 @@ BeforeAll {
     # Initialize TerraForge reporting (no-op when env vars are not set).
     # ---------------------------------------------------------------------------
     $script:TFState = Initialize-TerraForgeReporting -ScriptRoot $script:_tfScriptRoot
+    Reset-TFTestCaseResultTracking -TFState $script:TFState
 
     # ---------------------------------------------------------------------------
     # Store credentials from environment for Intune Graph authentication.
@@ -155,6 +156,9 @@ Describe 'Intune Tests' {
             -TFState   $script:TFState `
             -TestClass $script:CurrentTestClass `
             -TestMethod $script:CurrentTestMethod
+        Register-TFTestCaseResult `
+            -TestMethod $script:CurrentTestMethod `
+            -ResultId   $script:TFCurrentResultId
 
         # Ensure Intune Graph session is active.
         if ($(Test-AccessToken) -eq $false)
@@ -171,11 +175,6 @@ Describe 'Intune Tests' {
     }
 
     AfterEach {
-        Invoke-TFUpdateTestCase `
-            -TFState    $script:TFState `
-            -ResultId   $script:TFCurrentResultId `
-            -TestResult $____Pester.CurrentTest
-
         # Clean up any test artifacts from the client registry to ensure a clean slate for the next test.
         Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\IntuneManagementExtension" -Recurse -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 10 # brief pause to ensure registry changes are committed before the next test starts
@@ -462,7 +461,9 @@ Describe 'Intune Tests' {
             $failures | Should -BeNullOrEmpty -Because "'$Name' failed: $($failures -join '; ')"
         }
 
-        It '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
+        if (@($parallelAppsForEach | Where-Object { -not $_.SkipUninstall }).Count -gt 0)
+        {
+            It '[INTUNE:UninstallSync] Reassign uninstall intent, MDM sync, then parallel poll for all uninstallations' {
             # Build uninstall candidate list from installed apps, honoring per-app filters.
             $appsForUninstall = @()
             foreach ($appName in $script:ParallelInstallResults.Keys)
@@ -516,6 +517,7 @@ Describe 'Intune Tests' {
             {
                 $script:ParallelUninstallResults[$app] = $true
             }
+        }
         }
 
         It '[INTUNE:<Name>_Uninstall][<TemplateVersion>] <Name> should be uninstalled' -ForEach ($parallelAppsForEach | Where-Object { -not $_.SkipUninstall }) -AllowNullOrEmptyForEach {

@@ -16,7 +16,10 @@ jobs:
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
-      TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_INTUNE_CONFIG_NAME || 'Intune (Github)-Agent' }}
+      TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID: ${{ secrets.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID || vars.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID }}
+      TERRAFORGE_CERTIFICATENAME: ${{ secrets.TERRAFORGE_CERTIFICATENAME || vars.TERRAFORGE_CERTIFICATENAME }}
+      TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
+      TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_INTUNE_CONFIG_NAME || 'Intune (Github)-Agent' || 'Intune (Github) Lab-Agent' }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
     steps:
@@ -59,6 +62,9 @@ jobs:
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID: ${{ secrets.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID || vars.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID }}
+      TERRAFORGE_CERTIFICATENAME: ${{ secrets.TERRAFORGE_CERTIFICATENAME || vars.TERRAFORGE_CERTIFICATENAME }}
+      TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_INTUNE_CONFIG_NAME || 'Intune (Github)-Agent' }}
@@ -363,35 +369,6 @@ jobs:
           8.0.x
           10.0.400
 
-    - name: Ensure .NET Framework 4.7.2 targeting pack
-      id: setup-netfx472
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $referenceAssembly = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.2\mscorlib.dll'
-
-        if (-not (Test-Path -LiteralPath $referenceAssembly -PathType Leaf)) {
-          Write-Host '.NET Framework 4.7.2 targeting pack is missing; installing the Developer Pack.'
-          $installer = Join-Path $env:RUNNER_TEMP 'NDP472-DevPack-ENU.exe'
-          try {
-            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/?linkid=874338' -OutFile $installer -UseBasicParsing
-            $process = Start-Process -FilePath $installer -ArgumentList '/q', '/norestart' -Wait -PassThru
-            if ($process.ExitCode -notin 0, 3010) {
-              throw ".NET Framework 4.7.2 Developer Pack installation failed with exit code $($process.ExitCode)."
-            }
-          }
-          finally {
-            Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
-          }
-        }
-
-        if (-not (Test-Path -LiteralPath $referenceAssembly -PathType Leaf)) {
-          throw ".NET Framework 4.7.2 reference assemblies were not found after installation: $referenceAssembly"
-        }
-
-        Write-Host ".NET Framework 4.7.2 reference assemblies: $referenceAssembly"
-        dotnet --info
-
     - name: Cache NuGet packages
       id: cache-nuget
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # https://github.com/actions/cache/releases/tag/v5.0.5
@@ -505,20 +482,83 @@ jobs:
 
     - name: Build (minimal - Clean, DotNet, Build)
       id: build
-      timeout-minutes: 75
+      timeout-minutes: 90
       shell: pwsh
       env:
         TestTfmsInParallel: 'false'
-        # TEMPORARY: Remove these MTP diagnostics after this test run completes and the logs are downloaded.
-        TESTINGPLATFORM_DIAGNOSTIC: '1'
-        TESTINGPLATFORM_DIAGNOSTIC_VERBOSITY: 'Trace'
-        TESTINGPLATFORM_DIAGNOSTIC_SYNCHRONOUS_WRITE: '1'
-        TESTINGPLATFORM_DIAGNOSTIC_OUTPUT_DIRECTORY: '${{ github.workspace }}\TestResults\MTPDiagnostics'
       run: |
         $buildStart = Get-Date
+
+        $buildScript = Join-Path $env:RUNNER_TEMP 'Invoke-PSADTBuild.ps1'
+        @'
+        $ErrorActionPreference = 'Stop'
+        Set-Location -LiteralPath $env:GITHUB_WORKSPACE
         & (Import-Module -Name .\modules\PSAppDeployToolkit.Build -PassThru) {
-            Invoke-ADTModuleBuild -Steps 'Clean', 'DotNet', 'Build'
+          Invoke-ADTModuleBuild -Steps 'Clean', 'DotNet', 'Build'
         }
+        '@ | Set-Content -LiteralPath $buildScript -Encoding utf8
+
+        $attemptTimeout = [TimeSpan]::FromMinutes(40)
+        $buildSucceeded = $false
+
+        foreach ($attempt in 1..2) {
+          Write-Host "Starting build attempt $attempt of 2 (timeout: $($attemptTimeout.TotalMinutes) minutes)."
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "psadt-build-$attempt.stdout.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "psadt-build-$attempt.stderr.log"
+          Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+
+          $process = Start-Process -FilePath (Get-Command pwsh).Source `
+            -ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', "`"$buildScript`"") `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath `
+            -PassThru
+
+          $deadline = [DateTime]::UtcNow.Add($attemptTimeout)
+          while (-not $process.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+            Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue
+            if (-not $process.HasExited) {
+              Write-Host "Build attempt $attempt is still running (PID $($process.Id))."
+              $process.Refresh()
+            }
+          }
+
+          if (-not $process.HasExited) {
+            Write-Warning "Build attempt $attempt exceeded $($attemptTimeout.TotalMinutes) minutes. Terminating its process tree."
+            & taskkill.exe /PID $process.Id /T /F 2>&1 | Write-Host
+            Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue
+            $exitCode = 124
+          }
+          else {
+            $exitCode = $process.ExitCode
+          }
+
+          if (Test-Path -LiteralPath $stdoutPath) {
+            Get-Content -LiteralPath $stdoutPath
+          }
+          if (Test-Path -LiteralPath $stderrPath) {
+            Get-Content -LiteralPath $stderrPath | Write-Error -ErrorAction Continue
+          }
+
+          if ($exitCode -eq 0) {
+            $buildSucceeded = $true
+            break
+          }
+
+          Write-Warning "Build attempt $attempt failed with exit code $exitCode."
+          if ($attempt -lt 2) {
+            Remove-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'TestResults') -Recurse -Force -ErrorAction SilentlyContinue
+          }
+        }
+
+        Remove-Item -LiteralPath $buildScript -Force -ErrorAction SilentlyContinue
+        $buildLogDirectory = Join-Path $env:GITHUB_WORKSPACE 'src\Artifacts\TestOutput\BuildLogs'
+        New-Item -ItemType Directory -Path $buildLogDirectory -Force | Out-Null
+        Copy-Item -Path (Join-Path $env:RUNNER_TEMP 'psadt-build-*.log') -Destination $buildLogDirectory -Force -ErrorAction SilentlyContinue
+
+        if (-not $buildSucceeded) {
+          throw 'PSADT build failed after 2 attempts.'
+        }
+
         $buildEnd = Get-Date
         $duration = $buildEnd - $buildStart
         $mins = [int]($duration.TotalSeconds / 60)
@@ -622,6 +662,8 @@ jobs:
         $mainConfig.TestResult.OutputFormat = 'NUnitXml'
         $mainConfig.Run.PassThru = $true
         $mainResult = Invoke-Pester -Configuration $mainConfig
+        . '.\src\Tests\Intune\IntuneTestHelpers.ps1'
+        Complete-TFTestCaseResults -PesterResult $mainResult
 
         Remove-Item -Path Env:\PSADT_INTUNE_EXCLUDE_APP_NAMES -ErrorAction SilentlyContinue
         $env:PSADT_INTUNE_INCLUDE_APP_NAMES = 'Notepad++'
@@ -641,6 +683,7 @@ jobs:
         $notepadConfig.TestResult.OutputFormat = 'NUnitXml'
         $notepadConfig.Run.PassThru = $true
         $notepadResult = Invoke-Pester -Configuration $notepadConfig
+        Complete-TFTestCaseResults -PesterResult $notepadResult
 
         Remove-Item -Path Env:\PSADT_INTUNE_INCLUDE_APP_NAMES -ErrorAction SilentlyContinue
         Remove-Item -Path Env:\PSADT_INTUNE_CLEANUP_GROUP -ErrorAction SilentlyContinue
@@ -810,13 +853,19 @@ jobs:
       if: always()
       shell: pwsh
       run: |
+        $inputPattern = '.\src\Artifacts\TestOutput\IntuneTests*.xml'
+        if (@(Get-ChildItem -Path $inputPattern -File -ErrorAction SilentlyContinue).Count -eq 0) {
+          Write-Warning 'No Intune test XML exists because the test step did not run or did not produce results; skipping report generation.'
+          exit 0
+        }
+
         $generatorScript = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\Generate-CaseTrxReport.ps1'
         if (-not (Test-Path -LiteralPath $generatorScript)) {
           throw "Case TRX generator script not found: $generatorScript"
         }
 
         & $generatorScript `
-          -InputPattern '.\src\Artifacts\TestOutput\IntuneTests*.xml' `
+          -InputPattern $inputPattern `
           -TrxOutputPath '.\src\Artifacts\TestOutput\IntuneTests-Cases.trx' `
           -HtmlOutputPath '.\src\Artifacts\TestOutput\IntuneTests-Cases.html'
 
@@ -852,13 +901,12 @@ jobs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # https://github.com/actions/upload-artifact/releases/tag/v7.0.1
       with:
         name: intune-test-results
-        # TEMPORARY: Remove the MTP diagnostics path with the diagnostic environment variables above.
         path: |
           .\src\Artifacts\TestOutput\IntuneTests*.xml
           .\src\Artifacts\TestOutput\IntuneTests-Cases.trx
           .\src\Artifacts\TestOutput\IntuneTests-Cases.html
           .\src\Artifacts\TestOutput\PSADTLogs\*.log
-          .\TestResults\MTPDiagnostics\**\*.diag
+          .\src\Artifacts\TestOutput\BuildLogs\*.log
         if-no-files-found: error
         overwrite: true
 
@@ -1588,20 +1636,25 @@ jobs:
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID: ${{ secrets.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID || vars.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID }}
+      TERRAFORGE_CERTIFICATENAME: ${{ secrets.TERRAFORGE_CERTIFICATENAME || vars.TERRAFORGE_CERTIFICATENAME }}
+      TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
-      TERRAFORGE_HELPER_PATH: 'C:\PSADTScripts\TerraForge-AgentHelper.ps1'
       PESTER_TOTAL: ${{ needs.run-intune-tests.outputs.pester_total || '0' }}
       PESTER_FAILED: ${{ needs.run-intune-tests.outputs.pester_failed || '0' }}
       PESTER_SKIPPED: ${{ needs.run-intune-tests.outputs.pester_skipped || '0' }}
       PESTER_NOTRUN: ${{ needs.run-intune-tests.outputs.pester_notrun || '0' }}
       CASES_JSON: ${{ needs.run-intune-tests.outputs.cases_json || '{}' }}
     steps:
+    - name: Check out reset scripts
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+
     - name: Reset session VM (finalizer)
       shell: pwsh
       run: |
-        $tfHelper = $env:TERRAFORGE_HELPER_PATH
-        if ([string]::IsNullOrWhiteSpace($tfHelper) -or -not (Test-Path -LiteralPath $tfHelper)) {
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
           throw "TerraForge helper script not found at path: $tfHelper"
         }
 

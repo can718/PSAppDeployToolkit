@@ -893,3 +893,7 @@ dotnet_diagnostic.rcs9011.severity = error
 [*.xaml.cs]
 dotnet_diagnostic.CA1822.severity = none
 dotnet_diagnostic.S2333.severity = none
+
+# The null-forgiving operator is intentional in this guard test.
+[tests/PSADT.Interop.Tests/Extensions/ArgumentExceptionExtensionsTests.cs]
+dotnet_diagnostic.IDE0370.severity = none

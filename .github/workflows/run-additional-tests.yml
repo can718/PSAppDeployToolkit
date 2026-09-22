@@ -16,6 +16,9 @@ jobs:
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID: ${{ secrets.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID || vars.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID }}
+      TERRAFORGE_CERTIFICATENAME: ${{ secrets.TERRAFORGE_CERTIFICATENAME || vars.TERRAFORGE_CERTIFICATENAME }}
+      TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
       TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_MCM_CONFIG_NAME || 'Lite (CM2509 Github)-Agent' }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
@@ -58,6 +61,9 @@ jobs:
     env:
       INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
       INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID: ${{ secrets.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID || vars.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID }}
+      TERRAFORGE_CERTIFICATENAME: ${{ secrets.TERRAFORGE_CERTIFICATENAME || vars.TERRAFORGE_CERTIFICATENAME }}
+      TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
       TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
       TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
       TERRAFORGE_CONFIG_NAME: ${{ vars.TERRAFORGE_MCM_CONFIG_NAME || 'Lite (CM2509 Github)-Agent' }}
@@ -354,35 +360,6 @@ jobs:
           8.0.x
           10.0.400
 
-    - name: Ensure .NET Framework 4.7.2 targeting pack
-      id: setup-netfx472
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $referenceAssembly = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.2\mscorlib.dll'
-
-        if (-not (Test-Path -LiteralPath $referenceAssembly -PathType Leaf)) {
-          Write-Host '.NET Framework 4.7.2 targeting pack is missing; installing the Developer Pack.'
-          $installer = Join-Path $env:RUNNER_TEMP 'NDP472-DevPack-ENU.exe'
-          try {
-            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/?linkid=874338' -OutFile $installer -UseBasicParsing
-            $process = Start-Process -FilePath $installer -ArgumentList '/q', '/norestart' -Wait -PassThru
-            if ($process.ExitCode -notin 0, 3010) {
-              throw ".NET Framework 4.7.2 Developer Pack installation failed with exit code $($process.ExitCode)."
-            }
-          }
-          finally {
-            Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
-          }
-        }
-
-        if (-not (Test-Path -LiteralPath $referenceAssembly -PathType Leaf)) {
-          throw ".NET Framework 4.7.2 reference assemblies were not found after installation: $referenceAssembly"
-        }
-
-        Write-Host ".NET Framework 4.7.2 reference assemblies: $referenceAssembly"
-        dotnet --info
-
     - name: Cache NuGet packages
       id: cache-nuget
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # https://github.com/actions/cache/releases/tag/v5.0.5
@@ -604,7 +581,7 @@ jobs:
 
     - name: Build (minimal - Clean, DotNet, Build)
       id: build
-      timeout-minutes: 75
+      timeout-minutes: 90
       shell: pwsh
       env:
         TestTfmsInParallel: 'false'
@@ -615,9 +592,77 @@ jobs:
         TESTINGPLATFORM_DIAGNOSTIC_OUTPUT_DIRECTORY: '${{ github.workspace }}\TestResults\MTPDiagnostics'
       run: |
         $buildStart = Get-Date
+
+        $buildScript = Join-Path $env:RUNNER_TEMP 'Invoke-PSADTBuild.ps1'
+        @'
+        $ErrorActionPreference = 'Stop'
+        Set-Location -LiteralPath $env:GITHUB_WORKSPACE
         & (Import-Module -Name .\modules\PSAppDeployToolkit.Build -PassThru) {
-            Invoke-ADTModuleBuild -Steps 'Clean', 'DotNet', 'Build'
+          Invoke-ADTModuleBuild -Steps 'Clean', 'DotNet', 'Build'
         }
+        '@ | Set-Content -LiteralPath $buildScript -Encoding utf8
+
+        $attemptTimeout = [TimeSpan]::FromMinutes(40)
+        $buildSucceeded = $false
+
+        foreach ($attempt in 1..2) {
+          Write-Host "Starting build attempt $attempt of 2 (timeout: $($attemptTimeout.TotalMinutes) minutes)."
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "psadt-build-$attempt.stdout.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "psadt-build-$attempt.stderr.log"
+          Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+
+          $process = Start-Process -FilePath (Get-Command pwsh).Source `
+            -ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', "`"$buildScript`"") `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath `
+            -PassThru
+
+          $deadline = [DateTime]::UtcNow.Add($attemptTimeout)
+          while (-not $process.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+            Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue
+            if (-not $process.HasExited) {
+              Write-Host "Build attempt $attempt is still running (PID $($process.Id))."
+              $process.Refresh()
+            }
+          }
+
+          if (-not $process.HasExited) {
+            Write-Warning "Build attempt $attempt exceeded $($attemptTimeout.TotalMinutes) minutes. Terminating its process tree."
+            & taskkill.exe /PID $process.Id /T /F 2>&1 | Write-Host
+            Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue
+            $exitCode = 124
+          }
+          else {
+            $exitCode = $process.ExitCode
+          }
+
+          if (Test-Path -LiteralPath $stdoutPath) {
+            Get-Content -LiteralPath $stdoutPath
+          }
+          if (Test-Path -LiteralPath $stderrPath) {
+            Get-Content -LiteralPath $stderrPath | Write-Error -ErrorAction Continue
+          }
+
+          if ($exitCode -eq 0) {
+            $buildSucceeded = $true
+            break
+          }
+
+          Write-Warning "Build attempt $attempt failed with exit code $exitCode."
+          if ($attempt -lt 2) {
+            Remove-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'TestResults') -Recurse -Force -ErrorAction SilentlyContinue
+          }
+        }
+
+        Remove-Item -LiteralPath $buildScript -Force -ErrorAction SilentlyContinue
+        $buildLogDirectory = Join-Path $env:GITHUB_WORKSPACE 'src\Artifacts\TestOutput\BuildLogs'
+        New-Item -ItemType Directory -Path $buildLogDirectory -Force | Out-Null
+        Copy-Item -Path (Join-Path $env:RUNNER_TEMP 'psadt-build-*.log') -Destination $buildLogDirectory -Force -ErrorAction SilentlyContinue
+
+        if (-not $buildSucceeded) {
+          throw 'PSADT build failed after 2 attempts.'
+        }
+
         $buildEnd = Get-Date
         $duration = $buildEnd - $buildStart
         $mins = [int]($duration.TotalSeconds / 60)
@@ -991,6 +1036,7 @@ jobs:
           .\src\Artifacts\TestOutput\AdditionalTests-Cases.trx
           .\src\Artifacts\TestOutput\AdditionalTests-Cases.html
           .\src\Artifacts\TestOutput\PSADTLogs\*.log
+          .\src\Artifacts\TestOutput\BuildLogs\*.log
           .\TestResults\MTPDiagnostics\**\*.diag
         if-no-files-found: error
         overwrite: true
@@ -1705,29 +1751,6 @@ jobs:
         Write-Host 'Result summary payload, console text, and markdown prepared.'
         Write-Host 'Result summary payload collected.'
 
-    - name: Reset Azure Session VM
-      id: reset-sessionvm
-      if: always()
-      shell: pwsh
-      run: |
-        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
-        if (-not (Test-Path -LiteralPath $tfHelper)) {
-          throw "TerraForge helper script not found: $tfHelper"
-        }
-        . $tfHelper
-          $testResultXmlPaths = @(Get-ChildItem -Path '.\src\Artifacts\TestOutput\AdditionalTests*.xml' -File -ErrorAction SilentlyContinue |
-            Sort-Object Name |
-            ForEach-Object { $_.FullName })
-
-          if ($testResultXmlPaths.Count -eq 0) {
-            Write-Warning 'No AdditionalTests XML files were found for VM reset status evaluation.'
-          }
-          else {
-            Write-Host "Passing $($testResultXmlPaths.Count) result XML file(s) to Invoke-TFResetSessionVM."
-          }
-
-          Invoke-TFResetSessionVM -TestResultXmlPath $testResultXmlPaths
-
   result-summary:
     name: Result Summary
     needs: run-additional-tests
@@ -1751,7 +1774,7 @@ jobs:
   notify-teams:
     name: Notify Teams (SCCM Tests)
     needs: [run-additional-tests, result-summary]
-    if: ${{ always() }} # notify even if tests fail so the team can investigate
+    if: ${{ always() }}
     uses: ./.github/workflows/notify_teams.yml
     with:
       job_status:     ${{ needs.run-additional-tests.result || 'failed' }}
@@ -1765,3 +1788,54 @@ jobs:
       pester_notrun:  ${{ needs.run-additional-tests.outputs.pester_notrun  || '0' }}
       cases_json:     ${{ needs.run-additional-tests.outputs.cases_json     || '{}' }}
     secrets: inherit
+
+  reset-session-vm:
+    name: Reset Azure Session VM
+    needs: [discover-agent, run-additional-tests, result-summary, notify-teams]
+    if: ${{ always() }}
+    runs-on: ${{ needs.discover-agent.outputs.runner-label }}
+    env:
+      INFRA_MI_CLIENT_ID: ${{ secrets.INFRA_MI_CLIENT_ID }}
+      INFRA_KEYVAULT: ${{ vars.INFRA_KEYVAULT }}
+      TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID: ${{ secrets.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID || vars.TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID }}
+      TERRAFORGE_CERTIFICATENAME: ${{ secrets.TERRAFORGE_CERTIFICATENAME || vars.TERRAFORGE_CERTIFICATENAME }}
+      TERRAFORGE_TENANTID: ${{ secrets.TERRAFORGE_TENANTID || vars.TERRAFORGE_TENANTID }}
+      TERRAFORGE_API_BASE_URL: ${{ vars.TERRAFORGE_API_BASE_URL }}
+      TERRAFORGE_API_KEY_SECRET: ${{ vars.TERRAFORGE_API_KEY_SECRET }}
+      PESTER_TOTAL: ${{ needs.run-additional-tests.outputs.pester_total || '0' }}
+      PESTER_FAILED: ${{ needs.run-additional-tests.outputs.pester_failed || '0' }}
+      PESTER_SKIPPED: ${{ needs.run-additional-tests.outputs.pester_skipped || '0' }}
+      PESTER_NOTRUN: ${{ needs.run-additional-tests.outputs.pester_notrun || '0' }}
+    steps:
+    - name: Check out reset scripts
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # https://github.com/actions/checkout/releases/tag/v6.0.2
+
+    - name: Reset session VM (finalizer)
+      shell: pwsh
+      run: |
+        $tfHelper = Join-Path $env:GITHUB_WORKSPACE '.github\scripts\TerraForge-AgentHelper.ps1'
+        if (-not (Test-Path -LiteralPath $tfHelper)) {
+          throw "TerraForge helper script not found at path: $tfHelper"
+        }
+
+        . $tfHelper
+
+        $total = 0
+        $failed = 0
+        $skipped = 0
+        $notRun = 0
+        [void][int]::TryParse([string]$env:PESTER_TOTAL, [ref]$total)
+        [void][int]::TryParse([string]$env:PESTER_FAILED, [ref]$failed)
+        [void][int]::TryParse([string]$env:PESTER_SKIPPED, [ref]$skipped)
+        [void][int]::TryParse([string]$env:PESTER_NOTRUN, [ref]$notRun)
+
+        $ignored = [math]::Max($skipped + $notRun, 0)
+        Write-Host "Reset status counts: Total=$total, Failed=$failed, Skipped=$skipped, NotRun=$notRun"
+
+        $statusXmlPath = Join-Path $env:RUNNER_TEMP 'AdditionalTests-ResetStatus.xml'
+        $statusXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?><test-results total=`"$total`" failures=`"$failed`" errors=`"0`" ignored=`"$ignored`"></test-results>"
+
+        [System.IO.File]::WriteAllText($statusXmlPath, $statusXml, [System.Text.Encoding]::UTF8)
+        Write-Host "Generated reset status XML at: $statusXmlPath"
+
+        Invoke-TFResetSessionVM -TestResultXmlPath $statusXmlPath

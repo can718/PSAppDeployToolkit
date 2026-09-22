@@ -20,27 +20,122 @@ function Get-TerraForgeAuthToken
     )
 
     # Step 1 - Login
-    Connect-AzureWithManagedIdentity -ClientId $ManagedIdentityClientId
+    Connect-TerraforgeAzureAccount | Out-Null
 
     # Step 2 - Get API access key from Key Vault
     $apiKey = Get-TerraForgeApiKey -SecretName $ApiKeySecretName -VaultName $KeyVaultName
 
     # Step 3 - Exchange for bearer token
-    return Get-TerraForgeAccessToken -ApiBaseUrl $ApiBaseUrl -ApiAccessKey $apiKey
+    return [string](Get-TerraForgeAccessToken -ApiBaseUrl $ApiBaseUrl -ApiAccessKey $apiKey)
 }
 
-function Connect-AzureWithManagedIdentity
-{
+function Connect-TerraforgeAzureAccount {
     [CmdletBinding()]
-    param
-    (
-        [Parameter(Mandatory)]
-        [string]$ClientId
+    param (
+        [Parameter(Mandatory = $false)]
+        [string]$ManagedIdentityClientId = $env:INFRA_MI_CLIENT_ID,
+
+        [Parameter(Mandatory = $false)]
+        [string]$CertificateName = $env:TERRAFORGE_CERTIFICATENAME,
+
+        [Parameter(Mandatory = $false)]
+        [string]$TenantId = $env:TERRAFORGE_TENANTID,
+
+        [Parameter(Mandatory = $false)]
+        [string]$CertificateApplicationClientId = $env:TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID,
+
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyString()]
+        [string]$SessionType,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$RegistryPath = "HKLM:\SOFTWARE\Microsoft\TerraforgeAgent"
     )
 
-    Write-Host "Connecting to Azure with Managed Identity (ClientId: $ClientId)..."
-    Connect-AzAccount -Identity -AccountId $ClientId | Out-Null
-    Write-Host "Connected to Azure successfully."
+    if ([string]::IsNullOrWhiteSpace($SessionType) -and (Test-Path -Path $RegistryPath)) {
+        $registryValue = Get-ItemProperty -Path $RegistryPath -Name "SessionType" -ErrorAction SilentlyContinue
+        if ($registryValue) {
+            $SessionType = $registryValue.SessionType
+        }
+    }
+
+    Write-Host "SessionType: $SessionType"
+
+    $connectWithManagedIdentity = {
+        if ([string]::IsNullOrWhiteSpace($ManagedIdentityClientId)) {
+            throw "Managed identity client id is required. Set INFRA_MI_CLIENT_ID in the workflow env or pass -ManagedIdentityClientId explicitly."
+        }
+
+        Write-Host "Connecting to Azure using Managed Identity..."
+        Connect-AzAccount -Identity -AccountId $ManagedIdentityClientId -ErrorAction Stop
+    }
+
+    $connectWithCertificate = {
+        $missingCertificateSettings = @(
+            if ([string]::IsNullOrWhiteSpace($CertificateName)) { 'TERRAFORGE_CERTIFICATENAME' }
+            if ([string]::IsNullOrWhiteSpace($TenantId)) { 'TERRAFORGE_TENANTID' }
+            if ([string]::IsNullOrWhiteSpace($CertificateApplicationClientId)) { 'TERRAFORGE_CERTIFICATEAPPLICATIONCLIENTID' }
+        )
+        if ($missingCertificateSettings.Count -gt 0) {
+            throw "Certificate-based login requires setting(s): $($missingCertificateSettings -join ', ')."
+        }
+
+        Write-Host "Connecting to Azure using Certificate..."
+        $certificate = Get-ChildItem -Path "Cert:\LocalMachine\My" -ErrorAction Stop |
+        Where-Object {
+            $_.Subject -eq "CN=$CertificateName" -and
+            $_.NotAfter -gt (Get-Date) -and
+            $_.HasPrivateKey
+        } |
+        Select-Object -First 1
+
+        if (-not $certificate) {
+            throw "Certificate with name '$CertificateName' was not found in LocalMachine\My store"
+        }
+
+        Connect-AzAccount `
+            -Tenant $TenantId `
+            -ApplicationId $CertificateApplicationClientId `
+            -CertificateThumbprint $certificate.Thumbprint `
+            -ErrorAction Stop
+    }
+
+    if ([string]::IsNullOrWhiteSpace($SessionType)) {
+        $errorMessages = @()
+
+        try {
+            return (& $connectWithManagedIdentity)
+        }
+        catch {
+            $errorMessages += $_.Exception.Message
+            Write-Host "Managed Identity connection failed: $($_.Exception.Message)"
+        }
+
+        Start-Sleep -Seconds 2
+
+        try {
+            return (& $connectWithCertificate)
+        }
+        catch {
+            $errorMessages += $_.Exception.Message
+            Write-Host "Certificate connection failed: $($_.Exception.Message)"
+        }
+
+        throw "Failed to connect to Azure using both Managed Identity and Certificate. Errors: $($errorMessages -join '; ')"
+    }
+
+    switch ($SessionType.ToLowerInvariant()) {
+        "hyperv" {
+            return (& $connectWithCertificate)
+        }
+        "azure" {
+            return (& $connectWithManagedIdentity)
+        }
+        default {
+            throw "Unsupported SessionType '$SessionType'. Expected 'HyperV' or 'Azure'."
+        }
+    }
 }
 
 function Get-TerraForgeApiKey
@@ -109,7 +204,10 @@ function Invoke-TerraForgeLaunchAgent
         [string]$ConfigName,
 
         [Parameter()]
-        [int]$PoolType = 3
+        [int]$PoolType = 3,
+
+        [Parameter()]
+        [string]$AdoBuildId = $env:GITHUB_RUN_ID
     )
 
     $authHeaders = @{
@@ -120,6 +218,7 @@ function Invoke-TerraForgeLaunchAgent
     $launchPayload = @{
         configName = $ConfigName
         poolType   = $PoolType
+        adoBuildId = $AdoBuildId
     } | ConvertTo-Json
 
     Write-Host "Sending discover agent request for config: $ConfigName ..."
@@ -799,6 +898,126 @@ function Get-MachineID
     }
 }
 
+function Test-TFPendingReboot
+{
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param ()
+
+    function Get-OptionalRegistryValue
+    {
+        param
+        (
+            [Parameter(Mandatory)]
+            [string]$LiteralPath,
+
+            [Parameter(Mandatory)]
+            [string]$Name
+        )
+
+        $registryKey = Get-ItemProperty -LiteralPath $LiteralPath -ErrorAction SilentlyContinue
+        if ($registryKey)
+        {
+            $property = $registryKey.PSObject.Properties[$Name]
+            if ($property)
+            {
+                return $property.Value
+            }
+        }
+
+        return $null
+    }
+
+    $rebootReasons = [System.Collections.Generic.List[string]]::new()
+    $rebootRegistryPaths = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending'
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
+    )
+
+    foreach ($registryPath in $rebootRegistryPaths)
+    {
+        if (Test-Path -LiteralPath $registryPath)
+        {
+            $rebootReasons.Add($registryPath)
+        }
+    }
+
+    $pendingFileRenames = Get-OptionalRegistryValue `
+        -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' `
+        -Name 'PendingFileRenameOperations'
+    if ($null -ne $pendingFileRenames -and @($pendingFileRenames).Count -gt 0)
+    {
+        $rebootReasons.Add('PendingFileRenameOperations')
+    }
+
+    $updateExeVolatile = Get-OptionalRegistryValue `
+        -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Updates' `
+        -Name 'UpdateExeVolatile'
+    if ($null -ne $updateExeVolatile -and [int]$updateExeVolatile -ne 0)
+    {
+        $rebootReasons.Add("UpdateExeVolatile=$updateExeVolatile")
+    }
+
+    $activeComputerName = Get-OptionalRegistryValue `
+        -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' `
+        -Name 'ComputerName'
+    $pendingComputerName = Get-OptionalRegistryValue `
+        -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' `
+        -Name 'ComputerName'
+    if ($activeComputerName -and $pendingComputerName -and $activeComputerName -ne $pendingComputerName)
+    {
+        $rebootReasons.Add("ComputerRename=$activeComputerName->$pendingComputerName")
+    }
+
+    if ($rebootReasons.Count -eq 0)
+    {
+        Write-Host 'No pending reboot indicators were detected.'
+        return $false
+    }
+
+    Write-Warning "Pending reboot detected: $($rebootReasons -join ', ')"
+    return $true
+}
+
+function Invoke-TFRestartIfPendingReboot
+{
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([bool])]
+    param
+    (
+        [Parameter()]
+        [ValidateRange(30, 300)]
+        [int]$DelaySeconds = 60
+    )
+
+    if (-not (Test-TFPendingReboot))
+    {
+        return $false
+    }
+
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
+    {
+        throw "A pending reboot was detected, but [$($identity.Name)] is not an administrator and cannot restart the computer."
+    }
+
+    if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Schedule restart in $DelaySeconds seconds"))
+    {
+        $shutdownExecutable = Join-Path $env:SystemRoot 'System32\shutdown.exe'
+        & $shutdownExecutable /r /t $DelaySeconds /f /d 'p:4:1' /c 'TerraForge pending reboot preflight'
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw "Failed to schedule restart. shutdown.exe exited with code $LASTEXITCODE."
+        }
+
+        Write-Host "Restart scheduled in $DelaySeconds seconds so the current GitHub Actions job can finish cleanly."
+    }
+
+    return $true
+}
+
 #endregion
 
 function Get-AzureKeyVaultSecretValue
@@ -839,7 +1058,7 @@ function Get-AzureKeyVaultSecretValue
             }
 
             Write-Host "Connecting to Azure (ManagedIdentity: $ManagedIdentityClientId)..."
-            Connect-AzAccount -Identity -AccountId $ManagedIdentityClientId | Out-Null
+            Connect-TerraforgeAzureAccount | Out-Null
             Write-Host "Retrieving secret '$SecretName' from Key Vault '$VaultName'..."
 
             if ($AsPlainText)
@@ -956,7 +1175,7 @@ function Get-AzureKeyVaultCertificate
 
     # Authenticate using User-Assigned Managed Identity
     Write-Host "Connecting to Azure with Managed Identity (ClientId: $ManagedIdentityClientId)..."
-    Connect-AzAccount -Identity -AccountId $ManagedIdentityClientId | Out-Null
+    Connect-TerraforgeAzureAccount | Out-Null
     Write-Host "Connected to Azure successfully."
 
     # Retrieve certificate secret (base64-encoded PFX) from Key Vault
@@ -1754,7 +1973,10 @@ function Invoke-TFLaunchAgent
         [string]$KeyVaultName = $env:INFRA_KEYVAULT,
 
         [Parameter()]
-        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET
+        [string]$ApiKeySecretName = $env:TERRAFORGE_API_KEY_SECRET,
+
+        [Parameter()]
+        [string]$AdoBuildId = $env:GITHUB_RUN_ID
     )
 
     $attempt = 0
@@ -1775,7 +1997,8 @@ function Invoke-TFLaunchAgent
             $agent = Invoke-TerraForgeLaunchAgent `
                 -ApiBaseUrl  $ApiBaseUrl `
                 -AccessToken $accessToken `
-                -ConfigName  $ConfigName
+                -ConfigName  $ConfigName `
+                -AdoBuildId  $AdoBuildId
 
             # Success -- expose the runner label and return
             Set-GitHubOutput -Name 'runner-label' -Value $agent.AgentName
@@ -1817,6 +2040,9 @@ function Invoke-TFStartTestRun
         [string]$QueuedBy = $env:GITHUB_ACTOR,
 
         [Parameter()]
+        [string]$BranchName = $env:GITHUB_REF_NAME,
+
+        [Parameter()]
         [string]$Title,
 
         [Parameter()]
@@ -1850,7 +2076,8 @@ function Invoke-TFStartTestRun
         -AdoBuildId  $AdoBuildId `
         -Product     $Product `
         -Title       $runTitle `
-        -QueuedBy    $QueuedBy
+        -QueuedBy    $QueuedBy `
+        -BranchName  $BranchName
 
     Set-GitHubOutput -Name 'test-run-id' -Value $testRun.Id
     return $testRun.Id
