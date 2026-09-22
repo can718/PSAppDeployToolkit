@@ -27,6 +27,7 @@ using PSADT.Utilities;
 using PSADT.WindowManagement;
 using PSADT.WindowsRuntime.UI.Notifications;
 using PSADT.WindowsRuntime.UI.Shell;
+using PSAppDeployToolkit.Foundation;
 using PSAppDeployToolkit.Logging;
 using Windows.UI.Notifications;
 using Windows.Win32.Foundation;
@@ -261,25 +262,49 @@ namespace PSADT.ClientServer
                     }
 
                     // Set up writer helper methods.
-                    ValueTask WriteSuccessAsync<T>(T result)
+                    async ValueTask WriteSuccessAsync<T>(T result)
                     {
                         byte[] data = SerializeToBytes(result);
                         byte[] response = new byte[data.Length + 1];
                         response[0] = (byte)ResponseMarker.Success;
                         data.CopyTo(response.AsSpan(1));
-                        return ioEncryption.WriteEncryptedAsync(outputPipeClient, response);
+                        CryptographicUtilities.SecureZeroMemory(data);
+                        try
+                        {
+                            await ioEncryption.WriteEncryptedAsync(outputPipeClient, response).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            CryptographicUtilities.SecureZeroMemory(response);
+                        }
                     }
-                    ValueTask WriteErrorAsync(Exception ex)
+                    async ValueTask WriteErrorAsync(Exception ex)
                     {
                         byte[] data = SerializeToBytes(ex);
                         byte[] response = new byte[data.Length + 1];
                         response[0] = (byte)ResponseMarker.Error;
                         data.CopyTo(response.AsSpan(1));
-                        return ioEncryption.WriteEncryptedAsync(outputPipeClient, response);
+                        CryptographicUtilities.SecureZeroMemory(data);
+                        try
+                        {
+                            await ioEncryption.WriteEncryptedAsync(outputPipeClient, response).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            CryptographicUtilities.SecureZeroMemory(response);
+                        }
                     }
-                    ValueTask WriteLogAsync(string message, LogSeverity severity, string source)
+                    async ValueTask WriteLogAsync(string message, LogSeverity severity, string source)
                     {
-                        return logEncryption.WriteEncryptedAsync(logPipeClient, SerializeToBytes(new LogMessagePayload(message, severity, source)));
+                        byte[] data = SerializeToBytes(new LogMessagePayload(message, severity, source));
+                        try
+                        {
+                            await logEncryption.WriteEncryptedAsync(logPipeClient, data).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            CryptographicUtilities.SecureZeroMemory(data);
+                        }
                     }
 
                     // Continuously loop until the end. When we receive null, the server has closed the pipe, so we should break and exit.
@@ -407,6 +432,7 @@ namespace PSADT.ClientServer
                                                 await WriteSuccessAsync(payload.Options switch
                                                 {
                                                     CloseAppsDialogOptions closeAppsDialogOptions => await DialogManager.ShowCloseAppsDialogAsync(payload.DialogStyle, closeAppsDialogOptions, closeAppsDialogStateManager.State ?? throw new ClientException("A required CloseAppsDialogState was not provided for the CloseAppsDialog.", ClientExitCode.NoCloseAppsDialogState)).ConfigureAwait(false),
+                                                    InputDialogOptions secureInputDialogOptions when payload.DialogType is DialogType.SecureInputDialog => await DialogManager.ShowSecureInputDialogAsync(payload.DialogStyle, secureInputDialogOptions).ConfigureAwait(false),
                                                     InputDialogOptions inputDialogOptions => await DialogManager.ShowInputDialogAsync(payload.DialogStyle, inputDialogOptions).ConfigureAwait(false),
                                                     ListSelectionDialogOptions listSelectionDialogOptions => await DialogManager.ShowListSelectionDialogAsync(payload.DialogStyle, listSelectionDialogOptions).ConfigureAwait(false),
                                                     CustomDialogOptions customDialogOptions => await DialogManager.ShowCustomDialogAsync(payload.DialogStyle, customDialogOptions).ConfigureAwait(false),
@@ -578,6 +604,11 @@ namespace PSADT.ClientServer
                                     continue;
                                     throw;
                                 }
+                                finally
+                                {
+                                    // Every command has read what it needs by now, so the decrypted request can go.
+                                    CryptographicUtilities.SecureZeroMemory(requestBytes);
+                                }
                             }
                             catch (EndOfStreamException)
                             {
@@ -654,7 +685,7 @@ namespace PSADT.ClientServer
                         DialogType.InputDialog => await DialogManager.ShowInputDialogAsync(dialogStyle, DeserializeString<InputDialogOptions>(GetOptionsFromArguments(arguments))).ConfigureAwait(false),
                         DialogType.ListSelectionDialog => await DialogManager.ShowListSelectionDialogAsync(dialogStyle, DeserializeString<ListSelectionDialogOptions>(GetOptionsFromArguments(arguments))).ConfigureAwait(false),
                         DialogType.RestartDialog => await DialogManager.ShowRestartDialogAsync(dialogStyle, DeserializeString<RestartDialogOptions>(GetOptionsFromArguments(arguments))).ConfigureAwait(false),
-                        DialogType.CloseAppsDialog or DialogType.ProgressDialog or _ => throw new ClientException($"The specified DialogType of [{dialogType}] is not supported by the current implementation.", ClientExitCode.UnsupportedDialog),
+                        DialogType.SecureInputDialog or DialogType.CloseAppsDialog or DialogType.ProgressDialog or _ => throw new ClientException($"The specified DialogType of [{dialogType}] is not supported by the current implementation.", ClientExitCode.UnsupportedDialog),
                     }));
                     return (int)ClientExitCode.Success;
                 }
@@ -744,17 +775,11 @@ namespace PSADT.ClientServer
                 }
                 if (arg.Equals("/SilentRestart", StringComparison.Ordinal) || arg.Equals("/sr", StringComparison.Ordinal))
                 {
-                    if (ArgvToDictionary(argv) is not ReadOnlyDictionary<string, string> arguments || !arguments.TryGetValue("Delay", out string? delayArg) || !TimeSpan.TryParse(delayArg, CultureInfo.InvariantCulture, out TimeSpan delayValue))
-                    {
-                        throw new ClientException("A required Delay was not specified on the command line.", ClientExitCode.InvalidArguments);
-                    }
-                    if (arguments.TryGetValue("ShutdownReasonText", out string? shutdownReason) && string.IsNullOrWhiteSpace(shutdownReason))
-                    {
-                        throw new ClientException("An invalid ShutdownReasonText was specified on the command line. If provided, it cannot be null or whitespace.", ClientExitCode.InvalidArguments);
-                    }
+                    // Parse the command line arguments and perform the requested operation.
+                    RestartOnExitOptions restartOnExitData = DeserializeString<RestartOnExitOptions>(GetOptionsFromArguments(ArgvToDictionary(argv)));
                     ClientServerUtilities.SetOperationSuccessFlag();
-                    await Task.Delay(delayValue, default).ConfigureAwait(false);
-                    await DeviceUtilities.RestartComputerAsync(shutdownReason).ConfigureAwait(false);
+                    await Task.Delay(restartOnExitData.Countdown, default).ConfigureAwait(false);
+                    await DeviceUtilities.RestartComputerAsync(restartOnExitData.Reason, restartOnExitData.NoForceCloseApps).ConfigureAwait(false);
                     Console.WriteLine(SerializeToString(result: true));
                     return (int)ClientExitCode.Success;
                 }

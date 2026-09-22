@@ -803,60 +803,99 @@ jobs:
           throw 'Validation tests failed. WinSCP/VLC test suites were not started.'
         }
 
-        # 2) Run the SCCM package suites in parallel after validation succeeds.
+        # 2) Run the SCCM package suites in separate processes after validation succeeds.
+        # PSADT module state is process-wide, so runspace-only parallelism cannot safely import
+        # separate template copies at the same time.
         $tagsToRun = @('WinSCP', 'VLC', '7-Zip', 'DigiExam', 'Everything')
         $indexedTags = for ($i = 0; $i -lt $tagsToRun.Count; $i++) {
           [pscustomobject]@{ Index = $i; Tag = $tagsToRun[$i] }
         }
 
-        $parallelResults = $indexedTags | ForEach-Object -Parallel {
-          $tag = $_.Tag
-          $delaySeconds = [int]($_.Index * 120)
+        $runTaggedSuite = {
+          param(
+            [string]$Tag,
+            [int]$DelaySeconds,
+            [string]$WorkspaceRoot
+          )
 
-          if ($delaySeconds -gt 0) {
-            Write-Host "Delaying start for tag '$tag' by $delaySeconds seconds..."
-            Start-Sleep -Seconds $delaySeconds
+          if ($DelaySeconds -gt 0) {
+            Write-Host "Delaying start for tag '$Tag' by $DelaySeconds seconds..."
+            Start-Sleep -Seconds $DelaySeconds
           }
 
-          Set-Location $using:workspaceRoot
-          $testOutputDir = Join-Path $using:workspaceRoot 'src\Artifacts\TestOutput'
-          $additionalTestsPath = Join-Path $using:workspaceRoot 'src\Tests\Additional'
-          $outputPath = Join-Path $testOutputDir ("AdditionalTests-{0}.xml" -f $tag)
+          Write-Host "Running tag '$Tag' in isolated PowerShell process [$PID]."
+          Set-Location $WorkspaceRoot
+          $testOutputDir = Join-Path $WorkspaceRoot 'src\Artifacts\TestOutput'
+          $additionalTestsPath = Join-Path $WorkspaceRoot 'src\Tests\Additional'
+          $outputPath = Join-Path $testOutputDir ("AdditionalTests-{0}.xml" -f $Tag)
 
           $env:PSADT_TEMPLATE_VALIDATION_PASSED = 'true'
 
-          $config = New-PesterConfiguration
-          $config.Run.Path = $additionalTestsPath
-          $config.Filter.Tag = @($tag)
-          $config.Output.Verbosity = 'Detailed'
-          $config.TestResult.Enabled = $true
-          $config.TestResult.OutputPath = $outputPath
-          $config.TestResult.OutputFormat = 'NUnitXml'
-          $config.Run.PassThru = $true
+          try {
+            $config = New-PesterConfiguration
+            $config.Run.Path = $additionalTestsPath
+            $config.Filter.Tag = @($Tag)
+            $config.Output.Verbosity = 'Detailed'
+            $config.TestResult.Enabled = $true
+            $config.TestResult.OutputPath = $outputPath
+            $config.TestResult.OutputFormat = 'NUnitXml'
+            $config.Run.PassThru = $true
 
-          $result = Invoke-Pester -Configuration $config
+            $result = Invoke-Pester -Configuration $config
 
-          [pscustomobject]@{
-            Tag = $tag
-            TotalCount = $result.TotalCount
-            PassedCount = $result.PassedCount
-            FailedCount = $result.FailedCount
-            SkippedCount = $result.SkippedCount
+            [pscustomobject]@{
+              Tag = $Tag
+              TotalCount = $result.TotalCount
+              PassedCount = $result.PassedCount
+              FailedCount = $result.FailedCount
+              SkippedCount = $result.SkippedCount
+            }
           }
-        } -ThrottleLimit 8
+          catch {
+            Write-Error -ErrorRecord $_
+            [pscustomobject]@{
+              Tag = $Tag
+              TotalCount = 1
+              PassedCount = 0
+              FailedCount = 1
+              SkippedCount = 0
+            }
+          }
+        }
 
-        # 3) Run Notepad++ last by itself because the expected install failure should be validated in isolation.
-        $notepadConfig = New-PesterConfiguration
-        $notepadConfig.Run.Path = $additionalTestsPath
-        $notepadConfig.Filter.Tag = @('Notepad++')
-        $notepadConfig.Output.Verbosity = 'Detailed'
-        $notepadConfig.TestResult.Enabled = $true
-        $notepadConfig.TestResult.OutputPath = '.\src\Artifacts\TestOutput\AdditionalTests-Notepad++.xml'
-        $notepadConfig.TestResult.OutputFormat = 'NUnitXml'
-        $notepadConfig.Run.PassThru = $true
+        $parallelJobs = foreach ($item in $indexedTags) {
+          Start-Job `
+            -Name ("AdditionalTests-{0}" -f $item.Tag) `
+            -ScriptBlock $runTaggedSuite `
+            -ArgumentList $item.Tag, ([int]($item.Index * 120)), $workspaceRoot
+        }
 
-        $env:PSADT_TEMPLATE_VALIDATION_PASSED = 'true'
-        $notepadResult = Invoke-Pester -Configuration $notepadConfig
+        try {
+          $parallelJobs | Wait-Job | Out-Null
+          $parallelResults = @($parallelJobs | Receive-Job | Where-Object {
+              $_.PSObject.Properties['Tag'] -and $_.PSObject.Properties['FailedCount']
+            })
+        }
+        finally {
+          $parallelJobs | Remove-Job -Force -ErrorAction SilentlyContinue
+        }
+
+        # 3) Run Notepad++ last in its own process because the expected install failure
+        # should be validated in isolation.
+        $notepadJob = Start-Job `
+          -Name 'AdditionalTests-Notepad++' `
+          -ScriptBlock $runTaggedSuite `
+          -ArgumentList 'Notepad++', 0, $workspaceRoot
+
+        try {
+          $notepadJob | Wait-Job | Out-Null
+          $notepadResult = @($notepadJob | Receive-Job | Where-Object {
+              $_.PSObject.Properties['Tag'] -and $_.PSObject.Properties['FailedCount']
+            })
+        }
+        finally {
+          $notepadJob | Remove-Job -Force -ErrorAction SilentlyContinue
+        }
 
         $allResults = @($validationResult) + @($notepadResult) + @($parallelResults)
         $passed = ($allResults | Measure-Object -Property PassedCount -Sum).Sum

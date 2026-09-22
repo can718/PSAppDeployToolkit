@@ -47,7 +47,7 @@ function Unblock-ADTAppExecution
         https://psappdeploytoolkit.com/docs/reference/functions/Unblock-ADTAppExecution
 
     .LINK
-        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/src/PSAppDeployToolkit/Public/Unblock-ADTAppExecution.ps1
+        https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/modules/PSAppDeployToolkit/Public/Unblock-ADTAppExecution.ps1
     #>
 
     [CmdletBinding(SupportsShouldProcess = $false)]
@@ -83,7 +83,7 @@ function Unblock-ADTAppExecution
                 }
                 finally
                 {
-                    Remove-ADTModuleCallback -Hookpoint OnFinish -Callback $Script:CommandTable.($MyInvocation.MyCommand.Name)
+                    Remove-ADTModuleCallback -Hookpoint OnFinish -Callback (Get-ADTCommand -Name $MyInvocation.MyCommand.Name)
                 }
             }
             catch
