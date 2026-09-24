@@ -246,7 +246,7 @@ jobs:
 
         # Start the test run and write test-run-id to GitHub output
         Invoke-TFStartTestRun `
-            -Title "PSADT CM Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)" -Product "PSADTForCM"
+            -Title "PSADT CM Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
 
     - name: Set TerraForge machine environment
       id: set-terraforge-machine-env
