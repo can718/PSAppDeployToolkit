@@ -13,19 +13,19 @@ function Show-ADTInstallationRestartPrompt
     .DESCRIPTION
         The `Show-ADTInstallationRestartPrompt` function displays a restart prompt with a countdown to a forced restart. The prompt can be customized with a title, countdown duration, and whether it should be topmost. It also supports silent mode where the restart can be triggered without user interaction.
 
-    .PARAMETER Countdown
+    .PARAMETER InteractiveCountdown
         Specifies how long to display the restart prompt. Accepts TimeSpan objects, but also interprets numerical values as seconds.
 
-    .PARAMETER CountdownNoHide
+    .PARAMETER InteractiveCountdownNoHide
         Specifies how long to display the restart prompt without allowing the window to be hidden. Accepts TimeSpan objects, but also interprets numerical values as seconds.
 
     .PARAMETER SilentCountdown
-        Specifies how long to countdown for the restart when the toolkit is running in silent mode and `-SilentRestart` is specified. Accepts TimeSpan objects, but also interprets numerical values as seconds.
+        Specifies how long to countdown for the restart when the toolkit is running in silent mode and `-AllowSilentRestart` is specified. Accepts TimeSpan objects, but also interprets numerical values as seconds.
 
-    .PARAMETER SilentRestart
-        Specifies whether the restart should be triggered when DeployMode is silent or very silent.
+    .PARAMETER AllowSilentRestart
+        Specifies whether an automatic silent restart should be triggered when DeployMode is silent.
 
-    .PARAMETER NoCountdown
+    .PARAMETER NoInteractiveCountdown
         Specifies whether the user should receive a prompt to immediately restart their workstation.
 
     .PARAMETER WindowLocation
@@ -66,17 +66,17 @@ function Show-ADTInstallationRestartPrompt
         This function does not generate any output.
 
     .EXAMPLE
-        Show-ADTInstallationRestartPrompt -NoCountdown
+        Show-ADTInstallationRestartPrompt -NoInteractiveCountdown
 
         Displays a restart prompt without a countdown.
 
     .EXAMPLE
-        Show-ADTInstallationRestartPrompt -Countdown 300
+        Show-ADTInstallationRestartPrompt -InteractiveCountdown 300
 
         Displays a restart prompt with a 300-second countdown.
 
     .EXAMPLE
-        Show-ADTInstallationRestartPrompt -Countdown 600 -CountdownNoHide 60
+        Show-ADTInstallationRestartPrompt -InteractiveCountdown 600 -InteractiveCountdownNoHide 60
 
         Displays a restart prompt with a 600-second countdown, removing the ability to hide/minimise the dialog for the last 60 seconds.
 
@@ -95,42 +95,49 @@ function Show-ADTInstallationRestartPrompt
         https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/blob/main/modules/PSAppDeployToolkit/Public/Show-ADTInstallationRestartPrompt.ps1
     #>
 
-    [CmdletBinding(DefaultParameterSetName = 'Countdown')]
+    [CmdletBinding(DefaultParameterSetName = 'InteractiveCountdown')]
     param
     (
-        [Parameter(Mandatory = $true, ParameterSetName = 'NoCountdown')]
-        [System.Management.Automation.SwitchParameter]$NoCountdown,
+        [Parameter(Mandatory = $true, ParameterSetName = 'NoInteractiveCountdown')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'NoInteractiveCountdownAllowSilentRestart')]
+        [Alias('NoCountdown')]
+        [System.Management.Automation.SwitchParameter]$NoInteractiveCountdown,
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
-        [Alias('CountdownSeconds')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'InteractiveCountdown')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'InteractiveCountdownAllowSilentRestart')]
+        [Alias('Countdown', 'CountdownSeconds')]
         [PSAppDeployToolkit.Attributes.TimeSpanTransformation()]
         [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
         [ValidateScript({
                 if ($_.TotalSeconds -gt 86400)
                 {
-                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName Countdown -ProvidedValue $_ -ExceptionMessage 'The specified Countdown interval cannot exceed 86,400 seconds.'))
+                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName InteractiveCountdown -ProvidedValue $_ -ExceptionMessage 'The specified InteractiveCountdown interval cannot exceed 86,400 seconds.'))
                 }
                 return !!$_
             })]
-        [System.TimeSpan]$Countdown = [System.TimeSpan]::FromSeconds(60),
+        [System.TimeSpan]$InteractiveCountdown = [System.TimeSpan]::FromSeconds(60),
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
-        [Alias('CountdownNoHideSeconds')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'InteractiveCountdown')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'InteractiveCountdownAllowSilentRestart')]
+        [Alias('CountdownNoHide', 'CountdownNoHideSeconds')]
         [PSAppDeployToolkit.Attributes.TimeSpanTransformation()]
         [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
         [ValidateScript({
                 if ($_.TotalSeconds -gt 86400)
                 {
-                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName CountdownNoHide -ProvidedValue $_ -ExceptionMessage 'The specified CountdownNoHide interval cannot exceed 86,400 seconds.'))
+                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName InteractiveCountdownNoHide -ProvidedValue $_ -ExceptionMessage 'The specified InteractiveCountdownNoHide interval cannot exceed 86,400 seconds.'))
                 }
                 return !!$_
             })]
-        [System.TimeSpan]$CountdownNoHide = [System.TimeSpan]::FromSeconds(30),
+        [System.TimeSpan]$InteractiveCountdownNoHide = [System.TimeSpan]::FromSeconds(30),
 
-        [Parameter(Mandatory = $true, ParameterSetName = 'SilentRestart')]
-        [System.Management.Automation.SwitchParameter]$SilentRestart,
+        [Parameter(Mandatory = $true, ParameterSetName = 'InteractiveCountdownAllowSilentRestart')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'NoInteractiveCountdownAllowSilentRestart')]
+        [Alias('SilentRestart')]
+        [System.Management.Automation.SwitchParameter]$AllowSilentRestart,
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'SilentRestart')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'InteractiveCountdownAllowSilentRestart')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'NoInteractiveCountdownAllowSilentRestart')]
         [Alias('SilentCountdownSeconds')]
         [PSAppDeployToolkit.Attributes.TimeSpanTransformation()]
         [PSAppDeployToolkit.Attributes.ValidateGreaterThanZero()]
@@ -143,9 +150,7 @@ function Show-ADTInstallationRestartPrompt
             })]
         [System.TimeSpan]$SilentCountdown = [System.TimeSpan]::FromSeconds(5),
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'SilentRestart')]
+        [Parameter(Mandatory = $false)]
         [ValidateScript({
                 if ([System.String]::IsNullOrWhiteSpace($_))
                 {
@@ -159,26 +164,21 @@ function Show-ADTInstallationRestartPrompt
             })]
         [System.String]$ShutdownReasonText,
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'SilentRestart')]
+        [Parameter(Mandatory = $false)]
         [System.Management.Automation.SwitchParameter]$NoForceCloseApps,
 
         [Parameter(Mandatory = $false)]
         [ValidateNotNullOrEmpty()]
         [PSADT.UserInterface.DialogPosition]$WindowLocation,
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
+        [Parameter(Mandatory = $false)]
         [System.Management.Automation.SwitchParameter]$PersistPrompt,
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
+        [Parameter(Mandatory = $false)]
         [Alias('CustomText')]
         [System.Management.Automation.SwitchParameter]$CustomMessage,
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
+        [Parameter(Mandatory = $false)]
         [PSAppDeployToolkit.Attributes.ValidateNotNullOrWhiteSpace()]
         [System.String]$CustomMessageText,
 
@@ -188,8 +188,7 @@ function Show-ADTInstallationRestartPrompt
         [Parameter(Mandatory = $false)]
         [System.Management.Automation.SwitchParameter]$AllowMove,
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'NoCountdown')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Countdown')]
+        [Parameter(Mandatory = $false)]
         [System.Management.Automation.SwitchParameter]$AllowCancel
     )
 
@@ -268,13 +267,13 @@ function Show-ADTInstallationRestartPrompt
         {
             $PSBoundParameters.Add('Subtitle', $adtStrings.RestartPrompt.Subtitle.$deploymentType)
         }
-        if (!$PSBoundParameters.ContainsKey('Countdown'))
+        if (!$PSBoundParameters.ContainsKey('InteractiveCountdown'))
         {
-            $PSBoundParameters.Add('Countdown', $Countdown)
+            $PSBoundParameters.Add('InteractiveCountdown', $InteractiveCountdown)
         }
-        if (!$PSBoundParameters.ContainsKey('CountdownNoHide'))
+        if (!$PSBoundParameters.ContainsKey('InteractiveCountdownNoHide'))
         {
-            $PSBoundParameters.Add('CountdownNoHide', $CountdownNoHide)
+            $PSBoundParameters.Add('InteractiveCountdownNoHide', $InteractiveCountdownNoHide)
         }
     }
 
@@ -313,14 +312,14 @@ function Show-ADTInstallationRestartPrompt
         # If in non-interactive mode.
         if ($adtSession -and $adtSession.IsSilent())
         {
-            if ($SilentRestart)
+            if ($AllowSilentRestart)
             {
-                Write-ADTLogEntry -Message "Triggering restart silently because the deploy mode is set to [$($adtSession.DeployMode)] and [-SilentRestart] has been specified. Timeout is set to [$($SilentCountdown.TotalSeconds)] seconds."
+                Write-ADTLogEntry -Message "Triggering restart silently because the deploy mode is set to [$($adtSession.DeployMode)] and [-AllowSilentRestart] has been specified. Timeout is set to [$($SilentCountdown.TotalSeconds)] seconds."
                 (Get-ADTModuleState).RestartOnExitOptions = [PSAppDeployToolkit.Foundation.RestartOnExitOptions]::new($SilentCountdown, $restartReason, !!$NoForceCloseApps)
             }
             else
             {
-                Write-ADTLogEntry -Message "Skipping restart because the deploy mode is set to [$($adtSession.DeployMode)] and [-SilentRestart] was not specified."
+                Write-ADTLogEntry -Message "Skipping restart because the deploy mode is set to [$($adtSession.DeployMode)] and [-AllowSilentRestart] was not specified."
             }
             return
         }
@@ -364,10 +363,10 @@ function Show-ADTInstallationRestartPrompt
                     Language = $adtLanguage
                     Strings = $adtStrings.RestartPrompt
                 }
-                if (!$NoCountdown)
+                if (!$NoInteractiveCountdown)
                 {
-                    $dialogOptions.Add('CountdownDuration', $Countdown)
-                    $dialogOptions.Add('CountdownNoMinimizeDuration', $CountdownNoHide)
+                    $dialogOptions.Add('CountdownDuration', $InteractiveCountdown)
+                    $dialogOptions.Add('CountdownNoMinimizeDuration', $InteractiveCountdownNoHide)
                 }
                 if ($PSBoundParameters.ContainsKey('ShutdownReasonText'))
                 {
@@ -417,20 +416,20 @@ function Show-ADTInstallationRestartPrompt
                 # If the script has been dot-source invoked by the deploy app script, display the restart prompt asynchronously.
                 if ($adtSession)
                 {
-                    if ($NoCountdown)
+                    if ($NoInteractiveCountdown)
                     {
                         Write-ADTLogEntry -Message "Invoking $($MyInvocation.MyCommand.Name) asynchronously with no countdown..."
                     }
                     else
                     {
-                        Write-ADTLogEntry -Message "Invoking $($MyInvocation.MyCommand.Name) asynchronously with a [$($Countdown.TotalSeconds)] second countdown..."
+                        Write-ADTLogEntry -Message "Invoking $($MyInvocation.MyCommand.Name) asynchronously with a [$($InteractiveCountdown.TotalSeconds)] second countdown..."
                     }
                     Invoke-ADTClientServerOperation -ShowModalDialog -User $runAsActiveUser -DialogType RestartDialog -DialogStyle $adtConfig.UI.DialogStyle -Options $dialogOptions -NoWait
                     return
                 }
 
                 # Call the underlying function to open the restart prompt.
-                Write-ADTLogEntry -Message "Displaying restart prompt with $(if ($NoCountdown) { 'no' } else { "a [$($Countdown.TotalSeconds)] second" }) countdown."
+                Write-ADTLogEntry -Message "Displaying restart prompt with $(if ($NoInteractiveCountdown) { 'no' } else { "a [$($InteractiveCountdown.TotalSeconds)] second" }) countdown."
                 $null = Invoke-ADTClientServerOperation -ShowModalDialog -User $runAsActiveUser -DialogType RestartDialog -DialogStyle $adtConfig.UI.DialogStyle -Options $dialogOptions
             }
             catch

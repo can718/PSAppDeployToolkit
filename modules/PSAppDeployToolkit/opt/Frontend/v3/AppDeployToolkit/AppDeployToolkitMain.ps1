@@ -1480,7 +1480,7 @@ function Show-InstallationRestartPrompt
     Write-ADTLogEntry -Message "The function [$($MyInvocation.MyCommand.Name)] has been replaced by [Show-ADTInstallationRestartPrompt]. Please migrate your scripts to use the new function." -Severity Warning -DebugMessage:$noDepWarnings
     if ($PSBoundParameters.ContainsKey('NoSilentRestart'))
     {
-        $PSBoundParameters.Add('SilentRestart', !$PSBoundParameters.NoSilentRestart)
+        $PSBoundParameters.Add('AllowSilentRestart', !$PSBoundParameters.NoSilentRestart)
         $null = $PSBoundParameters.Remove('NoSilentRestart')
     }
     if ($PSBoundParameters.ContainsKey('TopMost'))
@@ -1490,13 +1490,18 @@ function Show-InstallationRestartPrompt
     }
     if ($PSBoundParameters.ContainsKey('CountdownSeconds'))
     {
-        $PSBoundParameters.Add('Countdown', $PSBoundParameters.CountdownSeconds)
+        $PSBoundParameters.Add('InteractiveCountdown', $PSBoundParameters.CountdownSeconds)
         $null = $PSBoundParameters.Remove('CountdownSeconds')
     }
     if ($PSBoundParameters.ContainsKey('CountdownNoHideSeconds'))
     {
-        $PSBoundParameters.Add('CountdownNoHide', $PSBoundParameters.CountdownNoHideSeconds)
+        $PSBoundParameters.Add('InteractiveCountdownNoHide', $PSBoundParameters.CountdownNoHideSeconds)
         $null = $PSBoundParameters.Remove('CountdownNoHideSeconds')
+    }
+    if ($PSBoundParameters.ContainsKey('NoCountdown'))
+    {
+        $PSBoundParameters.Add('NoInteractiveCountdown', $PSBoundParameters.NoCountdown)
+        $null = $PSBoundParameters.Remove('NoCountdown')
     }
     if ($PSBoundParameters.ContainsKey('SilentCountdownSeconds'))
     {

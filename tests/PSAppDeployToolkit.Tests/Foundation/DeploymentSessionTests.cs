@@ -1186,8 +1186,8 @@ namespace PSAppDeployToolkit.Tests.Foundation
         /// format that cannot be read back would show. The deadline is written as universal time and read back
         /// without one, so it is the instant rather than the reading that has to survive.
         /// <para>
-        /// The run interval is written and never read: the history a caller gets back has nowhere to put it. So it
-        /// is checked in the registry directly, which is the only place it can be seen.
+        /// The run interval is written and read back through <see cref="DeploymentSession.GetDeferHistory"/>, so the test verifies both the
+        /// round-trip value on the returned history and that the registry value was persisted as expected.
         /// </para>
         /// </remarks>
         [Fact]
@@ -1211,8 +1211,9 @@ namespace PSAppDeployToolkit.Tests.Foundation
             Assert.Equal(3u, history.DeferTimesRemaining);
             Assert.Equal(deadline, Assert.NotNull(history.DeferDeadline).ToUniversalTime());
             Assert.Equal(lastTime, Assert.NotNull(history.DeferRunIntervalLastTime).ToUniversalTime());
+            Assert.Equal(TimeSpan.FromHours(1), history.DeferRunInterval);
 
-            // Assert: the run interval reached the registry even though nothing reads it back.
+            // Assert: the run interval was also persisted to the registry.
             using RegistryKey? key = Registry.CurrentUser.OpenSubKey($@"{registry.SubKeyName}\{PowerShellFixture.ModuleName}\DeferHistory\{session.InstallName}");
             Assert.NotNull(key);
             Assert.Equal("01:00:00", key.GetValue("DeferRunInterval"));
@@ -1361,6 +1362,56 @@ namespace PSAppDeployToolkit.Tests.Foundation
                 // Assert: the logs were archived and the staging folder taken away with them.
                 _ = Assert.Single(Directory.GetFiles(configuration.LogPath, "*.zip"));
                 Assert.False(Directory.Exists(staging.FullName));
+            }
+            finally
+            {
+                Delete(staging);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that archiving the logs removes the oldest archives beyond the configured history.
+        /// </summary>
+        /// <remarks>
+        /// Counted before the archive is written rather than after, so the pending one has to be allowed for. Left
+        /// out, the directory keeps one more archive than was asked for and never sheds it, since every later run
+        /// counts the same way.
+        /// </remarks>
+        [Fact]
+        public void Close_ArchivingTheLogsKeepsOnlyTheConfiguredHistory()
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            ModuleConfiguration configuration = Configuration(temp);
+            configuration.CompressLogs = true;
+            configuration.LogMaxHistory = 2;
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(configuration, powerShell.NewEnvironmentTable());
+            Dictionary<string, object> parameters = MinimalParameters();
+            parameters["AppName"] = UniqueAppName();
+            DeploymentSession session = new(parameters, noExitOnClose: true, compatibilityMode: false);
+            DirectoryInfo staging = session.LogPath;
+
+            // Arrange: the history already full, aged so their order is not in doubt.
+            string archiveDirectory = Directory.CreateDirectory(configuration.LogPath).FullName;
+            string[] existing = [$"{session.InstallName}_{session.DeploymentType}_older.zip", $"{session.InstallName}_{session.DeploymentType}_newer.zip"];
+            for (int index = 0; index < existing.Length; index++)
+            {
+                string path = Path.Join(archiveDirectory, existing[index]);
+                File.WriteAllText(path, existing[index]);
+                File.SetLastWriteTime(path, DateTime.Now.AddDays(index - existing.Length));
+            }
+
+            // Act
+            try
+            {
+                _ = session.Close(exitMessage: null);
+
+                // Assert: three archives competed for two places and the oldest lost.
+                string[] archives = [.. new DirectoryInfo(archiveDirectory).GetFiles("*.zip").Select(static file => file.Name)];
+                Assert.Equal(2, archives.Length);
+                Assert.Contains(existing[1], archives, StringComparer.Ordinal);
+                Assert.DoesNotContain(existing[0], archives, StringComparer.Ordinal);
             }
             finally
             {
@@ -1985,6 +2036,97 @@ namespace PSAppDeployToolkit.Tests.Foundation
         }
 
         /// <summary>
+        /// Verifies that the exit code named in the closing entry is the one <c language="csharp">Close</c> hands back.
+        /// </summary>
+        /// <remarks>
+        /// The closing message used to be built before the status switch had finished with the exit code, so a
+        /// deployment whose code was rewritten on the way out logged the code it arrived with and returned another.
+        /// Three rewrites do that: exiting with MSI codes, a suppressed reboot pass-through, and any completion,
+        /// which is zeroed whatever success code it carried. The first entry the close writes is the closing one,
+        /// since nothing else in this configuration logs ahead of it.
+        /// </remarks>
+        /// <param name="exitCode">The exit code the deployment finished with.</param>
+        /// <param name="exitWithMsiCodes">Whether the session was told to exit with MSI codes.</param>
+        /// <param name="suppressRebootPassThru">Whether the session was told to suppress the reboot pass-through.</param>
+        /// <param name="expected">The exit code the caller and the log should both be given.</param>
+        [Theory]
+        [InlineData(1641, false, false, 1641)]
+        [InlineData(1641, true, false, 3010)]
+        [InlineData(1641, false, true, 0)]
+        [InlineData(1641, true, true, 0)]
+        [InlineData(3010, false, false, 3010)]
+        [InlineData(1707, false, false, 0)]
+        [InlineData(1707, true, false, 0)]
+        [InlineData(0, false, false, 0)]
+        [InlineData(1, false, false, 1)]
+        [InlineData(60012, false, false, 60012)]
+        public void Close_NamesTheSameExitCodeItHandsBack(int exitCode, bool exitWithMsiCodes, bool suppressRebootPassThru, int expected)
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            Dictionary<string, object> parameters = MinimalParameters();
+            parameters.Add("AppSuccessExitCodes", nonZeroAppSuccessExitCodes);
+            if (exitWithMsiCodes)
+            {
+                parameters.Add("ExitWithMsiCodes", new SwitchParameter(isPresent: true));
+            }
+            if (suppressRebootPassThru)
+            {
+                parameters.Add("SuppressRebootPassThru", new SwitchParameter(isPresent: true));
+            }
+            DeploymentSession session = new(parameters, noExitOnClose: true, compatibilityMode: false);
+            session.SetExitCode(exitCode);
+            int written = session.GetLogBuffer().Count;
+
+            // Act
+            int returned = session.Close(exitMessage: null);
+
+            // Assert
+            Assert.Equal(expected, returned);
+            Assert.EndsWith($"with exit code [{returned.ToString(CultureInfo.InvariantCulture)}].", session.GetLogBuffer().Skip(written).First().Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Verifies that a restart is flagged after the closing entry only when the deployment asked for one and the
+        /// pass-through was left alone.
+        /// </summary>
+        /// <remarks>
+        /// Suppressing the pass-through is what zeroes the exit code, so the flag and the zeroing have to keep
+        /// agreeing with each other: a deployment told to keep quiet about a restart must not announce one.
+        /// </remarks>
+        /// <param name="exitCode">The exit code the deployment finished with.</param>
+        /// <param name="suppressRebootPassThru">Whether the session was told to suppress the reboot pass-through.</param>
+        /// <param name="expected">Whether a restart should be flagged.</param>
+        [Theory]
+        [InlineData(1641, false, true)]
+        [InlineData(1641, true, false)]
+        [InlineData(0, false, false)]
+        [InlineData(1, false, false)]
+        public void Close_FlagsARestartOnlyWhenTheRebootPassThruIsNotSuppressed(int exitCode, bool suppressRebootPassThru, bool expected)
+        {
+            // Arrange
+            using IDisposable scope = powerShell.Enter();
+            using TempDirectory temp = new();
+            using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(Configuration(temp), powerShell.NewEnvironmentTable());
+            Dictionary<string, object> parameters = MinimalParameters();
+            if (suppressRebootPassThru)
+            {
+                parameters.Add("SuppressRebootPassThru", new SwitchParameter(isPresent: true));
+            }
+            DeploymentSession session = new(parameters, noExitOnClose: true, compatibilityMode: false);
+            session.SetExitCode(exitCode);
+            int written = session.GetLogBuffer().Count;
+
+            // Act
+            _ = session.Close(exitMessage: null);
+
+            // Assert
+            Assert.Equal(expected, session.GetLogBuffer().Skip(written).Any(static entry => string.Equals(entry.Message, "A restart has been flagged as required.", StringComparison.Ordinal)));
+        }
+
+        /// <summary>
         /// Verifies that each convenience overload reaches the one that does the work with what it was given.
         /// </summary>
         /// <remarks>
@@ -2260,6 +2402,12 @@ namespace PSAppDeployToolkit.Tests.Foundation
         /// The exit codes a typical application uses to signal that it needs a reboot, for the tests that need them.
         /// </summary>
         private static readonly int[] typicalAppRebootExitCodes = [3010];
+
+        /// <summary>
+        /// Success exit codes including one that is not zero, for the tests that need a completion the session has
+        /// to zero on its way out.
+        /// </summary>
+        private static readonly int[] nonZeroAppSuccessExitCodes = [0, 1707];
 
         /// <summary>
         /// The exit codes a custom application uses to signal success and deferral, for the tests that need them.

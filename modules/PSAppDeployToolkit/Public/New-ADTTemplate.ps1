@@ -188,7 +188,7 @@ function New-ADTTemplate
                 }
                 if ($_ -match '\.(?:exe|ps1|pdb)$')
                 {
-                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName LauncherName -ProvidedValue $_ -ExceptionMessage "The specified launcher base name should not contains a file extension."))
+                    $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName LauncherName -ProvidedValue $_ -ExceptionMessage "The specified launcher base name should not contain a file extension."))
                 }
                 return $true
             })]
@@ -504,7 +504,7 @@ function New-ADTTemplate
                 [ValidateScript({
                         if ($null -eq $_.Start -or $null -eq $_.End -or $null -eq $_.Value)
                         {
-                            $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName 'Replacements' -ProvidedValue ($_ | Out-ADTString).Trim() -ExceptionMessage 'The specified replacement does not have the required Start/End/Value properties.'))
+                            $PSCmdlet.ThrowTerminatingError((New-ADTValidateScriptErrorRecord -ParameterName 'Replacements' -ProvidedValue $_ -ExceptionMessage 'The specified replacement does not have the required Start/End/Value properties.'))
                         }
                         return $true
                     })]
@@ -537,18 +537,20 @@ function New-ADTTemplate
         # Handle -ZeroConfig: inject the default MSI scriptblock into Install/Uninstall/Repair phases.
         if ($ZeroConfig)
         {
-            $zeroConfigScriptBlock = {
-                ## Handle Zero-Config MSI actions.
-                if ($adtSession.UseDefaultMsi)
-                {
-                    $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
-                    if ($adtSession.DefaultMstFile)
-                    {
-                        $ExecuteDefaultMSISplat.Add('Transforms', $adtSession.DefaultMstFile)
-                    }
-                    Start-ADTMsiProcess @ExecuteDefaultMSISplat
-                }
-            }
+            # Define as a string initially so that this block does not get translated into CommandTable calls by the build system
+            $zeroConfigScriptBlock = @'
+## Handle Zero-Config MSI actions.
+if ($adtSession.UseDefaultMsi)
+{
+    $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
+    if ($adtSession.DefaultMstFile)
+    {
+        $ExecuteDefaultMSISplat.Add('Transforms', $adtSession.DefaultMstFile)
+    }
+    Start-ADTMsiProcess @ExecuteDefaultMSISplat
+}
+'@
+            $zeroConfigScriptBlock = [System.Management.Automation.ScriptBlock]::Create($zeroConfigScriptBlock)
             foreach ($sbName in 'InstallScriptBlock', 'UninstallScriptBlock', 'RepairScriptBlock')
             {
                 if ($PSBoundParameters.ContainsKey($sbName))
