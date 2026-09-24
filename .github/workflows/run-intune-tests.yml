@@ -246,7 +246,7 @@ jobs:
         # Register a new test run in TerraForge and expose its ID as 'test-run-id' output.
         # All connection parameters (API URL, credentials, config) are resolved from job-level env vars.
         Invoke-TFStartTestRun `
-            -Title "PSADT Intune Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)"
+            -Title "PSADT Intune Tests - Build $($env:GITHUB_RUN_ID)_$($env:GITHUB_ACTOR)" -Product "PSADTForIntune"
 
     - name: Download Test Results from Azure Blob Storage and enroll envronment for next test run
       id: download-test-assets
