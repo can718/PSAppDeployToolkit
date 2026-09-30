@@ -101,6 +101,7 @@ namespace PSADT.ProcessManagement
         /// <exception cref="DriveNotFoundException">Thrown if filePath is not a fully qualified path when required.</exception>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "Synchronous wait is necessary for constructor initialization.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0045:Do not use blocking calls, even when the calling method must become async", Justification = "This is necessary here.")]
         internal ProcessLaunchInfo(string filePath, IEnumerable<string>? argumentList = null, string? workingDirectory = null, RunAsActiveUser? runAsActiveUser = null, bool inheritEnvironmentVariables = false, bool expandEnvironmentVariables = false, bool denyUserTermination = false, ElevatedTokenType? elevatedTokenType = null, bool runAsInvoker = false, bool uiAccess = false, bool bypassIfeo = false, IReadOnlyList<string>? standardInput = null, IReadOnlyList<nint>? handlesToInherit = null, bool useShellExecute = false, string? verb = null, bool createNoWindow = false, bool waitForChildProcesses = false, bool killChildProcessesWithParent = false, Encoding? streamEncoding = null, ProcessWindowStyle? windowStyle = null, ProcessPriorityClass? priorityClass = null, CancellationToken? cancellationToken = null, bool noTerminateOnTimeout = false)
         {
             // Validate all string parameters are properly set up.
@@ -125,10 +126,6 @@ namespace PSADT.ProcessManagement
                 if (runAsInvoker)
                 {
                     throw new NotSupportedException("Cannot specify UseShellExecute while specifying RunAsInvoker.");
-                }
-                if (bypassIfeo)
-                {
-                    throw new NotSupportedException("Cannot specify UseShellExecute while specifying BypassIfeo.");
                 }
             }
 
@@ -421,6 +418,11 @@ namespace PSADT.ProcessManagement
         /// </summary>
         [DataMember]
         public readonly IMAGE_SUBSYSTEM ImageSubsystem;
+
+        /// <summary>
+        /// Gets a value indicating whether a job object is required for the process launch. A job object is required if either <see cref="WaitForChildProcesses"/> or <see cref="KillChildProcessesWithParent"/> is set to true.
+        /// </summary>
+        internal bool RequiresJobObject => WaitForChildProcesses || KillChildProcessesWithParent;
 
         /// <summary>
         /// Generates the command-line string representation for the current configuration.

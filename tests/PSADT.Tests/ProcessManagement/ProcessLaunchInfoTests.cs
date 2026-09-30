@@ -113,19 +113,18 @@ namespace PSADT.Tests.ProcessManagement
         }
 
         /// <summary>
-        /// Verifies that shell execute refuses to bypass image file execution options, and names that
-        /// option.
+        /// Verifies that shell execute accepts bypassing image file execution options, which the launch carries
+        /// into the process the shell creates.
         /// </summary>
         [Fact]
-        public void Constructor_RefusesShellExecuteWithBypassIfeo()
+        public void Constructor_AllowsShellExecuteWithBypassIfeo()
         {
             // Act
-            NotSupportedException exception = Assert.Throws<NotSupportedException>(
-                static () => new ProcessLaunchInfo(@"C:\app.exe", bypassIfeo: true, useShellExecute: true));
+            ProcessLaunchInfo launchInfo = new(@"C:\app.exe", bypassIfeo: true, useShellExecute: true);
 
             // Assert
-            Assert.Contains("UseShellExecute", exception.Message, StringComparison.Ordinal);
-            Assert.Contains("BypassIfeo", exception.Message, StringComparison.Ordinal);
+            Assert.True(launchInfo.BypassIfeo);
+            Assert.True(launchInfo.UseShellExecute);
         }
 
         /// <summary>
@@ -402,6 +401,23 @@ namespace PSADT.Tests.ProcessManagement
             Assert.False(launchInfo.WaitForChildProcesses);
             Assert.False(launchInfo.KillChildProcessesWithParent);
             Assert.False(launchInfo.NoTerminateOnTimeout);
+        }
+
+        /// <summary>
+        /// Verifies that a launch needs a job object exactly when it asks for its child processes to be waited for or
+        /// killed, since accounting for them is what the job is for.
+        /// </summary>
+        /// <param name="waitForChildProcesses">Whether the launch asks for its child processes to be waited for.</param>
+        /// <param name="killChildProcessesWithParent">Whether the launch asks for its child processes to be killed with it.</param>
+        /// <param name="expected">Whether the launch should need a job object.</param>
+        [Theory]
+        [InlineData(false, false, false)]
+        [InlineData(true, false, true)]
+        [InlineData(false, true, true)]
+        [InlineData(true, true, true)]
+        public void RequiresJobObject_IsSetByEitherChildProcessOption(bool waitForChildProcesses, bool killChildProcessesWithParent, bool expected)
+        {
+            Assert.Equal(expected, new ProcessLaunchInfo(@"C:\app.exe", waitForChildProcesses: waitForChildProcesses, killChildProcessesWithParent: killChildProcessesWithParent).RequiresJobObject);
         }
 
         /// <summary>
