@@ -16,6 +16,7 @@ using PSADT.ClientServer.Server.Tests.TestHelpers;
 using PSADT.Foundation;
 using PSADT.Interop;
 using PSADT.PowerShellTestFixture;
+using PSADT.ProcessManagement;
 using PSADT.Utilities;
 using PSADT.WindowManagement;
 using PSAppDeployToolkit.Foundation;
@@ -106,6 +107,43 @@ namespace PSADT.ClientServer.Server.Tests
         {
             await using ServerInstance instance = new(SomeUser());
             Assert.Null(instance.GetLogWriterException());
+        }
+
+        /// <summary>
+        /// Verifies that a failure the log reader recorded is reported while the reader is still running, rather than
+        /// only once it has finished, and that it is reported once rather than after every later command.
+        /// </summary>
+        /// <remarks>
+        /// The reader keeps draining after a bad frame, so it can run for the rest of the session with a failure behind
+        /// it. Reading the failure from the reader's task reported nothing until the client had gone. The running reader
+        /// and its failure are both planted, for the reason given on <see cref="DisposeAsync_FinishesDisposingWhenTheLogReaderFailed"/>.
+        /// </remarks>
+        /// <returns>A task that represents the asynchronous test.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if a field this plants state in has been renamed.</exception>
+        [Fact]
+        public async Task GetLogWriterException_ReportsAFailureWhileTheReaderIsStillRunning()
+        {
+            // Arrange: a reader still running, with a failure it has already recorded.
+            await using ServerInstance instance = new(SomeUser());
+            FieldInfo logWriterTask = typeof(ServerInstance).GetField("_logWriterTask", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("ServerInstance no longer has a _logWriterTask field for this test to plant a running reader in.");
+            FieldInfo logWriterException = typeof(ServerInstance).GetField("_logWriterException", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("ServerInstance no longer has a _logWriterException field for this test to plant a failure in.");
+            TaskCompletionSource<bool> reader = new();
+            InvalidDataException recorded = new("a log frame failed");
+            logWriterTask.SetValue(instance, reader.Task);
+            logWriterException.SetValue(instance, recorded);
+
+            // Assert, completing the planted reader either way, as disposal waits on it and would otherwise hang a failing run.
+            try
+            {
+                Assert.Same(recorded, instance.GetLogWriterException());
+                Assert.Null(instance.GetLogWriterException());
+            }
+            finally
+            {
+                reader.SetResult(true);
+            }
         }
 
         /// <summary>
@@ -335,9 +373,8 @@ namespace PSADT.ClientServer.Server.Tests
         /// to there being nothing in it.
         /// </para>
         /// </remarks>
-        /// <returns>A task that represents the asynchronous test.</returns>
         [Fact]
-        public async Task ReadLogFrameAsync_ReadsTheFrameEvenWithNoSessionToWriteItTo()
+        public void ReadLogFrame_ReadsTheFrameEvenWithNoSessionToWriteItTo()
         {
             // Arrange: the module imported and not initialized, which is the state a log frame can genuinely arrive
             // in. A database has to be seated for that, as every reader refuses an assembly loaded another way.
@@ -345,14 +382,14 @@ namespace PSADT.ClientServer.Server.Tests
             Assert.False(ModuleDatabase.IsDeploymentSessionActive());
             int reads = 0;
             byte[] frame = DataSerialization.SerializeToBytes(new LogMessagePayload("a message", LogSeverity.Info, "a source"));
-            ValueTask<byte[]> ReadFrameAsync()
+            byte[] ReadFrame()
             {
                 reads++;
-                return new ValueTask<byte[]>(frame);
+                return frame;
             }
 
             // Act
-            await ServerInstance.ReadLogFrameAsync(ReadFrameAsync).ConfigureAwait(true);
+            ServerInstance.ReadLogFrame(ReadFrame);
 
             // Assert
             Assert.Equal(1, reads);
@@ -366,21 +403,20 @@ namespace PSADT.ClientServer.Server.Tests
         /// than one frame per call would take that decision away from it and read past the point it was told to
         /// give up.
         /// </remarks>
-        /// <returns>A task that represents the asynchronous test.</returns>
         [Fact]
-        public async Task ReadLogFrameAsync_ReadsExactlyOneFramePerCall()
+        public void ReadLogFrame_ReadsExactlyOneFramePerCall()
         {
             // Arrange
             int reads = 0;
-            ValueTask<byte[]> ReadFrameAsync()
+            byte[] ReadFrame()
             {
                 reads++;
-                return new ValueTask<byte[]>([]);
+                return [];
             }
 
             // Act
-            await ServerInstance.ReadLogFrameAsync(ReadFrameAsync).ConfigureAwait(true);
-            await ServerInstance.ReadLogFrameAsync(ReadFrameAsync).ConfigureAwait(true);
+            ServerInstance.ReadLogFrame(ReadFrame);
+            ServerInstance.ReadLogFrame(ReadFrame);
 
             // Assert
             Assert.Equal(2, reads);
@@ -390,24 +426,19 @@ namespace PSADT.ClientServer.Server.Tests
         /// Verifies that a failure to read is passed on as it was, rather than dressed up.
         /// </summary>
         /// <remarks>
-        /// The loop around this tells three kinds of failure apart: cancellation and the end of the stream mean
-        /// the client has finished and the loop stops quietly, while anything else is a fault worth reporting.
-        /// It can only do that if the exception reaches it as itself, so wrapping one here would turn an
-        /// ordinary shutdown into a reported failure.
+        /// The loop around this tells failures apart: the end of the stream means the client has finished and the loop
+        /// stops quietly, while anything else is recorded as a fault worth reporting. It can only do that if the exception
+        /// reaches it as itself, so wrapping one here would turn an ordinary shutdown into a reported failure.
         /// </remarks>
-        /// <returns>A task that represents the asynchronous test.</returns>
         [Fact]
-        public async Task ReadLogFrameAsync_PassesOnAFailureToReadAsItWas()
+        public void ReadLogFrame_PassesOnAFailureToReadAsItWas()
         {
-            // Assert: the two that mean the client has finished.
-            _ = await Assert.ThrowsAsync<EndOfStreamException>(
-                static async () => await ServerInstance.ReadLogFrameAsync(static () => throw new EndOfStreamException()).ConfigureAwait(true)).ConfigureAwait(true);
-            _ = await Assert.ThrowsAsync<OperationCanceledException>(
-                static async () => await ServerInstance.ReadLogFrameAsync(static () => throw new OperationCanceledException()).ConfigureAwait(true)).ConfigureAwait(true);
+            // Assert: the one that means the client has finished.
+            _ = Assert.Throws<EndOfStreamException>(static () => ServerInstance.ReadLogFrame(static () => throw new EndOfStreamException()));
 
-            // Assert: and one that does not.
-            _ = await Assert.ThrowsAsync<InvalidDataException>(
-                static async () => await ServerInstance.ReadLogFrameAsync(static () => throw new InvalidDataException()).ConfigureAwait(true)).ConfigureAwait(true);
+            // Assert: and two that do not, a stray cancellation among them.
+            _ = Assert.Throws<OperationCanceledException>(static () => ServerInstance.ReadLogFrame(static () => throw new OperationCanceledException()));
+            _ = Assert.Throws<InvalidDataException>(static () => ServerInstance.ReadLogFrame(static () => throw new InvalidDataException()));
         }
 
         /// <summary>
@@ -423,9 +454,8 @@ namespace PSADT.ClientServer.Server.Tests
         /// line already ended by the log writer would otherwise leave the spacing in the middle of the file.
         /// </para>
         /// </remarks>
-        /// <returns>A task that represents the asynchronous test.</returns>
         [Fact]
-        public async Task ReadLogFrameAsync_WritesTheFrameToTheActiveSession()
+        public void ReadLogFrame_WritesTheFrameToTheActiveSession()
         {
             // Arrange
             using IDisposable scope = powerShell.Enter();
@@ -439,7 +469,7 @@ namespace PSADT.ClientServer.Server.Tests
                 byte[] frame = DataSerialization.SerializeToBytes(new LogMessagePayload("   a client said this   ", LogSeverity.Warning, "Invoke-SomethingOnTheClient"));
 
                 // Act
-                await ServerInstance.ReadLogFrameAsync(() => new ValueTask<byte[]>(frame)).ConfigureAwait(true);
+                ServerInstance.ReadLogFrame(() => frame);
 
                 // Assert
                 LogEntry entry = Assert.Single(session.GetLogBuffer().Skip(written));
@@ -461,9 +491,8 @@ namespace PSADT.ClientServer.Server.Tests
         /// attempting it would fail rather than do nothing. Asserted with a session present, since without one
         /// nothing would be written whatever the frame held.
         /// </remarks>
-        /// <returns>A task that represents the asynchronous test.</returns>
         [Fact]
-        public async Task ReadLogFrameAsync_WritesNothingForAnEmptyFrame()
+        public void ReadLogFrame_WritesNothingForAnEmptyFrame()
         {
             // Arrange
             using IDisposable scope = powerShell.Enter();
@@ -476,7 +505,7 @@ namespace PSADT.ClientServer.Server.Tests
                 int written = session.GetLogBuffer().Count;
 
                 // Act
-                await ServerInstance.ReadLogFrameAsync(static () => new ValueTask<byte[]>([])).ConfigureAwait(true);
+                ServerInstance.ReadLogFrame(static () => []);
 
                 // Assert
                 Assert.Equal(written, session.GetLogBuffer().Count);
@@ -503,9 +532,8 @@ namespace PSADT.ClientServer.Server.Tests
         /// knowing when a client's logging turns out to have gone missing.
         /// </para>
         /// </remarks>
-        /// <returns>A task that represents the asynchronous test.</returns>
         [Fact]
-        public async Task ReadLogFrameAsync_FaultsOnAFrameThatIsNotALogMessage()
+        public void ReadLogFrame_FaultsOnAFrameThatIsNotALogMessage()
         {
             // Arrange: a frame that reads back perfectly well as something else entirely. Built afresh for each
             // read, because reading one overwrites it, and a zeroed buffer would fail for the wrong reason.
@@ -519,7 +547,7 @@ namespace PSADT.ClientServer.Server.Tests
             using (powerShell.SeatModuleDatabaseWithoutState())
             {
                 Assert.False(ModuleDatabase.IsDeploymentSessionActive());
-                Assert.Null(await Record.ExceptionAsync(static async () => await ServerInstance.ReadLogFrameAsync(static () => new ValueTask<byte[]>(Frame())).ConfigureAwait(true)).ConfigureAwait(true));
+                Assert.Null(Record.Exception(static () => ServerInstance.ReadLogFrame(Frame)));
             }
 
             // Arrange: and again with a session seated.
@@ -533,8 +561,7 @@ namespace PSADT.ClientServer.Server.Tests
                 int written = session.GetLogBuffer().Count;
 
                 // Assert: now it is deserialised, and says so rather than writing something meaningless.
-                _ = await Assert.ThrowsAsync<SerializationException>(
-                    static async () => await ServerInstance.ReadLogFrameAsync(static () => new ValueTask<byte[]>(Frame())).ConfigureAwait(true)).ConfigureAwait(true);
+                _ = Assert.Throws<SerializationException>(static () => ServerInstance.ReadLogFrame(Frame));
                 Assert.Equal(written, session.GetLogBuffer().Count);
             }
             finally
@@ -554,9 +581,9 @@ namespace PSADT.ClientServer.Server.Tests
         /// but which still reported itself as not disposed - so later calls failed on closed pipes rather than
         /// saying they were too late, and the exit handler stayed registered to try disposing it all over again.
         /// <para>
-        /// The failure is planted rather than provoked. A log reader only faults on a frame that is neither the
-        /// end of the stream nor cancellation, which takes a corrupt log stream, and that takes a client that is
-        /// not the real one. Reaching for the field by name is the price of covering the consequence at all; it
+        /// The failure is planted rather than provoked. A bad frame no longer faults the reader, which records it for
+        /// GetLogWriterException and keeps draining, so a fault here would take something unexpected; disposal has to
+        /// survive it all the same. Reaching for the field by name is the price of covering the consequence at all; it
         /// fails loudly rather than silently if the field is ever renamed.
         /// </para>
         /// </remarks>
@@ -734,6 +761,71 @@ namespace PSADT.ClientServer.Server.Tests
         }
 
         /// <summary>
+        /// Verifies that an instance whose dead client's result has been disposed still reports the client
+        /// as gone, and can still be disposed.
+        /// </summary>
+        /// <remarks>
+        /// This is the path a failed command takes: the caller takes the dead client's result off the failure
+        /// and disposes it, and with it the process object the instance still holds. Nothing the instance does
+        /// afterwards may touch that object, or it would throw rather than answer.
+        /// </remarks>
+        /// <returns>A task that represents the asynchronous test.</returns>
+        [Fact(Skip = "Requires the client executables and a caller that is the logged-on user.", SkipUnless = nameof(TestEnvironment.CanLaunchClient), SkipType = typeof(TestEnvironment))]
+        public async Task DisposeAsync_SucceedsOnceTheDeadClientsResultHasBeenDisposed()
+        {
+            // Arrange
+            await using ServerInstance instance = new(AccountUtilities.CallerRunAsActiveUser);
+            await instance.OpenAsync().ConfigureAwait(true);
+            KillClientOf(instance);
+            await DisposeClientResultOfAsync(instance).ConfigureAwait(true);
+            Assert.False(instance.IsRunning);
+
+            // Assert
+            Assert.Null(await Record.ExceptionAsync(async () => await instance.DisposeAsync().ConfigureAwait(true)).ConfigureAwait(true));
+        }
+
+        /// <summary>
+        /// Verifies that the host's exit handler kills a client that is still running, so the client cannot
+        /// outlive the host.
+        /// </summary>
+        /// <returns>A task that represents the asynchronous test.</returns>
+        [Fact(Skip = "Requires the client executables and a caller that is the logged-on user.", SkipUnless = nameof(TestEnvironment.CanLaunchClient), SkipType = typeof(TestEnvironment))]
+        public async Task ProcessExitHandler_KillsAClientThatIsStillRunning()
+        {
+            // Arrange
+            await using ServerInstance instance = new(AccountUtilities.CallerRunAsActiveUser);
+            await instance.OpenAsync().ConfigureAwait(true);
+
+            // Act
+            RaiseProcessExit(instance);
+
+            // Assert
+            Assert.True(ClientOfAsync(instance).Process.WaitForExit(30000), "The client outlived the host's exit.");
+        }
+
+        /// <summary>
+        /// Verifies that the host's exit handler leaves alone a dead client whose result has been disposed,
+        /// rather than throwing from inside the host's exit.
+        /// </summary>
+        /// <remarks>
+        /// A throw there would replace the host's exit code, and by then the caller may well have disposed the
+        /// client's result, taking the process object with it.
+        /// </remarks>
+        /// <returns>A task that represents the asynchronous test.</returns>
+        [Fact(Skip = "Requires the client executables and a caller that is the logged-on user.", SkipUnless = nameof(TestEnvironment.CanLaunchClient), SkipType = typeof(TestEnvironment))]
+        public async Task ProcessExitHandler_IgnoresADeadClientWhoseResultHasBeenDisposed()
+        {
+            // Arrange
+            await using ServerInstance instance = new(AccountUtilities.CallerRunAsActiveUser);
+            await instance.OpenAsync().ConfigureAwait(true);
+            KillClientOf(instance);
+            await DisposeClientResultOfAsync(instance).ConfigureAwait(true);
+
+            // Assert
+            Assert.Null(Record.Exception(() => RaiseProcessExit(instance)));
+        }
+
+        /// <summary>
         /// Asks the shutdown rule about an exception.
         /// </summary>
         /// <remarks>
@@ -763,16 +855,58 @@ namespace PSADT.ClientServer.Server.Tests
         /// <param name="instance">The instance whose client should be ended.</param>
         /// <exception cref="InvalidOperationException">Thrown when the instance has no client to end, or no longer
         /// holds it where this expects to find it.</exception>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields", Justification = "An instance does not expose its client process, and a client dying unexpectedly is a case worth covering.")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "The process belongs to the instance under test, which disposes it.")]
         private static void KillClientOf(ServerInstance instance)
         {
-            object handle = typeof(ServerInstance).GetField("_clientProcess", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(instance)
-                ?? throw new InvalidOperationException("The instance has no client process to end.");
-            Process client = (Process?)handle.GetType().GetProperty("Process")?.GetValue(handle)
-                ?? throw new InvalidOperationException("The client process handle no longer carries a process.");
+            Process client = ClientOfAsync(instance).Process;
             client.Kill();
             Assert.True(client.WaitForExit(30000), "The client process did not end when it was killed.");
+        }
+
+        /// <summary>
+        /// Gets the handle to the client an instance started.
+        /// </summary>
+        /// <remarks>
+        /// An instance does not expose its client, and the tests need it to end the client or to take its
+        /// result the way a caller would.
+        /// </remarks>
+        /// <param name="instance">The instance whose client is wanted.</param>
+        /// <returns>The handle to the instance's client.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the instance has no client, or no longer holds
+        /// it where this expects to find it.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields", Justification = "An instance does not expose its client process, and a client dying unexpectedly is a case worth covering.")]
+        private static ProcessHandle ClientOfAsync(ServerInstance instance)
+        {
+            return typeof(ServerInstance).GetField("_clientProcess", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(instance) as ProcessHandle
+                ?? throw new InvalidOperationException("The instance has no client process.");
+        }
+
+        /// <summary>
+        /// Disposes the result of an instance's ended client, as the caller of a failed command does.
+        /// </summary>
+        /// <remarks>
+        /// The result carries the same process object the instance holds, so this leaves the instance holding
+        /// a disposed one.
+        /// </remarks>
+        /// <param name="instance">The instance whose client has ended.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        private static async Task DisposeClientResultOfAsync(ServerInstance instance)
+        {
+            ProcessResult result = await ClientOfAsync(instance).Task.ConfigureAwait(true);
+            result.Dispose();
+        }
+
+        /// <summary>
+        /// Raises an instance's handler for the host's exit, as the runtime would.
+        /// </summary>
+        /// <param name="instance">The instance whose handler to raise.</param>
+        /// <exception cref="InvalidOperationException">Thrown when the instance no longer carries the handler.</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields", Justification = "The handler is private and only the runtime raises it, at the host's exit.")]
+        private static void RaiseProcessExit(ServerInstance instance)
+        {
+            MethodInfo handler = typeof(ServerInstance).GetMethod("ProcessExit_Handler", BindingFlags.NonPublic | BindingFlags.Instance)
+                ?? throw new InvalidOperationException("ServerInstance no longer carries a handler for the host's exit.");
+            _ = handler.Invoke(instance, [null, EventArgs.Empty]);
         }
 
         /// <summary>

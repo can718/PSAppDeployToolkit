@@ -135,6 +135,11 @@ function Write-Log
         {
             $null = $PSBoundParameters.Remove('ContinueOnError')
         }
+        if ($PSBoundParameters.ContainsKey('LogType'))
+        {
+            $PSBoundParameters.Add('LogStyle', $PSBoundParameters.LogType)
+            $null = $PSBoundParameters.Remove('LogType')
+        }
 
         # Set up collector for piped in messages.
         $messages = [System.Collections.Generic.List[System.String]]::new()
@@ -460,8 +465,6 @@ function Remove-MSIApplications
     [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'LoggingOptions', Justification = "This parameter is passed to an underlying function via `$PSBoundParameters, therefore this warning is benign.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'LogFileName', Justification = "This parameter is passed to an underlying function via `$PSBoundParameters, therefore this warning is benign.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'PassThru', Justification = "This parameter is passed to an underlying function via `$PSBoundParameters, therefore this warning is benign.")]
-    [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Exact', Justification = "This parameter is used within delegates that PSScriptAnalyzer has no visibility of. See https://github.com/PowerShell/PSScriptAnalyzer/issues/1472 for more details.")]
-    [System.Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'WildCard', Justification = "This parameter is used within delegates that PSScriptAnalyzer has no visibility of. See https://github.com/PowerShell/PSScriptAnalyzer/issues/1472 for more details.")]
     [CmdletBinding()]
     param
     (
@@ -522,6 +525,14 @@ function Remove-MSIApplications
     # Build out hashtable for splatting.
     $uaaParams = Get-ADTBoundParametersAndDefaultValues -Invocation $MyInvocation -Exclude Exact, WildCard, FilterApplication, ExcludeFromUninstall, ContinueOnError
     $uaaParams.ApplicationType = 'MSI'
+    if ($Exact)
+    {
+        $uaaParams.NameMatch = 'Exact'
+    }
+    elseif ($WildCard)
+    {
+        $uaaParams.NameMatch = 'WildCard'
+    }
     if (!$ContinueOnError)
     {
         $uaaParams.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
@@ -1173,10 +1184,7 @@ function Show-InstallationProgress
         [System.Nullable[System.Boolean]]$TopMost = $true,
 
         [Parameter(Mandatory = $false)]
-        [System.Management.Automation.SwitchParameter]$Quiet,
-
-        [Parameter(Mandatory = $false)]
-        [System.Management.Automation.SwitchParameter]$NoRelocation
+        [System.Management.Automation.SwitchParameter]$Quiet
     )
 
     # Set strict mode to the highest within this function's scope.
@@ -1254,6 +1262,14 @@ function Show-DialogBox
     {
         $PSBoundParameters.Add('NotTopMost', !$PSBoundParameters.TopMost)
         $null = $PSBoundParameters.Remove('TopMost')
+    }
+    if ($PSBoundParameters.ContainsKey('Icon') -and ($PSBoundParameters.Icon -eq 'None'))
+    {
+        $null = $PSBoundParameters.Remove('Icon')
+    }
+    if ($PSBoundParameters.ContainsKey('Buttons') -and ($PSBoundParameters.Buttons -eq 'CancelTryAgainContinue'))
+    {
+        $PSBoundParameters.Buttons = 'CancelTryContinue'
     }
     try
     {
@@ -1374,14 +1390,34 @@ function Show-InstallationWelcome
                 $PSBoundParameters.Remove($oldParam)
             }
         })
-    if ($PSBoundParameters.ContainsKey('TopMost'))
+
+    # MinimizeWindows, NotTopMost and CustomMessage only exist in v4's interactive parameter sets.
+    if ($Silent)
     {
-        $PSBoundParameters.Add('NotTopMost', !$PSBoundParameters.TopMost)
+        $null = $PSBoundParameters.Remove('MinimizeWindows')
         $null = $PSBoundParameters.Remove('TopMost')
+        $null = $PSBoundParameters.Remove('CustomText')
     }
-    if ($MinimizeWindows)
+    else
     {
-        $PSBoundParameters.Add('MinimizeWindows', $MinimizeWindows)
+        if ($PSBoundParameters.ContainsKey('TopMost'))
+        {
+            $PSBoundParameters.Add('NotTopMost', !$PSBoundParameters.TopMost)
+            $null = $PSBoundParameters.Remove('TopMost')
+        }
+        if ($MinimizeWindows)
+        {
+            $PSBoundParameters.MinimizeWindows = $true
+        }
+        else
+        {
+            $null = $PSBoundParameters.Remove('MinimizeWindows')
+        }
+        if ($PSBoundParameters.ContainsKey('CustomText'))
+        {
+            $PSBoundParameters.Add('CustomMessage', $PSBoundParameters.CustomText)
+            $null = $PSBoundParameters.Remove('CustomText')
+        }
     }
 
     # Invoke function with amended parameters.
@@ -1426,6 +1462,14 @@ function Get-WindowTitle
     {
         $PSBoundParameters.Add('InformationAction', [System.Management.Automation.ActionPreference]::SilentlyContinue)
         $null = $PSBoundParameters.Remove('DisableFunctionLogging')
+    }
+    if ($PSBoundParameters.ContainsKey('GetAllWindowTitles'))
+    {
+        $null = $PSBoundParameters.Remove('GetAllWindowTitles')
+    }
+    if ($PSBoundParameters.ContainsKey('WindowTitle') -and [System.String]::IsNullOrWhiteSpace($WindowTitle))
+    {
+        $null = $PSBoundParameters.Remove('WindowTitle')
     }
     try
     {
@@ -1559,6 +1603,23 @@ function Show-BalloonTip
         Write-ADTLogEntry -Message "The parameter '-NoWait' is discontinued and no longer has any effect." -Severity Warning -Source $MyInvocation.MyCommand.Name
         $null = $PSBoundParameters.Remove('NoWait')
     }
+    if ($PSBoundParameters.ContainsKey('BalloonTipTime'))
+    {
+        Write-ADTLogEntry -Message "The parameter '-BalloonTipTime' is discontinued and no longer has any effect." -Severity Warning -Source $MyInvocation.MyCommand.Name
+        $null = $PSBoundParameters.Remove('BalloonTipTime')
+    }
+    $PSBoundParameters.Add('Text', $PSBoundParameters.BalloonTipText)
+    $null = $PSBoundParameters.Remove('BalloonTipText')
+    if ($PSBoundParameters.ContainsKey('BalloonTipTitle'))
+    {
+        $PSBoundParameters.Add('Title', $PSBoundParameters.BalloonTipTitle)
+        $null = $PSBoundParameters.Remove('BalloonTipTitle')
+    }
+    if ($PSBoundParameters.ContainsKey('BalloonTipIcon'))
+    {
+        $PSBoundParameters.Add('Icon', $PSBoundParameters.BalloonTipIcon)
+        $null = $PSBoundParameters.Remove('BalloonTipIcon')
+    }
     try
     {
         Show-ADTBalloonTip @PSBoundParameters
@@ -1590,6 +1651,11 @@ function Copy-ContentToCache
     Set-StrictMode -Version 3
 
     Write-ADTLogEntry -Message "The function [$($MyInvocation.MyCommand.Name)] has been replaced by [Copy-ADTContentToCache]. Please migrate your scripts to use the new function." -Severity Warning -DebugMessage:$noDepWarnings
+    if ($PSBoundParameters.ContainsKey('Path'))
+    {
+        $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Path)
+        $null = $PSBoundParameters.Remove('Path')
+    }
     try
     {
         Copy-ADTContentToCache @PSBoundParameters
@@ -1622,6 +1688,11 @@ function Remove-ContentFromCache
     Set-StrictMode -Version 3
 
     Write-ADTLogEntry -Message "The function [$($MyInvocation.MyCommand.Name)] has been replaced by [Remove-ADTContentFromCache]. Please migrate your scripts to use the new function." -Severity Warning -DebugMessage:$noDepWarnings
+    if ($PSBoundParameters.ContainsKey('Path'))
+    {
+        $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Path)
+        $null = $PSBoundParameters.Remove('Path')
+    }
     try
     {
         Remove-ADTContentFromCache @PSBoundParameters
@@ -1832,6 +1903,8 @@ function New-Folder
     {
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Path)
+    $null = $PSBoundParameters.Remove('Path')
     try
     {
         New-ADTFolder @PSBoundParameters
@@ -2193,10 +2266,12 @@ function Resolve-Error
 
         # Announce overall deprecation and translate bad switches before executing.
         Write-ADTLogEntry -Message "The function [$($MyInvocation.MyCommand.Name)] has been replaced by [Resolve-ADTErrorRecord]. Please migrate your scripts to use the new function." -Severity Warning -DebugMessage:$noDepWarnings
-        $null = ('ErrorRecord', 'ErrorInvocation', 'ErrorException', 'ErrorInnerException').Where({ $PSBoundParameters.ContainsKey($_) }).ForEach({
+        $null = ('ErrorRecord', 'ErrorInvocation', 'ErrorException').Where({ $PSBoundParameters.ContainsKey("Get$_") }).ForEach({
                 $PSBoundParameters.Add("Exclude$_", !$PSBoundParameters."Get$_")
                 $PSBoundParameters.Remove("Get$_")
             })
+        $PSBoundParameters.IncludeErrorInnerException = $GetErrorInnerException
+        $null = $PSBoundParameters.Remove('GetErrorInnerException')
 
         # Set up collector for piped in ErrorRecord objects.
         $errRecords = [System.Collections.Generic.List[System.Management.Automation.ErrorRecord]]::new()
@@ -2294,6 +2369,8 @@ function Get-ServiceStartMode
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
 
+    $PSBoundParameters.Add('Name', $PSBoundParameters.Service)
+    $null = $PSBoundParameters.Remove('Service')
     try
     {
         Get-ADTServiceStartMode @PSBoundParameters
@@ -2348,6 +2425,8 @@ function Set-ServiceStartMode
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
 
+    $PSBoundParameters.Add('Name', $PSBoundParameters.Service)
+    $null = $PSBoundParameters.Remove('Service')
     try
     {
         Set-ADTServiceStartMode @PSBoundParameters
@@ -2629,6 +2708,11 @@ function Execute-MSP
     Set-StrictMode -Version 3
 
     Write-ADTLogEntry -Message "The function [$($MyInvocation.MyCommand.Name)] has been replaced by [Start-ADTMspProcess]. Please migrate your scripts to use the new function." -Severity Warning -DebugMessage:$noDepWarnings
+    if ($PSBoundParameters.ContainsKey('AddParameters'))
+    {
+        $PSBoundParameters.Add('AdditionalArgumentList', $PSBoundParameters.AddParameters)
+        $null = $PSBoundParameters.Remove('AddParameters')
+    }
     try
     {
         Start-ADTMspProcess @PSBoundParameters
@@ -2683,6 +2767,8 @@ function Block-AppExecution
     Set-StrictMode -Version 3
 
     Write-ADTLogEntry -Message "The function [$($MyInvocation.MyCommand.Name)] has been replaced by [Block-ADTAppExecution]. Please migrate your scripts to use the new function." -Severity Warning -DebugMessage:$noDepWarnings
+    $PSBoundParameters.Add('Processes', $PSBoundParameters.ProcessName)
+    $null = $PSBoundParameters.Remove('ProcessName')
     try
     {
         Block-ADTAppExecution @PSBoundParameters
@@ -2948,6 +3034,8 @@ function Start-ServiceAndDependencies
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
 
+    $PSBoundParameters.Add('Name', $PSBoundParameters.Service)
+    $null = $PSBoundParameters.Remove('Service')
     try
     {
         Start-ADTServiceAndDependencies @PSBoundParameters
@@ -3024,6 +3112,8 @@ function Stop-ServiceAndDependencies
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
 
+    $PSBoundParameters.Add('Name', $PSBoundParameters.Service)
+    $null = $PSBoundParameters.Remove('Service')
     try
     {
         Stop-ADTServiceAndDependencies @PSBoundParameters
@@ -3091,6 +3181,8 @@ function Set-RegistryKey
     {
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Key)
+    $null = $PSBoundParameters.Remove('Key')
     try
     {
         Set-ADTRegistryKey @PSBoundParameters
@@ -3150,6 +3242,8 @@ function Remove-RegistryKey
     {
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Key)
+    $null = $PSBoundParameters.Remove('Key')
     try
     {
         Remove-ADTRegistryKey @PSBoundParameters
@@ -3290,6 +3384,8 @@ function Get-RegistryKey
     {
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Key)
+    $null = $PSBoundParameters.Remove('Key')
     try
     {
         Get-ADTRegistryKey @PSBoundParameters
@@ -3324,6 +3420,8 @@ function Install-MSUpdates
     Set-StrictMode -Version 3
 
     Write-ADTLogEntry -Message "The function [$($MyInvocation.MyCommand.Name)] has been replaced by [Install-ADTMSUpdates]. Please migrate your scripts to use the new function." -Severity Warning -DebugMessage:$noDepWarnings
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Directory)
+    $null = $PSBoundParameters.Remove('Directory')
     try
     {
         Install-ADTMSUpdates @PSBoundParameters
@@ -3624,6 +3722,8 @@ function Remove-Folder
     {
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Path)
+    $null = $PSBoundParameters.Remove('Path')
     try
     {
         Remove-ADTFolder @PSBoundParameters
@@ -3706,13 +3806,18 @@ function Set-ActiveSetup
     {
         $null = $PSBoundParameters.Remove('ContinueOnError')
     }
-    if ($StubExePath.EndsWith('.ps1'))
+    if ([System.IO.Path]::GetExtension($StubExePath) -eq '.ps1')
     {
         $PSBoundParameters.Add('ExecutionPolicy', [Microsoft.PowerShell.ExecutionPolicy]::Bypass)
     }
     if (!$ContinueOnError)
     {
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
+    }
+    if ($PSBoundParameters.ContainsKey('Arguments'))
+    {
+        $PSBoundParameters.Add('ArgumentList', $PSBoundParameters.Arguments)
+        $null = $PSBoundParameters.Remove('Arguments')
     }
     try
     {
@@ -3789,6 +3894,8 @@ function Set-ItemPermission
     {
         $PSBoundParameters.Method = $PSBoundParameters.Method -replace '^(Add|Set|Reset|Remove)(Specific|All)?$', '$1AccessRule$2'
     }
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Path)
+    $null = $PSBoundParameters.Remove('Path')
     try
     {
         Set-ADTItemPermission @PSBoundParameters
@@ -4004,6 +4111,11 @@ function Send-Keys
         $PSBoundParameters.Add('WaitDuration', $WaitSeconds)
         $null = $PSBoundParameters.Remove('WaitSeconds')
     }
+    if ($PSBoundParameters.ContainsKey('GetAllWindowTitles'))
+    {
+        Write-ADTLogEntry -Message "The parameter '-GetAllWindowTitles' is discontinued and no longer has any effect." -Severity Warning -Source $MyInvocation.MyCommand.Name
+        $null = $PSBoundParameters.Remove('GetAllWindowTitles')
+    }
     try
     {
         Send-ADTKeys @PSBoundParameters
@@ -4048,6 +4160,8 @@ function Get-Shortcut
     {
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Path)
+    $null = $PSBoundParameters.Remove('Path')
     try
     {
         Get-ADTShortcut @PSBoundParameters
@@ -4138,42 +4252,48 @@ function Set-Shortcut
             $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
         }
 
-        # Set up collector for piped in path objects.
-        $paths = [System.Collections.Generic.List[System.String]]::new()
+        # v3 treated these values as "leave unchanged", which v4 expresses by not binding the parameter.
+        if ($PSBoundParameters.ContainsKey('WindowStyle') -and ($WindowStyle -eq 'DontChange'))
+        {
+            $null = $PSBoundParameters.Remove('WindowStyle')
+        }
+        if ($PSBoundParameters.ContainsKey('RunAsAdmin') -and ($null -eq $RunAsAdmin))
+        {
+            $null = $PSBoundParameters.Remove('RunAsAdmin')
+        }
     }
 
     process
     {
-        # Add all paths to the collector.
-        if ($PSCmdlet.ParameterSetName.Equals('Default'))
+        # Get the path for this pipeline item.
+        $shortcutPath = if ($PSCmdlet.ParameterSetName.Equals('Pipeline'))
         {
-            $paths.Add($Path)
-        }
-        elseif ($PSCmdlet.ParameterSetName.Equals('Pipeline') -and $PathHash.ContainsKey('Path') -and ![System.String]::IsNullOrWhiteSpace($PathHash.Path))
-        {
-            $paths.Add($PathHash.Path)
-        }
-    }
-
-    end
-    {
-        # Process provided paths if we have any.
-        if ($paths.Count)
-        {
-            try
+            if ($PathHash.ContainsKey('Path'))
             {
-                if ($PSBoundParameters.ContainsKey('Path'))
-                {
-                    $null = $PSBoundParameters.Remove('Path')
-                }
-                $paths | Set-ADTShortcut @PSBoundParameters
+                $PathHash.Path
             }
-            catch
+        }
+        else
+        {
+            $Path
+        }
+        if ([System.String]::IsNullOrWhiteSpace($shortcutPath))
+        {
+            return
+        }
+
+        # Set the shortcut.
+        try
+        {
+            $null = $PSBoundParameters.Remove('Path')
+            $null = $PSBoundParameters.Remove('PathHash')
+            Set-ADTShortcut -LiteralPath $shortcutPath @PSBoundParameters
+        }
+        catch
+        {
+            if (!$ContinueOnError)
             {
-                if (!$ContinueOnError)
-                {
-                    $PSCmdlet.ThrowTerminatingError($_)
-                }
+                $PSCmdlet.ThrowTerminatingError($_)
             }
         }
     }
@@ -4233,7 +4353,7 @@ function New-Shortcut
 
         [Parameter(Mandatory = $false)]
         [ValidateNotNullOrEmpty()]
-        [System.Nullable]$ContinueOnError = $true
+        [System.Nullable[System.Boolean]]$ContinueOnError = $true
     )
 
     # Set strict mode to the highest within this function's scope.
@@ -4249,6 +4369,8 @@ function New-Shortcut
     {
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Path)
+    $null = $PSBoundParameters.Remove('Path')
     try
     {
         New-ADTShortcut @PSBoundParameters
@@ -4358,7 +4480,7 @@ function Execute-ProcessAsUser
     {
         if (($res = Start-ADTProcessAsUser @PSBoundParameters) -and $PassThru)
         {
-            return $res.Result
+            return $res
         }
     }
     catch
@@ -4443,32 +4565,13 @@ function ConvertTo-NTAccountOrSID
 
         # Announce overall deprecation and any dead parameters before executing.
         Write-ADTLogEntry -Message "The function [$($MyInvocation.MyCommand.Name)] has been replaced by [ConvertTo-ADTNTAccountOrSID]. Please migrate your scripts to use the new function." -Severity Warning -DebugMessage:$noDepWarnings
-
-        # Set up collector for pipelined input.
-        $pipedInput = [System.Collections.Generic.List[System.String]]::new()
     }
 
     process
     {
-        # Only add non-null strings to our collector.
-        if (![System.String]::IsNullOrWhiteSpace(($thisInput = Get-Variable -Name $PSCmdlet.ParameterSetName -ValueOnly)))
-        {
-            $pipedInput.Add($thisInput)
-        }
-    }
-
-    end
-    {
-        # Only proceed if we have collected input.
-        if (!$pipedInput.Count)
-        {
-            return
-        }
-
         try
         {
-            $null = $PSBoundParameters.Remove($PSCmdlet.ParameterSetName)
-            $pipedInput | ConvertTo-ADTNTAccountOrSID @PSBoundParameters
+            ConvertTo-ADTNTAccountOrSID @PSBoundParameters
         }
         catch
         {
@@ -4600,6 +4703,8 @@ function Get-MsiTableProperty
     {
         $PSBoundParameters.ErrorAction = [System.Management.Automation.ActionPreference]::Stop
     }
+    $PSBoundParameters.Add('LiteralPath', $PSBoundParameters.Path)
+    $null = $PSBoundParameters.Remove('Path')
     try
     {
         Get-ADTMsiTableProperty @PSBoundParameters
@@ -5182,6 +5287,12 @@ if ($sessionParams.ContainsKey('AppScriptDate'))
     }
 }
 
+# Disable process detection otherwise all v3 deployments would revert to silent since they do not define processes to close at the session level.
+if (!$sessionParams.ContainsKey('NoProcessDetection'))
+{
+    $sessionParams.Add('NoProcessDetection', $true)
+}
+
 # Redefine DeployAppScriptParameters due bad casting in Deploy-Application.ps1.
 if ($sessionParams.ContainsKey('DeployAppScriptParameters'))
 {
@@ -5189,7 +5300,7 @@ if ($sessionParams.ContainsKey('DeployAppScriptParameters'))
 }
 
 # Open a new deployment session.
-Open-ADTSession -SessionState $ExecutionContext.SessionState @sessionParams
+Open-ADTSession -DeployAppScriptSessionState $ExecutionContext.SessionState @sessionParams
 
 # Define aliases for some functions to maintain backwards compatibility.
 New-Alias -Name Refresh-SessionEnvironmentVariables -Value Update-SessionEnvironmentVariables -Option ReadOnly -Force
