@@ -250,11 +250,11 @@ namespace PSADT.ClientServer
                 using (ClientPipeEncryption ioEncryption = new())
                 using (ClientPipeEncryption logEncryption = new())
                 {
-                    // Perform ECDH key exchange for encrypted communication.
+                    // Perform ECDH key exchange for encrypted communication, on a thread of its own as each step waits on the server.
                     try
                     {
-                        await ioEncryption.PerformKeyExchangeAsync(outputPipeClient, inputPipeClient).ConfigureAwait(false);
-                        await logEncryption.PerformKeyExchangeAsync(outputPipeClient, inputPipeClient).ConfigureAwait(false);
+                        await ioEncryption.PerformKeyExchangeOnOwnThreadAsync(outputPipeClient, inputPipeClient).ConfigureAwait(false);
+                        await logEncryption.PerformKeyExchangeOnOwnThreadAsync(outputPipeClient, inputPipeClient).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -315,8 +315,9 @@ namespace PSADT.ClientServer
                         {
                             try
                             {
-                                // Read and decrypt the request: [1-byte command][serialized payload]
-                                byte[] requestBytes = await ioEncryption.ReadEncryptedAsync(inputPipeClient).ConfigureAwait(false);
+                                // Read and decrypt the request: [1-byte command][serialized payload]. The wait lasts until the server's
+                                // next command, so it is made on a thread of its own rather than parking one of the default pool's.
+                                byte[] requestBytes = await ioEncryption.ReadEncryptedOnOwnThreadAsync(inputPipeClient).ConfigureAwait(false);
                                 if (requestBytes.Length is 0)
                                 {
                                     throw new ClientException("Received empty request from server.", ClientExitCode.InvalidRequest);
@@ -360,7 +361,19 @@ namespace PSADT.ClientServer
                                                     // Start gracefully closing each open window.
                                                     foreach (WindowInfo window in windows)
                                                     {
-                                                        Process process = Process.GetProcessById((int)window.ParentProcessId);
+                                                        // If we can't get the process, the window has closed.
+                                                        Process process;
+                                                        try
+                                                        {
+                                                            process = Process.GetProcessById((int)window.ParentProcessId);
+                                                        }
+                                                        catch (Exception)
+                                                        {
+                                                            continue;
+                                                            throw;
+                                                        }
+
+                                                        // Bring the window to the front and attempt to close out it.
                                                         await closeAppsDialogState.LogAction($"Closing window with title [{window.WindowTitle}] for process [{process.ProcessName}], prompting to save if necessary.", LogSeverity.Info).ConfigureAwait(false);
                                                         try
                                                         {
@@ -373,8 +386,6 @@ namespace PSADT.ClientServer
                                                             continue;
                                                             throw;
                                                         }
-
-                                                        // Attempt to close out the process's main window.
                                                         try
                                                         {
                                                             if (!process.CloseMainWindow())
@@ -416,7 +427,7 @@ namespace PSADT.ClientServer
                                                     foreach (Process process in runningProcesses)
                                                     {
                                                         await closeAppsDialogState.LogAction($"Stopping process {process.ProcessName}...", LogSeverity.Info).ConfigureAwait(false);
-                                                        if (!process.HasExited)
+                                                        if (!ProcessUtilities.HasProcessExited(process))
                                                         {
                                                             process.Kill(); await process.WaitForExitAsync(default).ConfigureAwait(false);
                                                         }
@@ -619,8 +630,10 @@ namespace PSADT.ClientServer
                     return (int)ClientExitCode.Success;
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not ClientException)
             {
+                // A ClientException already carries the exit code that names the failure (e.g. the key exchange), so let
+                // it pass through rather than rewrapping it and reporting every failure here as a generic pipe error.
                 throw new ClientException("Failed to read or write from the pipe.", ClientExitCode.PipeReadWriteError, ex);
             }
         }
@@ -830,9 +843,9 @@ namespace PSADT.ClientServer
                         throw new ClientException("Brokering of the Local System session token is not permitted.", ClientExitCode.InvalidArguments);
                     }
 
-                    // Connect to the named pipe server.
+                    // Connect to the named pipe server, bound the connect with the same timeout the server waits for us.
                     using NamedPipeClientStream pipe = new(".", pipeName, PipeDirection.InOut, PipeOptions.None);
-                    await pipe.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
+                    await pipe.ConnectAsync((int)ClientServerUtilities.ClientOperationTimeout.TotalMilliseconds, CancellationToken.None).ConfigureAwait(false);
 
                     // Duplicate the token to the specified process ID.
                     SafeFileHandle hDupToken;

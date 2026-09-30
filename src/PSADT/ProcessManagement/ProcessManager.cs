@@ -50,7 +50,8 @@ namespace PSADT.ProcessManagement
         /// style, user context, input/output redirection, process priority, and other process control options. Cannot
         /// be null.</param>
         /// <returns>A ProcessHandle object that provides access to the launched process and its associated asynchronous task, or
-        /// null if the process could not be started.</returns>
+        /// null if the launch was a pure shell action that created no process, such as a document handed to a running
+        /// application. A launch that fails throws rather than returning null.</returns>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="launchInfo"/> is null.</exception>
         public static ProcessHandle? LaunchAsync(ProcessLaunchInfo launchInfo)
         {
@@ -79,13 +80,24 @@ namespace PSADT.ProcessManagement
         {
             // Launch the process using the CreateProcess API and return a handle to the caller.
             ReadOnlyCollection<SE_PRIVILEGE> callerPrivileges = PrivilegeManager.GetPrivileges();
-            (SafeProcessHandle hProcess, SafeThreadHandle hThread, uint dwProcessId, string commandLine) = CreateProcessApi.CreateProcess(launchInfo, callerPrivileges, out (ProcessReadStream StdOutHandle, ProcessReadStream StdErrHandle, IReadOnlyCollection<string> InterleavedBuffer)? stdOutErrHandles, out ProcessWriteStream? stdInHandle);
+            (SafeProcessHandle hProcess, SafeThreadHandle hThread, uint dwProcessId, string commandLine, bool ownsDebugObject) = CreateProcessApi.CreateProcess(launchInfo, callerPrivileges, out (ProcessReadStream StdOut, ProcessReadStream StdErr, IReadOnlyCollection<string> InterleavedBuffer)? stdOutErrHandles, out ProcessWriteStream? stdInHandle);
             bool resumed = false;
             try
             {
+                // The debug flag has bypassed IFEO by now, and the process can't run while it remains a debuggee of this thread.
                 if (launchInfo.BypassIfeo)
                 {
-                    _ = NativeMethods.DebugActiveProcessStop(dwProcessId);
+                    try
+                    {
+                        _ = NativeMethods.DebugActiveProcessStop(dwProcessId);
+                    }
+                    finally
+                    {
+                        if (ownsDebugObject)
+                        {
+                            ReleaseDebugObject();
+                        }
+                    }
                 }
                 return new(launchInfo, hProcess, dwProcessId, commandLine, callerPrivileges, stdOutErrHandles, stdInHandle, () =>
                 {
@@ -98,8 +110,8 @@ namespace PSADT.ProcessManagement
             }
             catch (Exception ex)
             {
-                using (stdOutErrHandles?.StdOutHandle)
-                using (stdOutErrHandles?.StdErrHandle)
+                using (stdOutErrHandles?.StdOut)
+                using (stdOutErrHandles?.StdErr)
                 using (stdInHandle)
                 using (hProcess)
                 using (hThread)
@@ -187,16 +199,35 @@ namespace PSADT.ProcessManagement
         }
 
         /// <summary>
+        /// Releases the calling thread's debug object once a launch that bypassed image file execution options is over,
+        /// which also ends a process still attached to it, as the object was created to kill what it holds when closed.
+        /// </summary>
+        /// <remarks>CreateProcess leaves the object in the creating thread's environment block, where it would otherwise stay for the life of the
+        /// thread. It is only for an object the launch created: CreateProcess attaches to one the thread already has, and closing that would end
+        /// everything else attached to it.</remarks>
+        private static void ReleaseDebugObject()
+        {
+            HANDLE debugObject = NativeMethods.DbgUiGetThreadDebugObject();
+            if (!debugObject.IsNull)
+            {
+                NativeMethods.DbgUiSetThreadDebugObject(HANDLE.Null);
+                using SafeFileHandle handle = new(debugObject, ownsHandle: true);
+            }
+        }
+
+        /// <summary>
         /// Contains helper methods for creating processes using the Windows CreateProcess API.
         /// </summary>
         private static class CreateProcessApi
         {
-            [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "This is a false positive, we're directly consuming the ValueTask.")]
             [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits", Justification = "We cannot refactor this method to be async at this stage.")]
+            [System.Diagnostics.CodeAnalysis.SuppressMessage("Critical Code Smell", "S5034:\"ValueTask\" should be consumed correctly", Justification = "https://github.com/SonarSource/sonar-dotnet/issues/6779")]
             [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0045:Do not use blocking calls, even when the calling method must become async", Justification = "VSTHRD002")]
-            internal static (SafeProcessHandle, SafeThreadHandle, uint, string) CreateProcess(ProcessLaunchInfo launchInfo, ReadOnlyCollection<SE_PRIVILEGE> callerPrivileges, out (ProcessReadStream StdOut, ProcessReadStream StdErr, IReadOnlyCollection<string> InterleavedBuffer)? stdOutErrHandles, out ProcessWriteStream? stdInHandle)
+            internal static (SafeProcessHandle, SafeThreadHandle, uint, string, bool) CreateProcess(ProcessLaunchInfo launchInfo, ReadOnlyCollection<SE_PRIVILEGE> callerPrivileges, out (ProcessReadStream StdOut, ProcessReadStream StdErr, IReadOnlyCollection<string> InterleavedBuffer)? stdOutErrHandles, out ProcessWriteStream? stdInHandle)
             {
-                // Perform initial setup and get started with the process creation.
+                // Perform initial setup and get started with the process creation. Only a debug object this launch creates is released
+                // afterwards, by the caller or here on failure, as CreateProcess attaches the process to one the thread already has.
+                bool ownsDebugObject = launchInfo.BypassIfeo && NativeMethods.DbgUiGetThreadDebugObject().IsNull;
                 stdOutErrHandles = null; stdInHandle = null;
                 try
                 {
@@ -262,7 +293,7 @@ namespace PSADT.ProcessManagement
                         {
                             throw new NotSupportedException("Cannot retrieve the necessary user token as no acquisition route is available in this execution context.");
                         }
-                        using SafeFileHandle hPrimaryToken = TokenManager.GetUserPrimaryTokenAsync(launchInfo.RunAsActiveUser, launchInfo.ElevatedTokenType ?? ElevatedTokenType.None, launchInfo.UIAccess).ConfigureAwait(false).GetAwaiter().GetResult();
+                        using SafeFileHandle hPrimaryToken = TokenManager.GetUserPrimaryTokenAsync(launchInfo.RunAsActiveUser, launchInfo.ElevatedTokenType ?? ElevatedTokenType.None, launchInfo.UIAccess).AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
                         _ = NativeMethods.CreateEnvironmentBlock(out SafeEnvironmentBlockHandle lpEnvironment, hPrimaryToken, launchInfo.InheritEnvironmentVariables);
                         using (lpEnvironment)
                         {
@@ -287,7 +318,7 @@ namespace PSADT.ProcessManagement
                         {
                             throw new NotSupportedException("Cannot retrieve the necessary user token as no acquisition route is available in this execution context.");
                         }
-                        using SafeFileHandle hPrimaryToken = TokenManager.GetUserPrimaryTokenAsync(AccountUtilities.CallerRunAsActiveUser, launchInfo.ElevatedTokenType ?? ElevatedTokenType.HighestMandatory, launchInfo.UIAccess).ConfigureAwait(false).GetAwaiter().GetResult();
+                        using SafeFileHandle hPrimaryToken = TokenManager.GetUserPrimaryTokenAsync(AccountUtilities.CallerRunAsActiveUser, launchInfo.ElevatedTokenType ?? ElevatedTokenType.HighestMandatory, launchInfo.UIAccess).AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
                         _ = CreateProcessUsingToken(hPrimaryToken, callerPrivileges, launchInfo.FilePath, ref commandSpan, handlesToInherit, hasExternalHandles, creationFlags, lpEnvironment: null, launchInfo.WorkingDirectory?.FullName, launchInfo.RunAsInvoker, in startupInfo, out pi);
                     }
                     else
@@ -307,7 +338,7 @@ namespace PSADT.ProcessManagement
                             _ = NativeMethods.CreateProcess(launchInfo.FilePath, ref commandSpan, lpProcessAttributes: null, lpThreadAttributes: null, bInheritHandles: false, creationFlags, lpEnvironment: null, launchInfo.WorkingDirectory?.FullName, in startupInfo, out pi);
                         }
                     }
-                    return (new(pi.hProcess, ownsHandle: true), new(pi.hThread, ownsHandle: true), pi.dwProcessId, commandSpan.ToString());
+                    return (new(pi.hProcess, ownsHandle: true), new(pi.hThread, ownsHandle: true), pi.dwProcessId, commandSpan.ToString(), ownsDebugObject);
                 }
                 catch (Exception ex)
                 {
@@ -315,6 +346,10 @@ namespace PSADT.ProcessManagement
                     using (stdOutErrHandles?.StdErr)
                     using (stdInHandle)
                     {
+                        if (ownsDebugObject)
+                        {
+                            ReleaseDebugObject();
+                        }
                         ExceptionDispatchInfo.Capture(ex).Throw();
                         throw;
                     }
@@ -328,25 +363,31 @@ namespace PSADT.ProcessManagement
             }
 
             /// <summary>
-            /// Creates a read pipe server stream and a corresponding task that consumes output from the child process.
+            /// Creates a read pipe server stream and a task, run on a thread of its own, that consumes output from the child process.
             /// </summary>
+            /// <remarks>An anonymous pipe has no overlapped mode, so an asynchronous read would only park a thread-pool thread
+            /// in ReadFile for the life of the process. A dedicated thread costs the same and starves nothing.</remarks>
             /// <param name="interleaved">The shared interleaved output buffer.</param>
             /// <param name="encoding">The text encoding for the stream.</param>
-            /// <returns>The server stream, client handle, and read task.</returns>
+            /// <returns>The client handle for the process to write to, and the stream reading what it writes.</returns>
+            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0045:Do not use blocking calls, even when the calling method must become async", Justification = "The read is meant to block: an anonymous pipe has no overlapped mode, so the asynchronous read would only block a thread-pool thread, and this thread is the pipe's own.")]
             private static (HANDLE, ProcessReadStream) CreateReadPipe(ConcurrentQueue<string> interleaved, Encoding encoding)
             {
                 AnonymousPipeServerStream stream = new(PipeDirection.In, HandleInheritability.Inheritable);
-                List<string> output = [];
+                ConcurrentQueue<string> output = [];
                 async Task ReadToEndAsync()
                 {
                     using (stream)
                     {
-                        using StreamReader reader = new(new EndOfStreamLatchingStream(stream), encoding);
-                        while ((await reader.ReadLineAsync(default).ConfigureAwait(false))?.TrimEnd() is string line)
+                        await Task.Factory.StartNew(() =>
                         {
-                            interleaved.Enqueue(line);
-                            output.Add(line);
-                        }
+                            using StreamReader reader = new(new EndOfStreamLatchingStream(stream), encoding);
+                            while (reader.ReadLine()?.TrimEnd() is string line)
+                            {
+                                interleaved.Enqueue(line);
+                                output.Enqueue(line);
+                            }
+                        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
                     }
                 }
                 try
@@ -364,11 +405,13 @@ namespace PSADT.ProcessManagement
             }
 
             /// <summary>
-            /// Creates a write pipe server stream and a corresponding task that writes stdin data to the child process.
+            /// Creates a write pipe server stream and a task, run on a thread of its own, that writes stdin data to the child process.
             /// </summary>
+            /// <remarks>A write blocks whenever the pipe is full and the process is slow to read, so it is kept off the thread pool for the same reason as a read.</remarks>
             /// <param name="input">The input lines to write.</param>
             /// <param name="encoding">The text encoding for the stream.</param>
-            /// <returns>The server stream, client handle, and write task.</returns>
+            /// <returns>The client handle for the process to read from, and the stream writing to it.</returns>
+            [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0045:Do not use blocking calls, even when the calling method must become async", Justification = "The write is meant to block: it waits on the process reading a full pipe, and this thread is the pipe's own rather than one of the pool's.")]
             private static (HANDLE, ProcessWriteStream) CreateWritePipe(IReadOnlyList<string> input, Encoding encoding)
             {
                 AnonymousPipeServerStream stream = new(PipeDirection.Out, HandleInheritability.Inheritable);
@@ -376,25 +419,27 @@ namespace PSADT.ProcessManagement
                 {
                     using (stream)
                     {
-                        try
+                        await Task.Factory.StartNew(() =>
                         {
-                            using StreamWriter writer = new(stream, encoding.GetPreamble().Length is 0 ? encoding : encoding switch
+                            try
                             {
-                                UTF8Encoding => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-                                UnicodeEncoding => new UnicodeEncoding(bigEndian: encoding.CodePage is 1201, byteOrderMark: false),
-                                UTF32Encoding => new UTF32Encoding(bigEndian: encoding.CodePage is 12001, byteOrderMark: false),
-                                _ => encoding,
-                            });
-                            foreach (string line in input)
-                            {
-                                await writer.WriteLineAsync(line).ConfigureAwait(false);
+                                using StreamWriter writer = new(stream, encoding.GetPreamble().Length is 0 ? encoding : encoding switch
+                                {
+                                    UTF8Encoding => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                                    UnicodeEncoding => new UnicodeEncoding(bigEndian: encoding.CodePage is 1201, byteOrderMark: false),
+                                    UTF32Encoding => new UTF32Encoding(bigEndian: encoding.CodePage is 12001, byteOrderMark: false),
+                                    _ => encoding,
+                                });
+                                foreach (string line in input)
+                                {
+                                    writer.WriteLine(line);
+                                }
                             }
-                        }
-                        catch (IOException)
-                        {
-                            // The child process didn't read all input before exiting.
-                            return;
-                        }
+                            catch (IOException)
+                            {
+                                // The child process didn't read all input before exiting.
+                            }
+                        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
                     }
                 }
                 try
@@ -738,7 +783,7 @@ namespace PSADT.ProcessManagement
             /// </summary>
             /// <param name="launchInfo">The launch to perform.</param>
             /// <returns>The process handle the shell returned, or null for a pure shell action, and whether the process was held suspended.</returns>
-            internal static (SafeProcessHandle? hProcess, bool suspended) ShellExecuteEx(ProcessLaunchInfo launchInfo)
+            internal static (SafeProcessHandle?, bool) ShellExecuteEx(ProcessLaunchInfo launchInfo)
             {
                 if (Thread.CurrentThread.GetApartmentState() is ApartmentState.STA)
                 {
@@ -774,10 +819,11 @@ namespace PSADT.ProcessManagement
             /// <returns>The process handle the shell returned, or null for a pure shell action, and whether the process was held suspended.</returns>
             /// <exception cref="NotSupportedException">Thrown if image file execution options are to be bypassed for a launch the shell performs through DDE, which cannot be held for the debugger to be detached.</exception>
             /// <exception cref="InvalidOperationException">Thrown if the shell created its process without the flags it was asked to add, or held it suspended but returned no handle to resume it with.</exception>
-            private static (SafeProcessHandle? hProcess, bool suspended) ShellExecuteExImpl(ProcessLaunchInfo launchInfo)
+            private static (SafeProcessHandle?, bool) ShellExecuteExImpl(ProcessLaunchInfo launchInfo)
             {
-                // The shell waits inside the call for a DDE conversation, which a process that is suspended or debugged can never answer.
-                bool dde = HasDdeCommand(launchInfo);
+                // The shell waits inside the call for a DDE conversation, which a process that is suspended or debugged
+                // can never answer, so the question is only asked when the launch would hold or debug the process.
+                bool dde = (launchInfo.BypassIfeo || launchInfo.RequiresJobObject || launchInfo.DenyUserTermination) && HasDdeCommand(launchInfo);
                 if (dde && launchInfo.BypassIfeo)
                 {
                     throw new NotSupportedException("Cannot bypass image file execution options for a launch the shell performs through DDE.");
@@ -789,8 +835,8 @@ namespace PSADT.ProcessManagement
                     (!dde && (launchInfo.RequiresJobObject || launchInfo.DenyUserTermination) ? PROCESS_CREATION_FLAGS.CREATE_SUSPENDED : 0) |
                     (launchInfo.BypassIfeo ? PROCESS_CREATION_FLAGS.DEBUG_ONLY_THIS_PROCESS : 0) |
                     PROCESS_CREATION_FLAGS.CREATE_SEPARATE_WOW_VDM;
-                CreatingProcessSite site = new(creationFlags);
-                nint siteUnknown = Marshal.GetIUnknownForObject(site);
+                CreatingProcessSite site = new(creationFlags); nint siteUnknown = Marshal.GetIUnknownForObject(site);
+                bool ownsDebugObject = launchInfo.BypassIfeo && NativeMethods.DbgUiGetThreadDebugObject().IsNull;
                 SHELLEXECUTEINFOW execInfo = new()
                 {
                     fMask = SEE_MASK_FLAGS.SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAGS.SEE_MASK_FLAG_NO_UI | SEE_MASK_FLAGS.SEE_MASK_FLAG_DDEWAIT | SEE_MASK_FLAGS.SEE_MASK_FLAG_HINST_IS_SITE,
@@ -820,48 +866,72 @@ namespace PSADT.ProcessManagement
                         }
                     }
                 }
+                catch (Exception ex)
+                {
+                    // A call that failed can still have created the thread's debug object, as the shell tries CreateProcess itself first.
+                    if (ownsDebugObject)
+                    {
+                        ReleaseDebugObject();
+                    }
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    throw;
+                }
                 finally
                 {
                     _ = Marshal.Release(siteUnknown);
                 }
 
-                // Verify the state of the handle we received back and ensure it's valid.
+                // Verify the state of the handle we received back and ensure it's valid. A debug object the launch created is released
+                // however the launch ends from here, as the shell's own attempt leaves one behind even when AppInfo took over.
                 SafeProcessHandle? hProcess = !execInfo.hProcess.IsNull ? new(execInfo.hProcess, ownsHandle: true) : null;
-                if (!site.Invoked)
+                try
                 {
-                    return (hProcess, false);
-                }
-                if (!site.Applied)
-                {
-                    using (hProcess)
+                    if (site.Invoked)
                     {
-                        if (hProcess is not null)
+                        if (!site.Applied)
                         {
-                            TerminateFailedLaunch(hProcess);
+                            using (hProcess)
+                            {
+                                if (hProcess is not null)
+                                {
+                                    TerminateFailedLaunch(hProcess);
+                                }
+                                throw new InvalidOperationException("The shell created the process without the flags it was asked to add.", site.Failure);
+                            }
                         }
-                        throw new InvalidOperationException("The shell created the process without the flags it was asked to add.", site.Failure);
-                    }
-                }
-                if (site.Suspended && hProcess is null)
-                {
-                    throw new InvalidOperationException("The shell created a suspended process but returned no handle to it.");
-                }
+                        if (site.Suspended && hProcess is null)
+                        {
+                            throw new InvalidOperationException("The shell created a suspended process but returned no handle to it.");
+                        }
 
-                // The debug flag has bypassed IFEO by now, and the process can't run while it remains a debuggee of this thread.
-                if (launchInfo.BypassIfeo && hProcess is not null)
-                {
-                    try
-                    {
-                        _ = NativeMethods.DebugActiveProcessStop(NativeMethods.GetProcessId(hProcess));
-                    }
-                    catch (Exception ex)
-                    {
-                        using (hProcess)
+                        // The debug flag has bypassed IFEO by now, and the process can't run while it remains a debuggee of this thread.
+                        if (launchInfo.BypassIfeo)
                         {
-                            TerminateFailedLaunch(hProcess);
-                            ExceptionDispatchInfo.Capture(ex).Throw();
-                            throw;
+                            if (hProcess is null)
+                            {
+                                throw new InvalidOperationException("The shell created a process to bypass IFEO for but returned no handle to detach from it.");
+                            }
+                            try
+                            {
+                                _ = NativeMethods.DebugActiveProcessStop(NativeMethods.GetProcessId(hProcess));
+                            }
+                            catch (Exception ex)
+                            {
+                                using (hProcess)
+                                {
+                                    TerminateFailedLaunch(hProcess);
+                                    ExceptionDispatchInfo.Capture(ex).Throw();
+                                    throw;
+                                }
+                            }
                         }
+                    }
+                }
+                finally
+                {
+                    if (ownsDebugObject)
+                    {
+                        ReleaseDebugObject();
                     }
                 }
                 return (hProcess, site.Suspended);
@@ -876,7 +946,7 @@ namespace PSADT.ProcessManagement
             private static bool HasDdeCommand(ProcessLaunchInfo launchInfo)
             {
                 // The shell resolves a URL by its scheme and anything else by its extension, under the verb it will run. With no verb given it picks the type's default verb, as the shell itself would.
-                (ASSOCF flags, string association) = GetAssociation(launchInfo.FilePath);
+                (ASSOCF flags, string association) = GetAssociation(launchInfo.FilePath, launchInfo.WorkingDirectory);
                 return !string.IsNullOrWhiteSpace(association) && NativeMethods.AssocQueryString(flags, ASSOCSTR.ASSOCSTR_DDECOMMAND, association, launchInfo.Verb, default, out _) == HRESULT.S_FALSE;
             }
 
@@ -884,14 +954,19 @@ namespace PSADT.ProcessManagement
             /// Gets the association the shell would launch a target under, following a shortcut to what it points at.
             /// </summary>
             /// <param name="target">The file, URL or shortcut to be launched.</param>
+            /// <param name="workingDirectory">The launch's working directory, where the shell looks for a relative target.</param>
             /// <returns>Whether the association is a protocol, and its scheme or extension.</returns>
-            private static (ASSOCF flags, string association) GetAssociation(string target)
+            private static (ASSOCF, string) GetAssociation(string target, DirectoryInfo? workingDirectory)
             {
                 // The shell launches a shortcut as its target, and collapses a shortcut to a shortcut when it saves one, so one level is all there is.
-                if (".lnk".Equals(Path.GetExtension(target), StringComparison.OrdinalIgnoreCase) && File.Exists(target))
+                if (".lnk".Equals(Path.GetExtension(target), StringComparison.OrdinalIgnoreCase))
                 {
-                    using ShellLinkFile shortcut = ShellLinkFile.Load(target);
-                    target = shortcut.TargetPath;
+                    string shortcutPath = Path.IsPathRooted(target) || workingDirectory is null ? target : Path.Join(workingDirectory.FullName, target);
+                    if (File.Exists(shortcutPath))
+                    {
+                        using ShellLinkFile shortcut = ShellLinkFile.Load(shortcutPath);
+                        target = shortcut.TargetPath;
+                    }
                 }
                 return Uri.TryCreate(target, UriKind.Absolute, out Uri? uri) && !uri.IsFile ? (ASSOCF.ASSOCF_IS_PROTOCOL, uri.Scheme) : (ASSOCF.ASSOCF_NONE, Path.GetExtension(target) ?? string.Empty);
             }

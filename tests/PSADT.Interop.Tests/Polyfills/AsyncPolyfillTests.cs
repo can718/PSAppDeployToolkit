@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PSADT.ProcessManagement;
 using Xunit;
 
 namespace PSADT.Interop.Tests.Polyfills
@@ -247,7 +248,7 @@ namespace PSADT.Interop.Tests.Polyfills
 
             // Act & Assert
             Assert.Null(await Record.ExceptionAsync(() => process.WaitForExitAsync(CancellationToken.None)).ConfigureAwait(true));
-            Assert.True(process.HasExited);
+            Assert.True(ProcessUtilities.HasProcessExited(process));
         }
 
         /// <summary>
@@ -264,7 +265,7 @@ namespace PSADT.Interop.Tests.Polyfills
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(true);
 
             // Assert
-            Assert.True(process.HasExited);
+            Assert.True(ProcessUtilities.HasProcessExited(process));
             Assert.Equal(0, process.ExitCode);
         }
 

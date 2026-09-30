@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using PSADT.ClientServer.Payloads;
@@ -55,40 +56,54 @@ namespace PSADT.ClientServer
         /// <exception cref="ServerException">Thrown if the client process fails to respond to the initial command.</exception>
         public async ValueTask OpenAsync()
         {
-            // Internal task method to handle log messages from the client process asynchronously.
-            async Task ReadLogAsync()
+            // Internal method to handle log messages from the client process on a thread of its own, as an anonymous pipe has no
+            // overlapped mode and the reads would otherwise park a thread-pool thread in ReadFile for the life of the client.
+            void ReadLog()
             {
-                // Read the log stream until cancellation is requested or the end of the stream is reached.
+                // Read the log stream until cancellation is requested, the end of the stream is reached, or the stream fails.
                 ObjectDisposedException.ThrowIf(_disposed, this);
 
-                // Set up the required delegate for ReadLogFrameAsync, materialised to minimise per-loop allocations.
-                ValueTask<byte[]> ReadFrameAsync()
+                // Set up the required delegate for ReadLogFrame, materialised to minimise per-loop allocations. Only the
+                // read can tell a failure of the stream itself from a failure to process a frame, so it flags the former.
+                bool streamFailed = false;
+                byte[] ReadFrame()
                 {
-                    return _logEncryption.ReadEncryptedAsync(_logServer);
+                    try
+                    {
+                        return _logEncryption.ReadEncryptedBlocking(_logServer);
+                    }
+                    catch (Exception ex) when (ex is ObjectDisposedException or (IOException and not EndOfStreamException))
+                    {
+                        streamFailed = true;
+                        ExceptionDispatchInfo.Capture(ex).Throw();
+                        throw;
+                    }
                 }
-                Func<ValueTask<byte[]>> readFrameAsync = ReadFrameAsync;
+                Func<byte[]> readFrame = ReadFrame;
 
-                // Spin until cancellation is requested or we've reached the end of stream.
+                // Keep draining the log stream for the life of the client. A frame that cannot be read or written is
+                // recorded and skipped rather than ending the loop: stopping would leave the stream undrained, and the
+                // client would eventually block writing to it and take the command channel down with it.
                 while (!_logWriterTaskCts.IsCancellationRequested)
                 {
                     try
                     {
-                        await ReadLogFrameAsync(readFrameAsync).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // The log writer task was cancelled, exit the loop.
-                        break;
+                        ReadLogFrame(readFrame);
                     }
                     catch (EndOfStreamException)
                     {
-                        // The log writer task reached the end of the stream, exit the loop.
+                        // The client has gone and there is nothing more to read, exit the loop.
                         break;
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex.Message is not null)
                     {
-                        // Some kind of read issue occurred that was unexpected.
-                        throw new ServerException("An error occurred while reading from the log stream.", ex);
+                        // Record the failure for GetLogWriterException unless an earlier one is unreported, then keep draining so the client
+                        // never blocks. A stream that has itself failed can no longer be drained, so the loop stops instead of spinning.
+                        _ = LazyInitializer.EnsureInitialized(ref _logWriterException, () => ex);
+                        if (streamFailed)
+                        {
+                            break;
+                        }
                     }
                 }
             }
@@ -100,59 +115,62 @@ namespace PSADT.ClientServer
                 throw new InvalidOperationException("The server instance already has an associated client process.");
             }
 
-            // Start the client process using the pipe handles.
+            // Everything from launching the client to confirming it is ready either succeeds together or leaves the
+            // instance unusable, since the client's local handle copies are disposed on the way and cannot be recreated.
             try
             {
-                nint outputServerClientSafePipeHandle = _outputServer.ClientSafePipeHandle.DangerousGetHandle();
-                nint inputServerClientSafePipeHandle = _inputServer.ClientSafePipeHandle.DangerousGetHandle();
-                nint logServerClientSafePipeHandle = _logServer.ClientSafePipeHandle.DangerousGetHandle();
-                _clientProcess = ClientServerUtilities.StartClientOperationAsync(
-                    ["/ClientServer", "-InputPipe", $"{((long)outputServerClientSafePipeHandle).ToString(CultureInfo.InvariantCulture)}", "-OutputPipe", $"{((long)inputServerClientSafePipeHandle).ToString(CultureInfo.InvariantCulture)}", "-LogPipe", $"{((long)logServerClientSafePipeHandle).ToString(CultureInfo.InvariantCulture)}"],
-                    RunAsActiveUser,
-                    [outputServerClientSafePipeHandle, inputServerClientSafePipeHandle, logServerClientSafePipeHandle],
-                    _clientProcessCts.Token
-                );
-            }
-            finally
-            {
-                _outputServer.DisposeLocalCopyOfClientHandle();
-                _inputServer.DisposeLocalCopyOfClientHandle();
-                _logServer.DisposeLocalCopyOfClientHandle();
-            }
-
-            // Perform key exchange for encrypted communication.
-            await _ioEncryption.PerformKeyExchangeAsync(_outputServer, _inputServer).ConfigureAwait(false);
-            await _logEncryption.PerformKeyExchangeAsync(_outputServer, _inputServer).ConfigureAwait(false);
-
-            // Confirm the client starts and is ready to receive commands.
-            bool opened = false;
-            try
-            {
-                if (!(opened = await InvokeAsync<bool>(PipeCommand.Open).ConfigureAwait(false)))
+                // Start the client process using the pipe handles.
+                try
                 {
-                    throw new InvalidProgramException("The opened client process returned an invalid response.");
+                    nint outputServerClientSafePipeHandle = _outputServer.ClientSafePipeHandle.DangerousGetHandle();
+                    nint inputServerClientSafePipeHandle = _inputServer.ClientSafePipeHandle.DangerousGetHandle();
+                    nint logServerClientSafePipeHandle = _logServer.ClientSafePipeHandle.DangerousGetHandle();
+                    _clientProcess = ClientServerUtilities.StartClientOperationAsync(
+                        ["/ClientServer", "-InputPipe", $"{((long)outputServerClientSafePipeHandle).ToString(CultureInfo.InvariantCulture)}", "-OutputPipe", $"{((long)inputServerClientSafePipeHandle).ToString(CultureInfo.InvariantCulture)}", "-LogPipe", $"{((long)logServerClientSafePipeHandle).ToString(CultureInfo.InvariantCulture)}"],
+                        RunAsActiveUser,
+                        [outputServerClientSafePipeHandle, inputServerClientSafePipeHandle, logServerClientSafePipeHandle],
+                        _clientProcessCts.Token
+                    );
                 }
-            }
-            catch (Exception ex)
-            {
-                throw new ServerException("The opened client process is not properly responding to commands.", ex, _clientProcess);
-            }
-            finally
-            {
-                if (!opened)
+                finally
                 {
-                    await using (this.ConfigureAwait(false))
+                    _outputServer.DisposeLocalCopyOfClientHandle();
+                    _inputServer.DisposeLocalCopyOfClientHandle();
+                    _logServer.DisposeLocalCopyOfClientHandle();
+                }
+
+                // Perform key exchange for encrypted communication, on a thread of its own as the wait lasts until the client is up.
+                await _ioEncryption.PerformKeyExchangeOnOwnThreadAsync(_outputServer, _inputServer).ConfigureAwait(false);
+                await _logEncryption.PerformKeyExchangeOnOwnThreadAsync(_outputServer, _inputServer).ConfigureAwait(false);
+
+                // Confirm the client starts and is ready to receive commands.
+                try
+                {
+                    if (!await InvokeAsync<bool>(PipeCommand.Open).ConfigureAwait(false))
                     {
-                        _clientProcess = null;
+                        throw new InvalidProgramException("The opened client process returned an invalid response.");
                     }
                 }
+                catch (Exception ex)
+                {
+                    throw new ServerException("The opened client process is not properly responding to commands.", ex, _clientProcess);
+                }
+            }
+            catch
+            {
+                // Dispose the now-unusable instance rather than leave it half-open, then let the failure propagate.
+                await using (this.ConfigureAwait(false))
+                {
+                    _clientProcess = null;
+                }
+                throw;
             }
 
             // Ensure this instance is disposed on process exit.
             AppDomain.CurrentDomain.ProcessExit += ProcessExit_Handler;
 
-            // Set up the log writer task to run in the background.
-            _logWriterTask = ReadLogAsync();
+            // Set up the log writer to run in the background, on a thread of its own.
+            _logWriterTask = Task.Factory.StartNew(ReadLog, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
 
         /// <summary>
@@ -586,15 +604,17 @@ namespace PSADT.ClientServer
         }
 
         /// <summary>
-        /// Retrieves the exception, if any, that occurred during the execution of the log writer task.
+        /// Retrieves and clears the earliest failure the log writer met since the last call, if any.
         /// </summary>
-        /// <returns>An <see cref="AggregateException"/> containing the exceptions thrown by the log writer task, or <see
-        /// langword="null"/> if no exception occurred or the task has not been initialized.</returns>
+        /// <remarks>The writer keeps draining after a failure, so the failure is recorded as it happens rather than left for the
+        /// writer's task to report once it ends, by which point nothing is left to act on it. Clearing it on the way out means each
+        /// failure is reported once, rather than again after every later command.</remarks>
+        /// <returns>The unreported failure, or <see langword="null"/> if there is none.</returns>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "I like methods.")]
-        public AggregateException? GetLogWriterException()
+        public Exception? GetLogWriterException()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return _logWriterTask?.Exception;
+            return Interlocked.Exchange(ref _logWriterException, value: null);
         }
 
         /// <summary>
@@ -796,12 +816,12 @@ namespace PSADT.ClientServer
         /// <exception cref="ServerException">Thrown when the client returns an error or no data.</exception>
         private async ValueTask<T> ReadResponseAsync<T>()
         {
-            // Read and decrypt the client's response.
+            // Read and decrypt the client's response, on a thread of its own as the wait lasts as long as the client takes to answer.
             ObjectDisposedException.ThrowIf(_disposed, this);
             byte[] response;
             try
             {
-                response = await _ioEncryption.ReadEncryptedAsync(_inputServer).ConfigureAwait(false);
+                response = await _ioEncryption.ReadEncryptedOnOwnThreadAsync(_inputServer).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -826,24 +846,27 @@ namespace PSADT.ClientServer
         }
 
         /// <summary>
-        /// Handles the application's process exit event to perform necessary cleanup operations before the process
-        /// terminates.
+        /// Handles the application's process exit event by making sure the client does not outlive this process.
         /// </summary>
-        /// <remarks>This handler is intended to be registered with the application's process exit event
-        /// to ensure that resources are properly released when the process is shutting down. It should not be called
-        /// directly.</remarks>
+        /// <remarks>Only reached when nothing else closed the instance. The client is killed rather than disposed, since disposal
+        /// can block or throw here, and either would stall the host's exit or replace its exit code.</remarks>
         /// <param name="sender">The source of the event, typically the current application domain.</param>
         /// <param name="e">An object that contains the event data.</param>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "VSTHRD100:Avoid async void methods", Justification = "This is necessary here.")]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Roslynator", "RCS1046:Asynchronous method name should end with 'Async'", Justification = "This method is not awaitable.")]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0155:Do not use async void methods", Justification = "This is necessary here.")]
-        private async void ProcessExit_Handler(object? sender, EventArgs e)
+        private void ProcessExit_Handler(object? sender, EventArgs e)
         {
-            if (!_disposed)
+            if (_clientProcess is { Task.IsCompleted: false } clientProcess)
             {
-                await using (this.ConfigureAwait(false))
+                try
                 {
-                    return;
+                    clientProcess.Process.Kill();
+                }
+                catch (InvalidOperationException)
+                {
+                    // .NET Framework throws this if the client exited between the check and the kill, which is the outcome wanted anyway.
+                }
+                catch (Win32Exception)
+                {
+                    // This can be thrown if the process is mid-way through terminating, which is the outcome wanted anyway.
                 }
             }
         }
@@ -856,14 +879,12 @@ namespace PSADT.ClientServer
         /// the stream either way; gating the read on there being a session would leave the stream undrained and
         /// eventually block the client on it. Separated from the loop that calls it so that ordering can be
         /// asserted, which it cannot be from outside.</remarks>
-        /// <param name="readFrameAsync">Reads and decrypts the next frame from the log stream. The frame it returns
-        /// is overwritten once read, so it must hand back a buffer it owns and no caller may reuse one.</param>
-        /// <returns>A task that completes once the frame has been read and, where there was somewhere to put it,
-        /// written.</returns>
-        internal static async Task ReadLogFrameAsync(Func<ValueTask<byte[]>> readFrameAsync)
+        /// <param name="readFrame">Reads and decrypts the next frame from the log stream, blocking until it has. The frame it
+        /// returns is overwritten once read, so it must hand back a buffer it owns and no caller may reuse one.</param>
+        internal static void ReadLogFrame(Func<byte[]> readFrame)
         {
             // The read stays first and unconditional, for the reason given above.
-            byte[] decrypted = await readFrameAsync().ConfigureAwait(false);
+            byte[] decrypted = readFrame();
             try
             {
                 if (decrypted is { Length: > 0 } && ModuleDatabase.IsDeploymentSessionActive())
@@ -900,7 +921,8 @@ namespace PSADT.ClientServer
         /// <summary>
         /// Gets a value indicating whether the process is currently running.
         /// </summary>
-        public bool IsRunning => (_clientProcess?.Process.HasExited) is false;
+        /// <remarks>The task is checked first, as the process may be disposed along with the client's result once it completes.</remarks>
+        public bool IsRunning => _clientProcess is { Task.IsCompleted: false } clientProcess && !ProcessUtilities.HasProcessExited(clientProcess.Process);
 
         /// <summary>
         /// Represents the sentinel character used to indicate a successful operation or status.
@@ -924,6 +946,11 @@ namespace PSADT.ClientServer
         /// <remarks>This field holds a reference to the current logging task, if one is active. It may
         /// be null if <see cref="OpenAsync"/> has not been called yet.</remarks>
         private Task? _logWriterTask;
+
+        /// <summary>
+        /// The earliest failure the log writer met since it was last reported, recorded as it happens so it can be reported while the writer keeps draining.
+        /// </summary>
+        private Exception? _logWriterException;
 
         /// <summary>
         /// Indicates whether the object has been disposed.
