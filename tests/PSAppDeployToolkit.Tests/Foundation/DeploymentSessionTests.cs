@@ -237,7 +237,8 @@ namespace PSAppDeployToolkit.Tests.Foundation
         /// <remarks>
         /// Separated from the settings above because three booleans cannot all differ from one another in one run, so
         /// two of them read the wrong way round would agree. One case per flag, each turning on exactly the one it is
-        /// for, which leaves no pair agreeing in every case.
+        /// for, which leaves no pair agreeing in every case. The compressed case stages its log under the shared temp
+        /// folder, so the name is unique and the staging folder is removed afterwards.
         /// </remarks>
         /// <param name="compressLogs">Whether logs are compressed on closure.</param>
         /// <param name="logWriteToHost">Whether log entries are echoed to the host.</param>
@@ -256,14 +257,22 @@ namespace PSAppDeployToolkit.Tests.Foundation
             configuration.LogWriteToHost = logWriteToHost;
             configuration.LogHostOutputToStdStreams = logHostOutputToStdStreams;
             using ModuleDatabaseScope database = powerShell.SeatModuleDatabase(configuration, powerShell.NewEnvironmentTable());
+            Dictionary<string, object> parameters = MinimalParameters(); parameters["AppName"] = UniqueAppName();
 
             // Act
-            DeploymentSession session = new(MinimalParameters(), noExitOnClose: true, compatibilityMode: false);
+            DeploymentSession session = new(parameters, noExitOnClose: true, compatibilityMode: false);
 
             // Assert
-            Assert.Equal(compressLogs, FieldOf<bool>(session, "CompressLogs"));
-            Assert.Equal(logWriteToHost, FieldOf<bool>(session, "LogWriteToHost"));
-            Assert.Equal(logHostOutputToStdStreams, FieldOf<bool>(session, "LogHostOutputToStdStreams"));
+            try
+            {
+                Assert.Equal(compressLogs, FieldOf<bool>(session, "CompressLogs"));
+                Assert.Equal(logWriteToHost, FieldOf<bool>(session, "LogWriteToHost"));
+                Assert.Equal(logHostOutputToStdStreams, FieldOf<bool>(session, "LogHostOutputToStdStreams"));
+            }
+            finally
+            {
+                Delete(session.LogPath);
+            }
         }
 
         /// <summary>
@@ -2374,7 +2383,7 @@ namespace PSAppDeployToolkit.Tests.Foundation
         /// Every switch the constructor reads, against the flag it is meant to set.
         /// </summary>
         /// <remarks>
-        /// <c>RequireAdmin</c> is absent because setting it decides whether the constructor throws, which is its
+        /// <c language="csharp">RequireAdmin</c> is absent because setting it decides whether the constructor throws, which is its
         /// own test rather than part of the mapping.
         /// </remarks>
         private static readonly IReadOnlyDictionary<string, DeploymentSettings> SwitchedSettings = new Dictionary<string, DeploymentSettings>(StringComparer.Ordinal)

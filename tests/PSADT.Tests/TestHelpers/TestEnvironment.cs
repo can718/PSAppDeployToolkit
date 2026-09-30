@@ -1,7 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Principal;
+using Microsoft.Win32;
+using PSADT.Interop;
+using Windows.Win32.Foundation;
+using Windows.Win32.UI.Shell;
 
 namespace PSADT.Tests.TestHelpers
 {
@@ -82,7 +87,7 @@ namespace PSADT.Tests.TestHelpers
             "Installer");
 
         /// <summary>
-        /// The executables <c>ClientServerUtilities</c> expects to find beside the assembly.
+        /// The executables <c language="csharp">ClientServerUtilities</c> expects to find beside the assembly.
         /// </summary>
         private static readonly string[] ClientServerExecutableNames =
         [
@@ -113,13 +118,13 @@ namespace PSADT.Tests.TestHelpers
         /// privilege, so a gate that tested for elevation instead would be asserting a different thing
         /// and would be wrong on a machine whose policy has been changed.
         /// </remarks>
-        public static bool HasDebugPrivilege { get; } = PSADT.Security.PrivilegeManager.HasPrivilege(Interop.SE_PRIVILEGE.SeDebugPrivilege);
+        public static bool HasDebugPrivilege { get; } = PSADT.Security.PrivilegeManager.HasPrivilege(SE_PRIVILEGE.SeDebugPrivilege);
 
         /// <summary>
         /// Whether the caller holds the privilege needed to reassign ownership of a file or directory,
         /// which is what changing an owner actually requires.
         /// </summary>
-        public static bool HasTakeOwnershipPrivilege { get; } = PSADT.Security.PrivilegeManager.HasPrivilege(Interop.SE_PRIVILEGE.SeTakeOwnershipPrivilege);
+        public static bool HasTakeOwnershipPrivilege { get; } = PSADT.Security.PrivilegeManager.HasPrivilege(SE_PRIVILEGE.SeTakeOwnershipPrivilege);
 
         /// <summary>
         /// Whether the client/server executables are present where <c language="csharp">ClientServerUtilities</c> looks
@@ -201,6 +206,78 @@ namespace PSADT.Tests.TestHelpers
         /// unreadable store simply produces no fixture, and the tests that need one skip.
         /// </remarks>
         public static FileInfo? CachedMspPackage { get; } = FindFirstReadableCachedPackage("*.msp");
+
+        /// <summary>
+        /// Something the shell would open through a DDE conversation, or <see langword="null"/> when the
+        /// machine registers no such association.
+        /// </summary>
+        /// <remarks>
+        /// Candidates come from the registry and the association API confirms them, since a class can register
+        /// an empty DDE key to turn DDE off, which the shell honours and a key check alone does not: browsers do
+        /// it, and so do the built-in HTML and XML classes. The API also applies any per-user choice of handler.
+        /// A protocol is preferred to a file type, and the value is only ever inspected, never launched.
+        /// </remarks>
+        public static string? DdeLaunchTarget { get; } = FindDdeLaunchTarget();
+
+        /// <summary>
+        /// Whether a DDE association was found, which gates the tests needing one.
+        /// </summary>
+        public static bool HasDdeAssociation => DdeLaunchTarget is not null;
+
+        /// <summary>
+        /// Finds a protocol or file extension whose default verb is registered with a DDE command.
+        /// </summary>
+        /// <returns>A value that launch information resolves to that association, or <see langword="null"/> if there is none.</returns>
+        private static string? FindDdeLaunchTarget()
+        {
+            using RegistryKey classes = Registry.ClassesRoot;
+            string? extension = null;
+            foreach (string name in classes.GetSubKeyNames())
+            {
+                using RegistryKey? key = classes.OpenSubKey(name);
+                if (key is null)
+                {
+                    continue;
+                }
+                if (!name.StartsWith('.'))
+                {
+                    if (key.GetValue("URL Protocol") is not null && HasDdeOpenKey(classes, name) && HasDdeDefaultCommand(ASSOCF.ASSOCF_IS_PROTOCOL, name))
+                    {
+                        return $"{name}:psadt";
+                    }
+                }
+                else if (extension is null && !name.StartsWith(".psadt-dde", StringComparison.OrdinalIgnoreCase) && key.GetValue(name: null) is string progId && HasDdeOpenKey(classes, progId) && HasDdeDefaultCommand(ASSOCF.ASSOCF_NONE, name))
+                {
+                    extension = name;
+                }
+            }
+            return extension is null ? null : $"psadt{extension}";
+        }
+
+        /// <summary>
+        /// Determines whether a class registers a DDE key under its open verb, which is the cheap check that
+        /// narrows the candidates before the shell is asked.
+        /// </summary>
+        /// <param name="classes">The classes root.</param>
+        /// <param name="name">The protocol or programmatic identifier to look under.</param>
+        /// <returns><see langword="true"/> if a DDE key is registered; otherwise, <see langword="false"/>.</returns>
+        private static bool HasDdeOpenKey(RegistryKey classes, string name)
+        {
+            using RegistryKey? ddeexec = classes.OpenSubKey($@"{name}\shell\open\ddeexec");
+            return ddeexec is not null;
+        }
+
+        /// <summary>
+        /// Determines whether the shell would open the association through a DDE conversation under the verb it
+        /// picks when none is given, which is the question the launcher's own detector asks.
+        /// </summary>
+        /// <param name="flags">Whether the association is a protocol or a file extension.</param>
+        /// <param name="association">The protocol or file extension.</param>
+        /// <returns><see langword="true"/> if a DDE command is registered for its default verb; otherwise, <see langword="false"/>.</returns>
+        private static bool HasDdeDefaultCommand(ASSOCF flags, string association)
+        {
+            return NativeMethods.AssocQueryString(flags, ASSOCSTR.ASSOCSTR_DDECOMMAND, association, pszExtra: null, default, out _) == HRESULT.S_FALSE;
+        }
 
         /// <summary>
         /// Determines whether the caller is running with administrative rights.
@@ -291,14 +368,7 @@ namespace PSADT.Tests.TestHelpers
             {
                 return null;
             }
-            foreach (FileInfo package in packages)
-            {
-                if (CanOpenForReading(package))
-                {
-                    return package;
-                }
-            }
-            return null;
+            return packages.FirstOrDefault(static package => CanOpenForReading(package));
         }
 
         /// <summary>
