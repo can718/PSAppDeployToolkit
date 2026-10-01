@@ -1712,6 +1712,11 @@ function Remove-ContentFromCache
 
 function Test-NetworkConnection
 {
+    [CmdletBinding()]
+    param
+    (
+    )
+
     # Set strict mode to the highest within this function's scope.
     Set-StrictMode -Version 3
 
@@ -1735,6 +1740,11 @@ function Test-NetworkConnection
 
 function Get-LoggedOnUser
 {
+    [CmdletBinding()]
+    param
+    (
+    )
+
     # Set strict mode to the highest within this function's scope.
     Set-StrictMode -Version 3
 
@@ -1927,6 +1937,11 @@ function New-Folder
 
 function Test-PowerPoint
 {
+    [CmdletBinding()]
+    param
+    (
+    )
+
     # Set strict mode to the highest within this function's scope.
     Set-StrictMode -Version 3
 
@@ -2133,7 +2148,7 @@ function Disable-TerminalServerInstallMode
 
 #---------------------------------------------------------------------------
 #
-# MARK: Wrapper around Disable-ADTTerminalServerInstallMode
+# MARK: Wrapper around Enable-ADTTerminalServerInstallMode
 #
 #---------------------------------------------------------------------------
 
@@ -2732,6 +2747,11 @@ function Execute-MSP
 
 function Unblock-AppExecution
 {
+    [CmdletBinding()]
+    param
+    (
+    )
+
     # Set strict mode to the highest within this function's scope.
     Set-StrictMode -Version 3
 
@@ -3315,7 +3335,6 @@ function Remove-FileFromUserProfiles
         })
     if ($PSBoundParameters.ContainsKey('ContinueOnError'))
     {
-        Write-ADTLogEntry -Message "The parameter '-ContinueOnError' is discontinued and no longer has any effect." -Severity Warning -Source $MyInvocation.MyCommand.Name
         $null = $PSBoundParameters.Remove('ContinueOnError')
     }
 
@@ -3524,6 +3543,11 @@ function Get-SchedulerTask
 
 function Get-PendingReboot
 {
+    [CmdletBinding()]
+    param
+    (
+    )
+
     # Set strict mode to the highest within this function's scope.
     Set-StrictMode -Version 3
 
@@ -3806,7 +3830,7 @@ function Set-ActiveSetup
     {
         $null = $PSBoundParameters.Remove('ContinueOnError')
     }
-    if ([System.IO.Path]::GetExtension($StubExePath) -eq '.ps1')
+    if ($PSBoundParameters.ContainsKey('StubExePath') -and ([System.IO.Path]::GetExtension($StubExePath) -eq '.ps1'))
     {
         $PSBoundParameters.Add('ExecutionPolicy', [Microsoft.PowerShell.ExecutionPolicy]::Bypass)
     }
@@ -4943,10 +4967,7 @@ function Get-PEFileArchitecture
     process
     {
         # Collect all input for processing at the end.
-        if ($null -ne $FilePath)
-        {
-            $filePaths.Add($FilePath)
-        }
+        $FilePath | & { process { if ($null -ne $_) { $filePaths.Add($_) } } }
     }
 
     end

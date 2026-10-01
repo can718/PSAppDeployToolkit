@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -379,8 +380,7 @@ namespace PSADT.ProcessManagement
             }
             catch (Exception ex1)
             {
-                // The kernel API call failed. This can occur when the caller is a 32-bit process on a 64-bit system, etc.
-                // Open a handle to the target process. If this fails, something is seriously wrong and we cannot continue.
+                // The kernel API call failed. Open a handle to the target process. If this fails, something is seriously wrong and we cannot continue.
                 SafeFileHandle hProcess;
                 try
                 {
@@ -470,41 +470,34 @@ namespace PSADT.ProcessManagement
         /// </summary>
         /// <remarks>This method uses the NtQuerySystemInformation API with the SystemProcessIdInformation
         /// class to obtain the process image path. The returned path is translated from the NT device path to a Win32
-        /// path using the provided lookup table. This method is not supported when called from a 32-bit process on a
-        /// 64-bit system.</remarks>
+        /// path using the provided lookup table.</remarks>
         /// <param name="processId">The identifier of the process whose image file path is to be retrieved.</param>
         /// <param name="ntPathLookupTable">A read-only dictionary used to translate NT device paths to Win32 file system paths.</param>
         /// <returns>The Win32-formatted image file path of the specified process.</returns>
-        /// <exception cref="NotSupportedException">Thrown if the method is called from a 32-bit process on a 64-bit operating system, if the image name query
-        /// returns a null or empty result, or if the retrieved image name is not a valid NT path.</exception>
         /// <exception cref="FormatException">Thrown if the retrieved image name does not start with "\Device\", indicating an invalid NT path.</exception>
         private static FileInfo QuerySystemProcessIdInformationImageName(uint processId, ReadOnlyDictionary<string, string> ntPathLookupTable)
         {
-            // Throw if we're a 32-bit process on a 64-bit system as we cannot query the image name in that case.
-            if (RuntimeInformation.ProcessArchitecture != RuntimeInformation.OSArchitecture)
-            {
-                throw new NotSupportedException("A 32-bit process cannot call NtQuerySystemInformation() with the [SystemProcessIdInformation] information class on a 64-bit system.");
-            }
-
-            // Set up initial buffer that we need to query the process information. A stackalloc buffer starts out undefined, so the whole structure is assigned rather than just the one field it carries.
-            Span<byte> processIdInfoPtr = stackalloc byte[NativeMethods.SystemInfoClassSizes[SYSTEM_INFORMATION_CLASS.SystemProcessIdInformation]];
-            ref SYSTEM_PROCESS_ID_INFORMATION processIdInfo = ref Unsafe.As<byte, SYSTEM_PROCESS_ID_INFORMATION>(ref MemoryMarshal.GetReference(processIdInfoPtr));
-            processIdInfo = new() { ProcessId = (nint)processId };
-
-            // Perform initial query so we can get the required ImageName buffer length.
-            _ = NativeMethods.NtQuerySystemInformation(SYSTEM_INFORMATION_CLASS.SystemProcessIdInformation, processIdInfoPtr, out _, retrievingLength: true);
-            Span<char> imageNamePtr = stackalloc char[((processIdInfo.ImageName.MaximumLength + 2) / sizeof(char)) + 1];
-
-            // Assign the ImageName buffer and perform the query again.
+            // Query into the most a UNICODE_STRING can hold, so any name fits without the sizing call WOW64 can't answer.
+            const int imageNameLength = ushort.MaxValue / sizeof(char);
+            char[] imageNameBuffer = ArrayPool<char>.Shared.Rent(imageNameLength);
             string imageName;
-            unsafe
+            try
             {
-                fixed (char* pImageName = imageNamePtr)
+                unsafe
                 {
-                    processIdInfo.ImageName = new() { Length = 0, MaximumLength = checked((ushort)(imageNamePtr.Length * 2)), Buffer = pImageName };
-                    _ = NativeMethods.NtQuerySystemInformation(SYSTEM_INFORMATION_CLASS.SystemProcessIdInformation, processIdInfoPtr, out _);
-                    imageName = processIdInfo.ImageName.ToManagedString();
+                    fixed (char* pImageName = imageNameBuffer)
+                    {
+                        Span<byte> processIdInfoPtr = stackalloc byte[NativeMethods.SystemInfoClassSizes[SYSTEM_INFORMATION_CLASS.SystemProcessIdInformation]];
+                        ref SYSTEM_PROCESS_ID_INFORMATION processIdInfo = ref Unsafe.As<byte, SYSTEM_PROCESS_ID_INFORMATION>(ref MemoryMarshal.GetReference(processIdInfoPtr));
+                        processIdInfo = new() { ProcessId = (nint)processId, ImageName = new() { Length = 0, MaximumLength = imageNameLength * sizeof(char), Buffer = pImageName }, };
+                        _ = NativeMethods.NtQuerySystemInformation(SYSTEM_INFORMATION_CLASS.SystemProcessIdInformation, processIdInfoPtr, out _);
+                        imageName = processIdInfo.ImageName.ToManagedString();
+                    }
                 }
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(imageNameBuffer);
             }
 
             // Throw if the value doesn't start with \Device\ (indicating an NT path).
