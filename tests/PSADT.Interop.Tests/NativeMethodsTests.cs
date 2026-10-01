@@ -8,6 +8,7 @@ using System.Security.Principal;
 using System.Threading;
 using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
+using PSADT.Interop.Exceptions;
 using PSADT.Interop.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -31,9 +32,10 @@ namespace PSADT.Interop.Tests
     /// back safe handles. Each test here targets one of those.
     /// </summary>
     /// <remarks>
-    /// Every call made here queries state and changes none. Where a wrapper can only be exercised with
-    /// elevation the test is written but skipped, so an unelevated run reports what it could not cover
-    /// rather than silently omitting it.
+    /// Every call made here queries state and changes none, apart from starting the short-lived 32-bit process
+    /// one test inspects and writing a file of its own in a temporary directory. Where a wrapper can only be
+    /// exercised with elevation the test is written but skipped, so an unelevated run reports what it could
+    /// not cover rather than silently omitting it.
     /// </remarks>
     public sealed class NativeMethodsTests
     {
@@ -219,6 +221,55 @@ namespace PSADT.Interop.Tests
         }
 
         /// <summary>
+        /// Verifies that the running process reports a WOW64 architecture exactly when the framework reports a
+        /// 32-bit process on a 64-bit system, and that the system's own architecture is always reported.
+        /// </summary>
+        [Fact]
+        public void IsWow64Process2_MatchesWhatTheFrameworkReports()
+        {
+            // Arrange
+            using SafeProcessHandle process = NativeMethods.GetCurrentProcess();
+
+            // Act
+            _ = NativeMethods.IsWow64Process2(process, out Windows.Win32.System.SystemInformation.IMAGE_FILE_MACHINE processMachine, out Windows.Win32.System.SystemInformation.IMAGE_FILE_MACHINE nativeMachine);
+
+            // Assert
+            Assert.Equal(Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess, processMachine is not Windows.Win32.System.SystemInformation.IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_UNKNOWN);
+            Assert.NotEqual(Windows.Win32.System.SystemInformation.IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_UNKNOWN, nativeMachine);
+        }
+
+        /// <summary>
+        /// Verifies that a 32-bit process is reported as x86 running under WOW64, on the same native architecture
+        /// as this process.
+        /// </summary>
+        [Fact]
+        public void IsWow64Process2_ReportsA32BitProcessAsRunningUnderWow64()
+        {
+            // Arrange: a 32-bit ping that outlives the test
+            string ping = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.SystemX86), "PING.EXE");
+            Assert.SkipUnless(Environment.Is64BitOperatingSystem && File.Exists(ping), "Requires 64-bit Windows with WOW64.");
+            using SafeProcessHandle current = NativeMethods.GetCurrentProcess();
+            _ = NativeMethods.IsWow64Process2(current, out _, out Windows.Win32.System.SystemInformation.IMAGE_FILE_MACHINE expectedNativeMachine);
+            using Process? child = Process.Start(new ProcessStartInfo(ping, "-n 120 127.0.0.1") { UseShellExecute = false, CreateNoWindow = true });
+            Assert.NotNull(child);
+            try
+            {
+                using SafeFileHandle process = NativeMethods.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, bInheritHandle: false, (uint)child.Id);
+
+                // Act
+                _ = NativeMethods.IsWow64Process2(process, out Windows.Win32.System.SystemInformation.IMAGE_FILE_MACHINE processMachine, out Windows.Win32.System.SystemInformation.IMAGE_FILE_MACHINE nativeMachine);
+
+                // Assert
+                Assert.Equal(Windows.Win32.System.SystemInformation.IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_I386, processMachine);
+                Assert.Equal(expectedNativeMachine, nativeMachine);
+            }
+            finally
+            {
+                child.Kill();
+            }
+        }
+
+        /// <summary>
         /// Verifies that opening a process that cannot exist is raised as a failure rather than handed back
         /// as an invalid handle. Zero is the idle process, which no caller may open.
         /// </summary>
@@ -294,6 +345,50 @@ namespace PSADT.Interop.Tests
 
             // Act & Assert
             _ = Assert.Throws<FileNotFoundException>(() => { using SafeFileHandle file = NativeMethods.CreateFile(missing, FileSystemRights.Read, FILE_SHARE_MODE.FILE_SHARE_READ, lpSecurityAttributes: null, FILE_CREATION_DISPOSITION.OPEN_EXISTING, FileAttributes.Normal); });
+        }
+
+        /// <summary>
+        /// Verifies that information the call accepts is set. Clearing the delete disposition of a file that was
+        /// never marked for deletion changes nothing, so it exercises the success path without side effects.
+        /// </summary>
+        [Fact]
+        public void SetFileInformationByHandle_SetsInformationTheCallAccepts()
+        {
+            // Arrange
+            string directory = CreateScratchDirectory();
+            try
+            {
+                string path = Path.Join(directory, "file.txt");
+                File.WriteAllText(path, "contents");
+                using SafeFileHandle file = NativeMethods.CreateFile(path, FileSystemRights.Delete, FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_DELETE, lpSecurityAttributes: null, FILE_CREATION_DISPOSITION.OPEN_EXISTING, FileAttributes.Normal);
+                ReadOnlySpan<byte> keepFile = [0];
+
+                // Act
+                BOOL result = NativeMethods.SetFileInformationByHandle(file, FILE_INFO_BY_HANDLE_CLASS.FileDispositionInfo, keepFile);
+
+                // Assert
+                Assert.True(result);
+                Assert.True(File.Exists(path));
+            }
+            finally
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+
+        /// <summary>
+        /// Verifies that a native failure is raised rather than returned. A handle opened without the DELETE
+        /// access right cannot have its delete disposition set.
+        /// </summary>
+        [Fact]
+        public void SetFileInformationByHandle_RaisesANativeFailure()
+        {
+            // Arrange
+            using SafeFileHandle file = NativeMethods.CreateFile(typeof(NativeMethodsTests).Assembly.Location, FileSystemRights.Read, FILE_SHARE_MODE.FILE_SHARE_READ, lpSecurityAttributes: null, FILE_CREATION_DISPOSITION.OPEN_EXISTING, FileAttributes.Normal);
+            byte[] keepFile = [0];
+
+            // Act & Assert
+            _ = Assert.Throws<UnauthorizedAccessException>(() => NativeMethods.SetFileInformationByHandle(file, FILE_INFO_BY_HANDLE_CLASS.FileDispositionInfo, keepFile));
         }
 
         /// <summary>
@@ -582,6 +677,109 @@ namespace PSADT.Interop.Tests
         }
 
         /// <summary>
+        /// Verifies that the image of the running process is sized and then read with the two-call pattern, the sizing
+        /// call's length mismatch coming back as a result because it says it is sizing, and that the name read is the
+        /// native path the process reports through another API.
+        /// </summary>
+        [Fact]
+        public void NtQuerySystemInformation_SizesAndReadsTheImageNameOfThisProcess()
+        {
+            // Arrange
+            using SafeProcessHandle process = NativeMethods.GetCurrentProcess();
+            char[] expected = new char[1024];
+            _ = NativeMethods.QueryFullProcessImageName(process, PROCESS_NAME_FORMAT.PROCESS_NAME_NATIVE, expected, out uint expectedLength);
+            byte[] buffer = new byte[Unsafe.SizeOf<SYSTEM_PROCESS_ID_INFORMATION>()];
+            ref SYSTEM_PROCESS_ID_INFORMATION info = ref Unsafe.As<byte, SYSTEM_PROCESS_ID_INFORMATION>(ref buffer[0]);
+            info.ProcessId = (nint)PInvoke.GetCurrentProcessId();
+
+            // Act: size, then read into exactly the size that came back
+            NTSTATUS sized = NativeMethods.NtQuerySystemInformation(SYSTEM_INFORMATION_CLASS.SystemProcessIdInformation, buffer, out _, retrievingLength: true);
+            ushort size = info.ImageName.MaximumLength;
+            char[] name = new char[size / sizeof(char)];
+            NTSTATUS read;
+            string imageName;
+            unsafe
+            {
+                fixed (char* pName = name)
+                {
+                    info.ImageName = new() { Length = 0, MaximumLength = size, Buffer = pName };
+                    read = NativeMethods.NtQuerySystemInformation(SYSTEM_INFORMATION_CLASS.SystemProcessIdInformation, buffer, out _);
+                    imageName = new string(pName, 0, info.ImageName.Length / sizeof(char));
+                }
+            }
+
+            // Assert
+            Assert.Equal(NTSTATUS.STATUS_INFO_LENGTH_MISMATCH, sized);
+            Assert.Equal(NTSTATUS.STATUS_SUCCESS, read);
+            Assert.Equal(new string(expected, 0, (int)expectedLength), imageName, StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Verifies that a name buffer too small for the image is raised as the length mismatch when the caller did not
+        /// say it was sizing, rather than handed back for the caller to read an empty name from.
+        /// </summary>
+        [Fact]
+        public void NtQuerySystemInformation_RaisesALengthMismatchOutsideASizingCall()
+        {
+            // Arrange: room for the structure, but not for the name it points at
+            byte[] buffer = new byte[Unsafe.SizeOf<SYSTEM_PROCESS_ID_INFORMATION>()];
+            ref SYSTEM_PROCESS_ID_INFORMATION info = ref Unsafe.As<byte, SYSTEM_PROCESS_ID_INFORMATION>(ref buffer[0]);
+            info.ProcessId = (nint)PInvoke.GetCurrentProcessId();
+            char[] name = new char[1];
+            Win32Exception thrown;
+            unsafe
+            {
+                fixed (char* pName = name)
+                {
+                    info.ImageName = new() { Length = 0, MaximumLength = sizeof(char), Buffer = pName };
+
+                    // Act
+                    thrown = Assert.Throws<Win32Exception>(() => NativeMethods.NtQuerySystemInformation(SYSTEM_INFORMATION_CLASS.SystemProcessIdInformation, buffer, out _));
+                }
+            }
+
+            // Assert
+            Assert.Equal(NTSTATUS.STATUS_INFO_LENGTH_MISMATCH, Assert.IsType<NtStatusException>(thrown.InnerException).NtStatus);
+        }
+
+        /// <summary>
+        /// Verifies that the object types are sized and then read with the two-call pattern, the sizing call's length
+        /// mismatch coming back as a result because it says it is sizing.
+        /// </summary>
+        [Fact]
+        public void NtQueryObject_SizesAndReadsTheObjectTypes()
+        {
+            // Act: size with room for the header alone, then read into the size that came back
+            byte[] header = new byte[Unsafe.SizeOf<OBJECT_TYPES_INFORMATION>()];
+            NTSTATUS sized = NativeMethods.NtQueryObject(Handle: null, OBJECT_INFORMATION_CLASS.ObjectTypesInformation, header, out uint length, retrievingLength: true);
+            byte[] types = new byte[length];
+            NTSTATUS read = NativeMethods.NtQueryObject(Handle: null, OBJECT_INFORMATION_CLASS.ObjectTypesInformation, types, out _);
+
+            // Assert
+            Assert.Equal(NTSTATUS.STATUS_INFO_LENGTH_MISMATCH, sized);
+            Assert.Equal(NTSTATUS.STATUS_SUCCESS, read);
+            Assert.True(length > header.Length);
+            Assert.True(Unsafe.As<byte, OBJECT_TYPES_INFORMATION>(ref types[0]).NumberOfTypes > 0);
+        }
+
+        /// <summary>
+        /// Verifies that a buffer with room for the header alone is raised as the length mismatch when the caller did not
+        /// say it was sizing, rather than handed back for the caller to read a header with nothing after it.
+        /// </summary>
+        [Fact]
+        public void NtQueryObject_RaisesALengthMismatchOutsideASizingCall()
+        {
+            // Arrange
+            byte[] header = new byte[Unsafe.SizeOf<OBJECT_TYPES_INFORMATION>()];
+
+            // Act
+            Win32Exception thrown = Assert.Throws<Win32Exception>(() => NativeMethods.NtQueryObject(Handle: null, OBJECT_INFORMATION_CLASS.ObjectTypesInformation, header, out _));
+
+            // Assert
+            Assert.Equal(NTSTATUS.STATUS_INFO_LENGTH_MISMATCH, Assert.IsType<NtStatusException>(thrown.InnerException).NtStatus);
+        }
+
+        /// <summary>
         /// Verifies that a thread which has never debugged anything records no debug object, that one set on it is
         /// what is read back, and that clearing it leaves nothing, since only the thread's own record changes.
         /// </summary>
@@ -660,6 +858,15 @@ namespace PSADT.Interop.Tests
         {
             using WindowsIdentity identity = WindowsIdentity.GetCurrent();
             return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+        }
+
+        /// <summary>
+        /// Creates an empty directory of this test's own under the temporary directory.
+        /// </summary>
+        /// <returns>The directory's path.</returns>
+        private static string CreateScratchDirectory()
+        {
+            return Directory.CreateDirectory(Path.Join(Path.GetTempPath(), $"PSADT.Interop.Tests.{Guid.NewGuid():N}")).FullName;
         }
     }
 }
