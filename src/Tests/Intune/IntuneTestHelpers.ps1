@@ -1199,59 +1199,166 @@ function Initialize-IntuneTestGroup
     {
         Connect-MgGraph -TenantId $TenantId -ClientSecretCredential $credential -NoWelcome -ErrorAction Stop
 
+        $testGroupName = "PSADT Test Group $deviceName"
         if (-not [System.String]::IsNullOrWhiteSpace($ExistingGroupId))
         {
             $existingGroup = Get-MgGroup -GroupId $ExistingGroupId -ErrorAction Stop
             $result.GroupId = $existingGroup.Id
             Write-Information "Reusing Azure AD test group with ObjectId: $($result.GroupId)" -InformationAction Continue
-            return $result
-        }
-
-        # Remove existing test group if present.
-        $testGroupName = "PSADT Test Group $deviceName"
-        $existingGroups = Get-MgGroup -Filter "displayName eq '$testGroupName'" -ErrorAction Stop
-        foreach ($g in $existingGroups)
-        {
-            Write-Information "Removing existing group '$testGroupName' (Id: $($g.Id))" -InformationAction Continue
-            Remove-MgGroup -GroupId $g.Id -ErrorAction Stop
-            Start-Sleep -Seconds 5
-        }
-
-        # Create a fresh security group.
-        $group = New-MgGroup -BodyParameter @{
-            displayName     = $testGroupName
-            securityEnabled = $true
-            mailEnabled     = $false
-            mailNickname    = [System.Guid]::NewGuid().Guid
-        } -ErrorAction Stop
-        $result.GroupId = $group.Id
-        Write-Information "Created test group '$testGroupName' with ObjectId: $($result.GroupId)" -InformationAction Continue
-
-        # Wait for group to propagate.
-        $maxWait = 20; $waited = 0
-        $groupAvailable = $false
-        while (-not $groupAvailable -and $waited -lt $maxWait)
-        {
-            $groupAvailable = $null -ne (Get-MgGroup -GroupId $result.GroupId -ErrorAction SilentlyContinue)
-            if (-not $groupAvailable)
-            {
-                Write-Information "Waiting for group to propagate... ($waited s)" -InformationAction Continue
-                Start-Sleep -Seconds 5
-                $waited += 5
-            }
-        }
-        if (-not $groupAvailable)
-        {
-            throw "Group '$testGroupName' did not propagate within $maxWait seconds."
-        }
-
-        # Add current device as a member.
-        $device = Get-MgDevice -Filter "displayName eq '$deviceName'" -ErrorAction Stop | Select-Object -First 1
-        if (-not $device)
-        {
-            Write-Information "Unable to find a Microsoft Graph device with displayName '$deviceName'." -InformationAction Continue
         }
         else
+        {
+            # Remove existing test group if present.
+            $existingGroups = Get-MgGroup -Filter "displayName eq '$testGroupName'" -ErrorAction Stop
+            foreach ($g in $existingGroups)
+            {
+                Write-Information "Removing existing group '$testGroupName' (Id: $($g.Id))" -InformationAction Continue
+                Remove-MgGroup -GroupId $g.Id -ErrorAction Stop
+                Start-Sleep -Seconds 5
+            }
+
+            # Create a fresh security group.
+            $group = New-MgGroup -BodyParameter @{
+                displayName     = $testGroupName
+                securityEnabled = $true
+                mailEnabled     = $false
+                mailNickname    = [System.Guid]::NewGuid().Guid
+            } -ErrorAction Stop
+            $result.GroupId = $group.Id
+            Write-Information "Created test group '$testGroupName' with ObjectId: $($result.GroupId)" -InformationAction Continue
+
+            # Wait for group to propagate.
+            $maxWait = 20; $waited = 0
+            $groupAvailable = $false
+            while (-not $groupAvailable -and $waited -lt $maxWait)
+            {
+                $groupAvailable = $null -ne (Get-MgGroup -GroupId $result.GroupId -ErrorAction SilentlyContinue)
+                if (-not $groupAvailable)
+                {
+                    Write-Information "Waiting for group to propagate... ($waited s)" -InformationAction Continue
+                    Start-Sleep -Seconds 5
+                    $waited += 5
+                }
+            }
+            if (-not $groupAvailable)
+            {
+                throw "Group '$testGroupName' did not propagate within $maxWait seconds."
+            }
+        }
+
+        # Match the current enrollment by DeviceId instead of selecting an arbitrary historical device with the same name.
+        $dsregOutput = & "$env:SystemRoot\System32\dsregcmd.exe" /status 2>&1
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw "dsregcmd /status exited with code $LASTEXITCODE."
+        }
+        $dsregStatus = $dsregOutput -join [System.Environment]::NewLine
+        $azureAdJoinedMatch = [System.Text.RegularExpressions.Regex]::Match($dsregStatus, '(?m)^\s*AzureAdJoined\s*:\s*(?<Value>YES|NO)\s*$')
+        if (-not $azureAdJoinedMatch.Success -or $azureAdJoinedMatch.Groups['Value'].Value -ne 'YES')
+        {
+            throw "The current VM is not Azure AD joined according to dsregcmd /status."
+        }
+
+        $tenantIdMatch = [System.Text.RegularExpressions.Regex]::Match($dsregStatus, '(?m)^\s*TenantId\s*:\s*(?<TenantId>[0-9a-fA-F-]{36})\s*$')
+        $currentTenantId = [System.Guid]::Empty
+        $expectedTenantId = [System.Guid]::Empty
+        if (-not $tenantIdMatch.Success -or -not [System.Guid]::TryParse($tenantIdMatch.Groups['TenantId'].Value, [ref]$currentTenantId) -or $currentTenantId -eq [System.Guid]::Empty)
+        {
+            throw "Unable to resolve the current VM TenantId from dsregcmd /status."
+        }
+        if (-not [System.Guid]::TryParse($TenantId, [ref]$expectedTenantId) -or $expectedTenantId -eq [System.Guid]::Empty)
+        {
+            throw "The configured TenantId '$TenantId' is not a valid GUID."
+        }
+        if ($currentTenantId -ne $expectedTenantId)
+        {
+            throw "The current VM TenantId '$currentTenantId' does not match the configured tenant '$expectedTenantId'."
+        }
+
+        $deviceIdMatch = [System.Text.RegularExpressions.Regex]::Match(
+            $dsregStatus,
+            '(?m)^\s*DeviceId\s*:\s*(?<DeviceId>[0-9a-fA-F-]{36})\s*$'
+        )
+        $currentDeviceId = [System.Guid]::Empty
+        if (-not $deviceIdMatch.Success -or -not [System.Guid]::TryParse($deviceIdMatch.Groups['DeviceId'].Value, [ref]$currentDeviceId) -or $currentDeviceId -eq [System.Guid]::Empty)
+        {
+            throw "Unable to resolve the current VM DeviceId from dsregcmd /status."
+        }
+
+        $device = $null
+        $deviceLookupMaxRetries = 12
+        for ($deviceLookupAttempt = 1; $deviceLookupAttempt -le $deviceLookupMaxRetries; $deviceLookupAttempt++)
+        {
+            try
+            {
+                $matchingDevices = @(Get-MgDevice -Filter "deviceId eq '$currentDeviceId'" -ErrorAction Stop)
+            }
+            catch
+            {
+                $statusCode = if ($_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode)
+                {
+                    [int]$_.Exception.Response.StatusCode
+                }
+                else
+                {
+                    0
+                }
+                $isTransient = $statusCode -eq 429 -or $statusCode -ge 500 -or $_.Exception.Message -match 'temporar|timeout|timed out|connection|service unavailable'
+                if (-not $isTransient -or $deviceLookupAttempt -ge $deviceLookupMaxRetries)
+                {
+                    throw
+                }
+                Write-Information "Device lookup failed transiently: $($_.Exception.Message). Retrying ($deviceLookupAttempt/$deviceLookupMaxRetries)..." -InformationAction Continue
+                Start-Sleep -Seconds 10
+                continue
+            }
+            if ($matchingDevices.Count -eq 1)
+            {
+                $device = $matchingDevices[0]
+                break
+            }
+            if ($matchingDevices.Count -gt 1)
+            {
+                throw "Microsoft Graph returned multiple devices for DeviceId '$currentDeviceId'."
+            }
+            if ($deviceLookupAttempt -lt $deviceLookupMaxRetries)
+            {
+                Write-Information "DeviceId '$currentDeviceId' is not visible in Microsoft Graph yet; retrying ($deviceLookupAttempt/$deviceLookupMaxRetries)..." -InformationAction Continue
+                Start-Sleep -Seconds 10
+            }
+        }
+        if (-not $device)
+        {
+            throw "Unable to find the current VM in Microsoft Graph by DeviceId '$currentDeviceId'."
+        }
+
+        Write-Information "Resolved current VM '$deviceName' by DeviceId '$currentDeviceId' to Graph object '$($device.Id)'." -InformationAction Continue
+
+        # This group is dedicated to the current test VM. Remove stale members before assigning apps.
+        $currentDeviceIsMember = $false
+        $groupMembers = @()
+        $membersUri = "https://graph.microsoft.com/v1.0/groups/$($result.GroupId)/members?`$select=id,displayName"
+        while ($membersUri)
+        {
+            $membersPage = Invoke-MgGraphRequest -Method GET -Uri $membersUri -ErrorAction Stop
+            $groupMembers += @($membersPage.value)
+            $membersUri = [string]$membersPage.'@odata.nextLink'
+        }
+
+        foreach ($member in $groupMembers)
+        {
+            if ([string]$member.id -eq [string]$device.Id)
+            {
+                $currentDeviceIsMember = $true
+                continue
+            }
+
+            Write-Information "Removing stale member '$($member.displayName)' (ObjectId: $($member.id)) from test group '$($result.GroupId)'." -InformationAction Continue
+            $memberReferenceUri = "https://graph.microsoft.com/v1.0/groups/$($result.GroupId)/members/$($member.id)/`$ref"
+            Invoke-MgGraphRequest -Method DELETE -Uri $memberReferenceUri -ErrorAction Stop
+        }
+
+        if (-not $currentDeviceIsMember)
         {
             $addMaxRetries = 6
             $addRetry = 0
@@ -1271,7 +1378,11 @@ function Initialize-IntuneTestGroup
                     Start-Sleep -Seconds 5
                 }
             }
-            Write-Information "Added device '$deviceName' (Id: $($device.Id)) to group '$testGroupName'." -InformationAction Continue
+            Write-Information "Added device '$deviceName' (DeviceId: $currentDeviceId, ObjectId: $($device.Id)) to group '$testGroupName'." -InformationAction Continue
+        }
+        else
+        {
+            Write-Information "Device '$deviceName' (DeviceId: $currentDeviceId, ObjectId: $($device.Id)) is already a member of group '$($result.GroupId)'." -InformationAction Continue
         }
     }
     catch
