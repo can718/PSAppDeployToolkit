@@ -41,10 +41,10 @@ function Show-ADTInstallationRestartPrompt
         Specifies that a Cancel button is displayed alongside the restart options, allowing the user to dismiss the prompt without restarting.
 
     .PARAMETER CustomMessage
-        Specify whether to display a custom message specified in the `strings.psd1` file. Custom message must be populated for each language section in the `strings.psd1` file.
+        Displays an additional custom message after the standard dialog text. Custom message must be populated for each language section in the `strings.psd1` file.
 
     .PARAMETER CustomMessageText
-        Specifies a literal custom message to display, ignoring the custom message specified in the `strings.psd1` file.
+        Displays an additional custom message after the standard dialog text, using the supplied text. This overrides any custom message set in the `strings.psd1` file.
 
     .PARAMETER NotTopMost
         Specifies whether the prompt shouldn't be topmost, above all other windows.
@@ -408,16 +408,13 @@ function Show-ADTInstallationRestartPrompt
                 {
                     $dialogOptions.Add('DialogPersistInterval', [System.TimeSpan]::FromSeconds($adtConfig.UI.RestartPromptPersistInterval))
                 }
-                if ($CustomMessage)
+                if ($PSBoundParameters.ContainsKey('CustomMessageText'))
                 {
-                    if (!$PSBoundParameters.ContainsKey('CustomMessageText'))
-                    {
-                        $dialogOptions.Add('CustomMessageText', $adtStrings.RestartPrompt.CustomMessage)
-                    }
-                    else
-                    {
-                        $dialogOptions.Add('CustomMessageText', $CustomMessageText)
-                    }
+                    $dialogOptions.Add('CustomMessageText', $CustomMessageText)
+                }
+                elseif ($CustomMessage)
+                {
+                    $dialogOptions.Add('CustomMessageText', $adtStrings.RestartPrompt.CustomMessage)
                 }
                 if ($null -ne $adtConfig.UI.FluentAccentColor)
                 {
