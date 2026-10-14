@@ -1340,7 +1340,35 @@ function Initialize-IntuneTestGroup
         $membersUri = "https://graph.microsoft.com/v1.0/groups/$($result.GroupId)/members?`$select=id,displayName"
         while ($membersUri)
         {
-            $membersPage = Invoke-MgGraphRequest -Method GET -Uri $membersUri -ErrorAction Stop
+            $membersPage = $null
+            $memberListMaxAttempts = 12
+            for ($memberListAttempt = 1; $memberListAttempt -le $memberListMaxAttempts; $memberListAttempt++)
+            {
+                try
+                {
+                    $membersPage = Invoke-MgGraphRequest -Method GET -Uri $membersUri -ErrorAction Stop
+                    break
+                }
+                catch
+                {
+                    $statusCode = if ($_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode)
+                    {
+                        [int]$_.Exception.Response.StatusCode
+                    }
+                    else
+                    {
+                        0
+                    }
+                    $errorMessage = $_.Exception.Message
+                    $isTransient = $statusCode -eq 404 -or $statusCode -eq 429 -or $statusCode -ge 500 -or $errorMessage -match 'ResourceNotFound|NotFound|Not Found|temporar|timeout|timed out|connection|service unavailable'
+                    if (-not $isTransient -or $memberListAttempt -ge $memberListMaxAttempts)
+                    {
+                        throw
+                    }
+                    Write-Information "Group member lookup failed transiently (HTTP $statusCode): $errorMessage. Retrying ($memberListAttempt/$memberListMaxAttempts)..." -InformationAction Continue
+                    Start-Sleep -Seconds 5
+                }
+            }
             $groupMembers += @($membersPage.value)
             $membersUri = [string]$membersPage.'@odata.nextLink'
         }
@@ -1360,21 +1388,32 @@ function Initialize-IntuneTestGroup
 
         if (-not $currentDeviceIsMember)
         {
-            $addMaxRetries = 6
-            $addRetry = 0
-            $memberAdded = $false
-            while (-not $memberAdded -and $addRetry -lt $addMaxRetries)
+            $addMaxAttempts = 12
+            for ($addAttempt = 1; $addAttempt -le $addMaxAttempts; $addAttempt++)
             {
                 try
                 {
                     New-MgGroupMember -GroupId $result.GroupId -DirectoryObjectId $device.Id -ErrorAction Stop
-                    $memberAdded = $true
+                    break
                 }
                 catch
                 {
-                    $addRetry++
-                    if ($addRetry -ge $addMaxRetries -or $_.Exception.Message -notmatch 'ResourceNotFound') { throw }
-                    Write-Information "Member add failed (ResourceNotFound), retrying... ($addRetry/$addMaxRetries)" -InformationAction Continue
+                    $statusCode = if ($_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode)
+                    {
+                        [int]$_.Exception.Response.StatusCode
+                    }
+                    else
+                    {
+                        0
+                    }
+                    $errorMessage = $_.Exception.Message
+                    $isReplicationDelay = $statusCode -eq 404 -or $errorMessage -match 'ResourceNotFound|NotFound|Not Found|source resource object|objects being referenced.*(?:do not|don''t) exist'
+                    $isTransient = $isReplicationDelay -or $statusCode -eq 429 -or $statusCode -ge 500 -or $errorMessage -match 'temporar|timeout|timed out|connection|service unavailable'
+                    if (-not $isTransient -or $addAttempt -ge $addMaxAttempts)
+                    {
+                        throw
+                    }
+                    Write-Information "Group member add failed transiently (HTTP $statusCode): $errorMessage. Retrying ($addAttempt/$addMaxAttempts)..." -InformationAction Continue
                     Start-Sleep -Seconds 5
                 }
             }

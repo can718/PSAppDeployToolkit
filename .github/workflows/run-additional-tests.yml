@@ -862,6 +862,46 @@ jobs:
           }
         }
 
+        function Receive-TaggedJobResult {
+          param(
+            [Parameter(Mandatory = $true)]
+            [System.Management.Automation.Job]$Job,
+            [Parameter(Mandatory = $true)]
+            [string]$Tag
+          )
+
+          try {
+            $jobOutput = @($Job | Receive-Job -ErrorAction Stop)
+            $result = @($jobOutput | Where-Object {
+                $_.PSObject.Properties['Tag'] -and $_.PSObject.Properties['FailedCount']
+              } | Select-Object -Last 1)
+
+            if ($result.Count -gt 0) {
+              return $result[0]
+            }
+
+            Write-Warning "Job '$Tag' completed without returning a test result."
+          }
+          catch {
+            $errorMessage = $PSItem.Exception.Message
+            if ($errorMessage -match 'hexadecimal value 0x(?<Hex>[0-9A-Fa-f]+)') {
+              $codePoint = [Convert]::ToInt32($matches.Hex, 16)
+              $unicodeValue = 'U+{0:X4}' -f $codePoint
+              $characterName = if ($codePoint -eq 0) { 'NUL' } else { 'unknown control character' }
+              Write-Warning "Job '$Tag' output contained invalid character $unicodeValue ($characterName), hex 0x$($matches.Hex.ToUpperInvariant())."
+            }
+            Write-Warning "Unable to receive output from job '$Tag': $errorMessage"
+          }
+
+          return [pscustomobject]@{
+            Tag = $Tag
+            TotalCount = 1
+            PassedCount = 0
+            FailedCount = 1
+            SkippedCount = 0
+          }
+        }
+
         $parallelJobs = foreach ($item in $indexedTags) {
           Start-Job `
             -Name ("AdditionalTests-{0}" -f $item.Tag) `
@@ -871,9 +911,11 @@ jobs:
 
         try {
           $parallelJobs | Wait-Job | Out-Null
-          $parallelResults = @($parallelJobs | Receive-Job | Where-Object {
-              $_.PSObject.Properties['Tag'] -and $_.PSObject.Properties['FailedCount']
-            })
+          $parallelResults = @(
+            for ($i = 0; $i -lt $parallelJobs.Count; $i++) {
+              Receive-TaggedJobResult -Job $parallelJobs[$i] -Tag $indexedTags[$i].Tag
+            }
+          )
         }
         finally {
           $parallelJobs | Remove-Job -Force -ErrorAction SilentlyContinue
@@ -888,9 +930,7 @@ jobs:
 
         try {
           $notepadJob | Wait-Job | Out-Null
-          $notepadResult = @($notepadJob | Receive-Job | Where-Object {
-              $_.PSObject.Properties['Tag'] -and $_.PSObject.Properties['FailedCount']
-            })
+          $notepadResult = @(Receive-TaggedJobResult -Job $notepadJob -Tag 'Notepad++')
         }
         finally {
           $notepadJob | Remove-Job -Force -ErrorAction SilentlyContinue
