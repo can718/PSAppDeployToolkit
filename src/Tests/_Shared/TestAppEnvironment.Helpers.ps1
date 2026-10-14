@@ -1,5 +1,30 @@
 ﻿#pragma warning disable PSPlaceOpenBrace
 
+function Remove-PSADTTestInvalidXmlChars
+{
+    <#
+        Strips control characters that are not valid in XML 1.0 (notably embedded
+        NUL bytes) from a string before it is written to a stream that Receive-Job
+        deserializes via CliXml. Some registry Uninstall entries (e.g. certain
+        7-Zip releases) store DisplayName values padded with an embedded NUL, and
+        passing such a value unmodified to Write-Information/Write-Warning inside a
+        background job causes Receive-Job to fail with "hexadecimal value 0x00, is
+        an invalid character" in the parent session.
+    #>
+    param (
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$InputString
+    )
+
+    if ([System.String]::IsNullOrEmpty($InputString))
+    {
+        return $InputString
+    }
+
+    return [System.Text.RegularExpressions.Regex]::Replace($InputString, '[\x00-\x08\x0B\x0C\x0E-\x1F]', '')
+}
+
 function Save-PSADTTestAppInstaller
 {
     param (
@@ -228,10 +253,11 @@ function Initialize-SevenZipForceCloseTestEnvironment
     {
         if ($entry.PSChildName -match '^\{[0-9A-Fa-f-]+\}$')
         {
-            Write-Information "::info::[$LogPrefix] Removing existing 7-Zip installation '$($entry.DisplayName)' before installing legacy prerequisite." -InformationAction Continue
+            $entryDisplayName = Remove-PSADTTestInvalidXmlChars -InputString $entry.DisplayName
+            Write-Information "::info::[$LogPrefix] Removing existing 7-Zip installation '$entryDisplayName' before installing legacy prerequisite." -InformationAction Continue
             $uninstalled = Invoke-PSADTTestMsiProcessWithRetry `
                 -ArgumentList "/x $($entry.PSChildName) /qn /norestart" `
-                -Description "Uninstall existing 7-Zip '$($entry.DisplayName)'" `
+                -Description "Uninstall existing 7-Zip '$entryDisplayName'" `
                 -SuccessExitCodes @(0, 3010, 1605) `
                 -LogPrefix $LogPrefix
             if (-not $uninstalled)
