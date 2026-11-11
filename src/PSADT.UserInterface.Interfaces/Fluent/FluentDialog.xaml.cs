@@ -63,14 +63,9 @@ namespace PSADT.UserInterface.Interfaces.Fluent
 
             // Set up everything related to the dialog accent.
             Color? accentColorDark = options.FluentAccentColorDark is not null ? IntToColor(options.FluentAccentColorDark.Value) : null;
-            Color? accentColor = options.FluentAccentColor is not null ? IntToColor(options.FluentAccentColor.Value) : null;
-            _dialogAccentCache = new(new Dictionary<ApplicationTheme, Color?>
-            {
-                { ApplicationTheme.Light, accentColor },
-                { ApplicationTheme.Dark, accentColorDark ?? accentColor },
-                { ApplicationTheme.HighContrast, accentColorDark ?? accentColor },
-                { ApplicationTheme.Auto, accentColor },
-            });
+            _dialogAccentColorLight = options.FluentAccentColor is not null ? IntToColor(options.FluentAccentColor.Value) : null;
+            _dialogAccentColorDark = accentColorDark;
+            _dialogAccentColorExact = options.FluentAccentColorExact;
 
             // Set the language and flow direction for the dialog.
             Language = System.Windows.Markup.XmlLanguage.GetLanguage(options.Language.IetfLanguageTag);
@@ -103,10 +98,6 @@ namespace PSADT.UserInterface.Interfaces.Fluent
             WindowStartupLocation = WindowStartupLocation.Manual;
 
             Topmost = options.DialogTopMost;
-
-            // Show without activating. Activation inside ShowWindow lets accessibility clients query the
-            // window before WPF has rendered, so the frame appears empty; OnContentRendered activates it.
-            ShowActivated = false;
 
             // Set supplemental options also
             _customMessageText = customMessageText;
@@ -299,16 +290,6 @@ namespace PSADT.UserInterface.Interfaces.Fluent
             UpdateCountdownDisplay();
         }
 
-        /// <inheritdoc />
-        protected override void OnContentRendered(EventArgs e)
-        {
-            base.OnContentRendered(e);
-
-            // Activate now that the first frame has rendered. Later shows and restores activate normally.
-            ShowActivated = true;
-            _ = Activate();
-        }
-
         /// <summary>
         /// Starts loaded-time timers and signals the client that the dialog is ready.
         /// </summary>
@@ -316,6 +297,8 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         /// <param name="e">A RoutedEventArgs object that contains the event data.</param>
         private protected virtual void FluentDialog_Loaded(object? sender, RoutedEventArgs e)
         {
+            // Post-show concerns only: start the countdown and persist/expiry timers, and signal the
+            // client-server success flag the caller may be awaiting.
             InitializeCountdown();
             _persistTimer?.Start();
             _expiryTimer?.Start();
@@ -723,15 +706,29 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         }
 
         /// <summary>
-        /// Applies the accent color to the dialog based on the current application theme. The accent color is retrieved
-        /// from the dialog's accent color cache.
+        /// Applies the configured accent intent for the current theme.
         /// </summary>
-        /// <param name="theme">The current application theme for which to apply the accent color. This parameter is used to look up the appropriate accent color from the cache.</param>
+        /// <param name="theme">The resolved application theme.</param>
         private void SetDialogAccent(ApplicationTheme theme)
         {
-            if (_dialogAccentCache[theme] is Color accentColor)
+            if (_dialogAccentColorLight is Color lightAccent)
             {
-                ApplicationAccentColorManager.ApplyCustomAccent(accentColor);
+                if (_dialogAccentColorDark is Color darkAccent)
+                {
+                    ApplicationAccentColorManager.ApplyCustomAccent(lightAccent, darkAccent, exact: _dialogAccentColorExact);
+                }
+                else
+                {
+                    ApplicationAccentColorManager.ApplyCustomAccent(lightAccent, exact: _dialogAccentColorExact);
+                }
+            }
+            else if (_dialogAccentColorDark is Color darkAccent && theme is ApplicationTheme.Dark or ApplicationTheme.HighContrast)
+            {
+                ApplicationAccentColorManager.ApplyCustomAccent(darkAccent, darkAccent, exact: _dialogAccentColorExact);
+            }
+            else
+            {
+                ApplicationAccentColorManager.ApplySystemAccent();
             }
         }
 
@@ -1083,9 +1080,19 @@ namespace PSADT.UserInterface.Interfaces.Fluent
         private static readonly Dictionary<string, BitmapSource> _dialogIconCache = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// A read-only dictionary that caches accent colors for different application themes.
+        /// The configured Light accent, if supplied.
         /// </summary>
-        private readonly ReadOnlyDictionary<ApplicationTheme, Color?> _dialogAccentCache;
+        private readonly Color? _dialogAccentColorLight;
+
+        /// <summary>
+        /// The configured Dark accent, if supplied.
+        /// </summary>
+        private readonly Color? _dialogAccentColorDark;
+
+        /// <summary>
+        /// Whether custom accent values are exact visible primary fills.
+        /// </summary>
+        private readonly bool _dialogAccentColorExact;
 
         /// <summary>
         /// Releases the managed resources used by the dialog.
